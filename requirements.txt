@@ -1,0 +1,33 @@
+# Python core
+rasterio
+geopandas
+shapely
+pyproj
+numpy
+pandas
+
+# Satellite data access
+pystac-client
+planetary-computer
+stackstac
+rioxarray
+xarray
+
+# OpenStreetMap
+osmnx
+
+# ML
+scikit-learn
+catboost
+shap
+optuna
+
+# Visualization & Dashboard
+matplotlib
+seaborn
+folium
+streamlit
+streamlit-folium
+
+# Geospatial utilities
+rasterstats
