@@ -56,20 +56,27 @@
     | Bare/sparse | Bare/sparse (60) | 1.7% | 0.2% | Kept separate — large drop signals construction→built-up transition |
     | Water | Water (80) | 0.8% | 0.8% | Pegnitz river, Wöhrder See — spectrally distinct |
   - [x] **Dropped**: Snow/ice, Mangroves, Moss/lichen, Shrubland — 0% presence in Nuremberg
-- [ ] **Define the spatial unit** 👤
-  - [ ] Choose grid cells (e.g., 100 m × 100 m, 250 m × 250 m, 500 m × 500 m) vs. hexagons vs. districts
-  - [ ] Justify the choice considering data resolution (Sentinel-2 = 10 m, WorldCover = 10 m)
-- [ ] **Define the temporal setup** 👤
-  - [ ] Select at least **two time periods** (e.g., 2020 and 2021 using ESA WorldCover; extend with Landsat if going earlier)
-  - [ ] Define what the prediction task is:
-    - Predict land-cover composition at time T₂ from features at T₁?
-    - Predict land-cover change (Δ) between T₁ and T₂?
-    - Both?
-- [ ] **Define the intended user** 👤
-  - [ ] Who is the target audience? (e.g., city planners, environmental agencies, citizens)
-  - [ ] What decisions would they make with this system?
-- [ ] **Define what decisions must NOT be made based on your results** ⚠️
-  - [ ] State limitations explicitly (e.g., not suitable for parcel-level zoning, cannot detect illegal building activity, etc.)
+- [x] **Define the spatial unit**: **100 m × 100 m grid cells**
+  - [x] Data-driven analysis at 50/100/150/200/300/500m (see `notebooks/grid_size_analysis.py`)
+  - [x] 100m chosen: 50,400 cells, 10×10 pixels per cell, 35% mixed-urban transition cells
+  - [x] Justification: best balance of sample count (50K) vs. spatial resolution; 100 pixels per cell supports advanced feature extraction (Gabor wavelets, texture filters) beyond simple mean/std
+- [x] **Define the temporal setup**
+  - [x] Labeled periods: **2020** and **2021** (matching WorldCover labels)
+  - [x] Unlabeled periods: **2022–2025** (Sentinel-2 only → forward prediction for dashboard)
+  - [x] Prediction task: **Multi-output regression** — predict 6 class proportions per cell (sum to 1)
+  - [x] Change derived by subtracting predicted proportions: Δ = proportions(T₂) − proportions(T₁)
+- [x] **Define the intended user**
+  - [x] City government / urban planning office — monitor built-up expansion, green space loss
+  - [x] Infrastructure agencies — identify areas of rapid change for resource planning
+  - [x] Environmental / ecology contractors — track vegetation loss, green corridor integrity
+  - [x] Historians / researchers — document urban evolution over time
+  - [x] Building / construction companies — identify development hotspots and trends
+- [x] **Define what decisions must NOT be made based on your results** ⚠️
+  - [x] Not suitable for parcel-level or property-level zoning decisions (100m resolution)
+  - [x] Cannot detect individual buildings or distinguish building types
+  - [x] Cannot assess legality of construction or land-use compliance
+  - [x] Label differences between 2020/2021 may partly reflect algorithm changes (v100→v200), not real change
+  - [x] Predictions beyond 2021 are extrapolations without ground-truth validation
 - [ ] **Write the scope document** and get team consensus
 
 ---
