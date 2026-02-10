@@ -16,11 +16,12 @@ Disk space required: ~650 MB
 
 import os
 import sys
-import warnings
 import urllib.request
+import warnings
+
 import numpy as np
 
-warnings.filterwarnings('ignore')
+warnings.filterwarnings("ignore")
 
 # Paths relative to project root
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -31,8 +32,9 @@ PROCESSED_DIR = os.path.join(PROJECT_ROOT, "data", "processed")
 
 NUREMBERG_BBOX = [10.95, 49.38, 11.20, 49.52]  # [west, south, east, north]
 
-SENTINEL_BANDS = ['B02', 'B03', 'B04', 'B08', 'B05', 'B06', 'B07', 'B8A', 'B11', 'B12']
+SENTINEL_BANDS = ["B02", "B03", "B04", "B08", "B05", "B06", "B07", "B8A", "B11", "B12"]
 SENTINEL_YEARS = [2020, 2021, 2022, 2023, 2024, 2025]
+
 
 def setup_dirs():
     """Create data directory structure."""
@@ -43,19 +45,19 @@ def setup_dirs():
 
 def download_worldcover():
     """Download ESA WorldCover 2020 (v100) and 2021 (v200) tiles for Nuremberg."""
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("STEP 1/3: ESA WorldCover Labels")
-    print("="*60)
+    print("=" * 60)
 
     tiles = {
         2020: {
             "url": "https://esa-worldcover.s3.eu-central-1.amazonaws.com/v100/2020/map/ESA_WorldCover_10m_2020_v100_N48E009_Map.tif",
-            "file": "ESA_WorldCover_2020_N48E009.tif"
+            "file": "ESA_WorldCover_2020_N48E009.tif",
         },
         2021: {
             "url": "https://esa-worldcover.s3.eu-central-1.amazonaws.com/v200/2021/map/ESA_WorldCover_10m_2021_v200_N48E009_Map.tif",
-            "file": "ESA_WorldCover_2021_N48E009.tif"
-        }
+            "file": "ESA_WorldCover_2021_N48E009.tif",
+        },
     }
 
     for year, info in tiles.items():
@@ -72,15 +74,15 @@ def download_worldcover():
 
 def download_sentinel2():
     """Download Sentinel-2 L2A median composites via Microsoft Planetary Computer."""
-    import pystac_client
     import planetary_computer
-    import stackstac
+    import pystac_client
     import rasterio
+    import stackstac
     from rasterio.crs import CRS
 
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("STEP 2/3: Sentinel-2 Imagery (via Planetary Computer)")
-    print("="*60)
+    print("=" * 60)
 
     catalog = pystac_client.Client.open(
         "https://planetarycomputer.microsoft.com/api/stac/v1",
@@ -109,21 +111,37 @@ def download_sentinel2():
             continue
 
         print(f"  [{year}] Computing median composite...")
-        comp = stackstac.stack(
-            items, assets=SENTINEL_BANDS,
-            bounds_latlon=NUREMBERG_BBOX, resolution=10, epsg=32632
-        ).median(dim="time").compute()
+        comp = (
+            stackstac.stack(
+                items,
+                assets=SENTINEL_BANDS,
+                bounds_latlon=NUREMBERG_BBOX,
+                resolution=10,
+                epsg=32632,
+            )
+            .median(dim="time")
+            .compute()
+        )
 
         transform = rasterio.transform.from_bounds(
-            comp.coords['x'].values.min(), comp.coords['y'].values.min(),
-            comp.coords['x'].values.max(), comp.coords['y'].values.max(),
-            comp.shape[2], comp.shape[1],
+            comp.coords["x"].values.min(),
+            comp.coords["y"].values.min(),
+            comp.coords["x"].values.max(),
+            comp.coords["y"].values.max(),
+            comp.shape[2],
+            comp.shape[1],
         )
         with rasterio.open(
-            path, 'w', driver='GTiff',
-            height=comp.shape[1], width=comp.shape[2],
-            count=len(SENTINEL_BANDS), dtype='float32',
-            crs=CRS.from_epsg(32632), transform=transform, compress='lzw'
+            path,
+            "w",
+            driver="GTiff",
+            height=comp.shape[1],
+            width=comp.shape[2],
+            count=len(SENTINEL_BANDS),
+            dtype="float32",
+            crs=CRS.from_epsg(32632),
+            transform=transform,
+            compress="lzw",
         ) as dst:
             for i in range(len(SENTINEL_BANDS)):
                 band_data = np.nan_to_num(comp[i].values.astype(np.float32), nan=0.0)
@@ -136,12 +154,12 @@ def download_sentinel2():
 
 def download_osm():
     """Download OpenStreetMap features for Nuremberg."""
-    import osmnx as ox
     import geopandas as gpd
+    import osmnx as ox
 
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("STEP 3/3: OpenStreetMap Features")
-    print("="*60)
+    print("=" * 60)
 
     PLACE = "Nuremberg, Germany"
 
@@ -153,7 +171,9 @@ def download_osm():
         print("  [buildings] Downloading footprints...")
         buildings = ox.features_from_place(PLACE, tags={"building": True})
         buildings = buildings[buildings.geometry.type.isin(["Polygon", "MultiPolygon"])]
-        cols = [c for c in ["geometry", "building", "building:levels", "name"] if c in buildings.columns]
+        cols = [
+            c for c in ["geometry", "building", "building:levels", "name"] if c in buildings.columns
+        ]
         buildings[cols].to_file(bpath, driver="GPKG")
         print(f"  [buildings] Saved {len(buildings)} buildings")
 
@@ -206,11 +226,15 @@ def download_osm():
 
 def print_summary():
     """Print summary of all downloaded data."""
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("DOWNLOAD COMPLETE -- DATA SUMMARY")
-    print("="*60)
+    print("=" * 60)
 
-    for label, directory in [("Labels", LABELS_DIR), ("Raw Imagery", RAW_DIR), ("OSM Features", OSM_DIR)]:
+    for label, directory in [
+        ("Labels", LABELS_DIR),
+        ("Raw Imagery", RAW_DIR),
+        ("OSM Features", OSM_DIR),
+    ]:
         print(f"\n  {label} ({directory}):")
         if os.path.exists(directory):
             for f in sorted(os.listdir(directory)):

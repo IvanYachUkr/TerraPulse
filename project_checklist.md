@@ -20,42 +20,22 @@
 
 ## Phase 0 — Team Setup & Project Management
 
-- [ ] **Create a shared GitHub repository** (private until submission)
+- [x] **Create a shared GitHub repository** (private until submission)
   - [ ] Add all team members as collaborators
   - [ ] Set up branch protection on `main` (require PR reviews)
-  - [ ] Add `.gitignore` (Python, Jupyter, geospatial data files, large rasters)
+  - [x] Add `.gitignore` (Python, Jupyter, geospatial data files, large rasters)
 - [ ] **Set up project board** (GitHub Projects / Trello / Notion)
   - [ ] Create columns: Backlog → In Progress → Review → Done
   - [ ] Assign each Phase below as an epic with sub-tasks
-- [ ] **Agree on team conventions**
-  - [ ] Coding style (e.g., Black formatter, isort, flake8)
-  - [ ] Commit message format (e.g., Conventional Commits)
-  - [ ] Notebook vs. script policy (scripts for pipeline, notebooks for exploration)
-  - [ ] Data storage policy (raw data **never** in Git; use `.gitignore` + cloud / shared drive)
-- [ ] **Create initial project structure**
-  ```
-  project/
-  ├── data/               # .gitignored — raw + processed data
-  │   ├── raw/
-  │   ├── processed/
-  │   └── labels/
-  ├── notebooks/          # exploratory analysis
-  ├── src/                # production code
-  │   ├── data/           # data download & preprocessing
-  │   ├── features/       # feature engineering
-  │   ├── models/         # model training & prediction
-  │   ├── evaluation/     # metrics, stress tests
-  │   └── dashboard/      # Streamlit / Gradio app
-  ├── reports/            # technical report, figures
-  ├── assets/             # images, demo video
-  ├── tests/              # unit & integration tests
-  ├── requirements.txt
-  ├── README.md
-  └── .gitignore
-  ```
-- [ ] **Set up a shared environment**
-  - [ ] Create `requirements.txt` or `environment.yml` with pinned versions
-  - [ ] Core libs: `earthengine-api`, `rasterio`, `geopandas`, `shapely`, `pyproj`, `folium`, `streamlit`, `scikit-learn`, `xgboost`, `lightgbm`, `shap`, `matplotlib`, `seaborn`, `osmnx` (optional)
+- [x] **Agree on team conventions**
+  - [x] Coding style (Black formatter, isort, flake8) → see `CONTRIBUTING.md`
+  - [x] Commit message format (`ACTION: description`) → see `CONTRIBUTING.md`
+  - [x] Notebook vs. script policy (scripts for pipeline, notebooks for exploration)
+  - [x] Data storage policy (raw data **never** in Git; use `.gitignore` + download script)
+- [x] **Create initial project structure** (all dirs created with `.gitkeep`)
+- [x] **Set up a shared environment**
+  - [x] Create `requirements.txt` with all dependencies
+  - [x] All libraries installed (rasterio, geopandas, catboost, shap, streamlit, folium, etc.)
   - [ ] Verify all members can reproduce the environment
 
 ---
@@ -89,31 +69,18 @@
 
 ### 2A — Satellite Imagery ⚠️
 
-- [ ] **Acquire Sentinel-2 imagery for Nuremberg** 👤
-  - [ ] Set up Google Earth Engine account and authenticate (`ee.Authenticate()`)
-  - [ ] Define Nuremberg bounding box / administrative boundary polygon
-    - Nuremberg approx. bbox: `[10.95, 49.38, 11.20, 49.52]` (lon/lat)
-  - [ ] Download Sentinel-2 Level-2A (surface reflectance) for **Time Period 1** (e.g., summer 2020)
-    - Filter by cloud cover < 10–20%
-    - Create cloud-free composite (median composite)
-    - Bands: B2 (Blue), B3 (Green), B4 (Red), B5-B7 (Red Edge), B8 (NIR), B8A (Narrow NIR), B11-B12 (SWIR)
-  - [ ] Download Sentinel-2 for **Time Period 2** (e.g., summer 2021)
-    - Same filters and process
-  - [ ] Export as GeoTIFF to Google Drive, then download locally to `data/raw/`
-  - [ ] Document exact GEE scripts / parameters used
-- [ ] **(Optional) Acquire Landsat imagery for earlier years** 🏆 👤
-  - [ ] If extending temporal coverage beyond 2020–2021
-  - [ ] Be aware of resolution differences (30 m vs. 10 m) — discuss spatial alignment
+- [x] **Acquire Sentinel-2 imagery for Nuremberg** — via Microsoft Planetary Computer (no auth)
+  - [x] Nuremberg bbox: `[10.95, 49.38, 11.20, 49.52]`
+  - [x] Downloaded 2020–2025 summer composites (Jun–Aug, <20% cloud, median composite)
+  - [x] 10 bands: B02-B04, B05-B08, B8A, B11-B12 at 10 m, EPSG:32632
+  - [x] Saved as GeoTIFF to `data/raw/`
+  - [x] Download script: `scripts/download_all_data.py`
 
 ### 2B — ESA WorldCover Labels ⚠️
 
-- [ ] **Download ESA WorldCover 2020 (v100)** 👤
-  - [ ] From AWS S3, Zenodo, or WorldCover Viewer
-  - [ ] Identify the correct 3×3° tile covering Nuremberg
-  - [ ] Save to `data/labels/`
-- [ ] **Download ESA WorldCover 2021 (v200)** 👤
-  - [ ] Same process
-  - [ ] Save to `data/labels/`
+- [x] **Download ESA WorldCover 2020 (v100)** — tile N48E009 from AWS S3
+- [x] **Download ESA WorldCover 2021 (v200)** — tile N48E009 from AWS S3
+  - [x] Both saved to `data/labels/` (99.2 MB + 90.5 MB)
 
 > [!WARNING]
 > The 2020 and 2021 WorldCover maps used **different algorithm versions** (v100 vs v200). Changes between them may partly reflect algorithmic differences, not just real land-cover change. This **must** be discussed in your report.
@@ -125,12 +92,11 @@
 
 ### 2C — Optional Auxiliary Data 🏆
 
-- [ ] **OpenStreetMap features** 👤
-  - [ ] Use `osmnx` to extract for Nuremberg:
-    - [ ] Building footprints → compute building density per grid cell
-    - [ ] Road network → compute road density / intersection density per grid cell
-    - [ ] Land use polygons (parks, industrial areas, residential, etc.)
-  - [ ] Save as GeoDataFrames / shapefiles
+- [x] **OpenStreetMap features** — downloaded via `osmnx`
+  - [x] 105,550 building footprints → `data/raw/osm/buildings.gpkg`
+  - [x] 18,996 road segments + 8,083 intersections → `data/raw/osm/roads.gpkg`
+  - [x] 3,380 land-use zones → `data/raw/osm/landuse.gpkg`
+  - [x] 1,233 natural features + 241 water bodies → `data/raw/osm/natural.gpkg`, `water.gpkg`
 - [ ] **Population / housing statistics**
   - [ ] Check availability from Bayerisches Landesamt für Statistik or Eurostat
   - [ ] Ensure spatial alignability with your grid
