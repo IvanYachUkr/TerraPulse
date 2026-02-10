@@ -44,9 +44,18 @@
 
 > **Deliverable**: A 1–2 page "Scope Document" in `reports/scope.md` that the whole team agrees on.
 
-- [ ] **Define land-cover classes to focus on** 👤
-  - [ ] Decide which ESA WorldCover classes to group/merge (e.g., Built-up, Tree cover, Grassland, Cropland, Water, Other)
-  - [ ] Justify why these classes matter for Nuremberg's urban context
+- [x] **Define land-cover classes to focus on**
+  - [x] Analyzed pixel distribution in Nuremberg tile (5,040,000 pixels)
+  - [x] **6 final classes** (from 11 WorldCover classes):
+    | Final Class | WorldCover Source | 2020 % | 2021 % | Justification |
+    |------------|------------------|--------|--------|---------------|
+    | Tree cover | Tree cover (10) | 46.6% | 47.8% | Dominant class, distinct spectral signature |
+    | Grassland | Grassland (30) + Wetland (90) | 10.6% | 9.1% | Wetland (0.01%, 421 px) merged here — it's vegetated ground, not open water |
+    | Cropland | Cropland (40) | 9.6% | 9.6% | Agricultural fringe of city, stable |
+    | Built-up | Built-up (50) | 30.7% | 32.5% | Core urbanization signal |
+    | Bare/sparse | Bare/sparse (60) | 1.7% | 0.2% | Kept separate — large drop signals construction→built-up transition |
+    | Water | Water (80) | 0.8% | 0.8% | Pegnitz river, Wöhrder See — spectrally distinct |
+  - [x] **Dropped**: Snow/ice, Mangroves, Moss/lichen, Shrubland — 0% presence in Nuremberg
 - [ ] **Define the spatial unit** 👤
   - [ ] Choose grid cells (e.g., 100 m × 100 m, 250 m × 250 m, 500 m × 500 m) vs. hexagons vs. districts
   - [ ] Justify the choice considering data resolution (Sentinel-2 = 10 m, WorldCover = 10 m)
