@@ -120,20 +120,20 @@
 
 ### 2D — Spatial Alignment & Preprocessing ⚠️
 
-- [ ] **Reproject all datasets to a common CRS** 👤
-  - [ ] Recommended: EPSG:32632 (UTM zone 32N, covers Nuremberg)
-  - [ ] Use `rasterio` or `geopandas` for reprojection
-- [ ] **Clip all rasters to Nuremberg boundary**
-  - [ ] Use a vector boundary (from OSM or official administrative boundaries)
-- [ ] **Create the spatial grid** 👤
-  - [ ] Generate grid cells (e.g., 200 m × 200 m) covering Nuremberg
-  - [ ] Each grid cell = one sample in the tabular dataset
-  - [ ] Assign unique IDs to each cell
-- [ ] **Aggregate labels per grid cell**
-  - [ ] For each cell, compute the **proportion of each land-cover class** from WorldCover at T₁ and T₂
-  - [ ] Compute **change labels** (Δ built-up, Δ vegetation, etc.)
-  - [ ] (Optional) Derive binary change/no-change labels with a justified threshold
-- [ ] **Save processed datasets** to `data/processed/` as Parquet / GeoParquet / CSV
+- [x] **Reproject all datasets to EPSG:32632 (UTM 32N)**
+  - [x] Sentinel-2: already in EPSG:32632
+  - [x] WorldCover: reprojected from EPSG:4326 using nearest-neighbor resampling
+- [x] **Clip all rasters to Nuremberg boundary** (aligned to Sentinel-2 bounds)
+- [x] **Create the spatial grid**: 100m x 100m, 186 cols x 161 rows = **29,946 cells**
+  - [x] Saved as `data/processed/grid.gpkg`
+  - [x] Each cell has exactly 100 valid pixels
+- [x] **Aggregate labels per grid cell** — class proportions for 2020 and 2021
+  - [x] `data/processed/labels_2020.parquet` (262 KB)
+  - [x] `data/processed/labels_2021.parquet` (249 KB)
+- [x] **Compute change labels** (delta = 2021 - 2020)
+  - [x] `data/processed/labels_change.parquet` (283 KB)
+  - [x] Key findings: built-up +1.8%, tree cover +1.2%, grassland -1.6%, bare/sparse -1.6%
+- [x] **Pipeline script**: `src/data/build_grid.py`
 
 ---
 
