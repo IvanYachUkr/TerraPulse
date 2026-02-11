@@ -39,6 +39,7 @@ from src.splitting import (
     build_random_folds,
     build_region_growing_folds,
     build_spatial_folds,
+    compute_fold_metrics,
     leakage_comparison,
     save_split_metadata,
 )
@@ -263,6 +264,31 @@ def main(feature_set="core"):
           f"  (excluded: {rg_n_excluded})")
     print("  [OK] All folds validated")
 
+    # -- Contiguity + balance metrics ---------------------------------
+    print("\n[3b/9] Computing contiguity & balance metrics...")
+
+    TILE_HEIGHT_M = BLOCK_ROWS * CELL_SIZE
+    TILE_WIDTH_M = BLOCK_COLS * CELL_SIZE
+
+    metrics_configs = [
+        ("contiguous", contiguous_assignments),
+        ("morton", morton_assignments),
+        ("region_growing", rg_assignments),
+    ]
+    all_metrics = []
+    for strat_name, assignments in metrics_configs:
+        m = compute_fold_metrics(assignments, groups, n_tile_cols, n_tile_rows)
+        m.insert(0, "strategy", strat_name)
+        all_metrics.append(m)
+        total_comp = m["n_components"].sum()
+        max_dev = m["weight_deviation_pct"].max()
+        connected = "YES" if (m["n_components"] == 1).all() else "NO"
+        print(f"  {strat_name:20s}: components={list(m['n_components'])} "
+              f"connected={connected}  max_dev={max_dev:.1f}%")
+
+    metrics_df = pd.concat(all_metrics, ignore_index=True)
+    save_table(metrics_df, "fold_contiguity", tbl_dir)
+
     # -- Save split ---------------------------------------------------
     print("\n[4/9] Saving fold assignments...")
 
@@ -407,7 +433,7 @@ def main(feature_set="core"):
         for _, row in buf_results.iterrows():
             sweep_rows.append({
                 "buffer_tiles": buf,
-                "buffer_m": buf * BLOCK_ROWS * CELL_SIZE,
+                "buffer_m": buf * max(TILE_HEIGHT_M, TILE_WIDTH_M),
                 "fold": row["fold"],
                 "r2_uniform": row["r2_uniform"],
                 "r2_weighted": row["r2_weighted"],
@@ -423,7 +449,7 @@ def main(feature_set="core"):
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
 
     buf_vals = sorted(sweep_df["buffer_tiles"].unique())
-    buf_m_vals = [b * BLOCK_ROWS * CELL_SIZE for b in buf_vals]
+    buf_m_vals = [b * max(TILE_HEIGHT_M, TILE_WIDTH_M) for b in buf_vals]
     mean_r2 = [np.nanmean(
         sweep_df[sweep_df["buffer_tiles"] == b]["r2_uniform"]
     ) for b in buf_vals]
