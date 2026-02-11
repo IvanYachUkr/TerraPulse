@@ -141,30 +141,24 @@
 
 > All models must operate on **tabular / fixed-length feature vectors**. No raw images as input.
 
-- [ ] **Spectral features per grid cell** 👤
-  - [ ] Per-band statistics: mean, median, std, min, max of reflectance within each cell
-  - [ ] Bands: B2, B3, B4, B5, B6, B7, B8, B8A, B11, B12
-- [ ] **Spectral indices per grid cell** 👤
-  - [ ] NDVI = (NIR − Red) / (NIR + Red) — vegetation vigor
-  - [ ] NDWI = (Green − NIR) / (Green + NIR) — water bodies
-  - [ ] NDBI = (SWIR − NIR) / (SWIR + NIR) — built-up areas
-  - [ ] EVI, SAVI (optional but recommended)
-  - [ ] Compute statistics (mean, std) per cell for each index
-- [ ] **Texture features** (optional but valuable) 👤
-  - [ ] GLCM-derived features (contrast, homogeneity, entropy) per band or NDVI
-  - [ ] Standard deviation of spectral bands within each cell (a simple texture proxy)
-- [ ] **Temporal features** 👤
-  - [ ] Change in spectral features between T₁ and T₂ (Δ NDVI, Δ NDBI, etc.)
-  - [ ] Ratio features (T₂ / T₁ spectral values)
-- [ ] **Spatial context features** (optional) 🏆
-  - [ ] Neighboring cell statistics (spatial lag features)
-  - [ ] Distance to city center, major roads, water bodies
-- [ ] **OSM-derived features** (optional) 🏆 👤
-  - [ ] Building density, road density, land-use type per cell
-- [ ] **Compile final feature matrix**
-  - [ ] One row per grid cell (and per time step if predicting composition)
-  - [ ] Save as `data/processed/features.parquet`
-  - [ ] Document all features in a feature dictionary (`reports/feature_dictionary.md`)
+- [x] **Spectral features per grid cell** -- 50 features
+  - [x] Per-band statistics: mean, std, min, max, median x 10 bands
+- [x] **Spectral indices per grid cell** -- 25 features
+  - [x] NDVI, NDBI, NDWI, SAVI, BSI (mean, std, median, q25, q75 each)
+- [x] **Tasseled Cap transformation** -- 6 features
+  - [x] Brightness, greenness, wetness (mean, std each)
+- [x] **GLCM texture features** -- 10 features
+  - [x] Contrast, homogeneity, energy, correlation, dissimilarity on NIR + NDVI
+- [x] **Gabor wavelet features** -- 24 features
+  - [x] 3 scales x 4 orientations x 2 stats (mean, std) on NIR band
+- [x] **Spatial autocorrelation / edge features** -- 8 features
+  - [x] Sobel edge density, Laplacian, Moran's I, NDVI spatial range/IQR
+- [x] **OSM-derived features** -- ~40 features
+  - [x] Building count/area, road length/count, water distance, land-use (one-hot)
+- [x] **Compiled final feature matrix**: 29,440 cells x 163 features
+  - [x] `data/processed/features_2020.parquet`
+  - [x] `data/processed/features_2021.parquet`
+  - [x] Pipeline script: `src/features/extract_features.py`
 
 ---
 
