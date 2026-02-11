@@ -29,5 +29,11 @@ folium
 streamlit
 streamlit-folium
 
+# Config
+pyyaml
+
+# Image processing
+scikit-image
+
 # Geospatial utilities
 rasterstats

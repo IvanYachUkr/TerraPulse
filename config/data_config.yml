@@ -1,0 +1,68 @@
+# ─────────────────────────────────────────────────────────────
+# TerraPulse — Data Pipeline Configuration
+# ─────────────────────────────────────────────────────────────
+# Single source of truth for AOI, bands, seasons, and quality
+# parameters. All scripts read from this file via src/config.py.
+
+aoi:
+  name: nuremberg
+  bbox: [10.95, 49.38, 11.20, 49.52]   # [west, south, east, north]
+  epsg: 32632                            # UTM 32N
+
+sentinel2:
+  collection: sentinel-2-l2a
+  bands: [B02, B03, B04, B05, B06, B07, B08, B8A, B11, B12]
+  quality_band: SCL
+  resolution: 10
+  nodata: -9999
+  years: [2020, 2021]
+  season_order: [spring, summer, autumn]
+  seasons:
+    spring: ["04-01", "05-31"]
+    summer: ["06-01", "08-31"]
+    autumn: ["09-01", "10-31"]
+  cloud_cover_max:
+    spring: 40
+    summer: 20
+    autumn: 40
+  min_scenes: 8
+  fallback_cloud_max: 50
+  fallback_window_expand_days: 14
+
+worldcover:
+  years: [2020, 2021]
+  layers: [Map]  # InputQuality not on public S3; add later via Terrascope if needed
+  tile: N48E009
+  class_map:
+    10: 0   # Tree cover
+    30: 1   # Grassland
+    90: 1   # Wetland -> Grassland
+    40: 2   # Cropland
+    50: 3   # Built-up
+    60: 4   # Bare/sparse
+    80: 5   # Water
+  class_names: [tree_cover, grassland, cropland, built_up, bare_sparse, water]
+
+grid:
+  size_m: 100
+  pixel_size: 10
+  # Fixed reference for grid alignment — created by scripts/create_anchor.py
+  reference_file: data/grid/anchor_utm32632_10m.tif
+
+scl_mask:
+  # SCL classes to EXCLUDE from compositing:
+  # 0 = No data
+  # 1 = Saturated / defective
+  # 2 = Dark area pixels
+  # 3 = Cloud shadow
+  # 8 = Cloud medium probability
+  # 9 = Cloud high probability
+  # 10 = Thin cirrus
+  # 11 = Snow / ice
+  exclude_classes: [0, 1, 2, 3, 8, 9, 10, 11]
+
+quality:
+  min_valid_fraction: 0.3
+  # If filtering removes > max_drop_pct of cells, log a warning
+  max_drop_pct: 40
+  valid_fraction_definition: "SCL_not_excluded / scenes_after_scene_cloud_filter"
