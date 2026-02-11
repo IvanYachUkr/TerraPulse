@@ -554,7 +554,7 @@ def fig6_quality_coupling(merged, lch, fig_dir, tbl_dir, dpi):
         ref_vf = vf_cols[0]
         if "delta_built_up" in lch.columns:
             vf_vals = merged[ref_vf].values
-            delta_bu = np.abs(lch.sort_values("cell_id")["delta_built_up"].values)
+            delta_bu = np.abs(lch["delta_built_up"].values)  # already sorted by cell_id
             ax.scatter(vf_vals, delta_bu, s=1, alpha=.2, c="#555", rasterized=True)
             deciles = pd.qcut(vf_vals, 10, duplicates="drop")
             means = pd.DataFrame({"vf": vf_vals, "delta": delta_bu, "dec": deciles}).groupby("dec").agg(
@@ -675,6 +675,9 @@ def compute_morans_i_vectorized(values, src, dst, n_perms=99, seed=42):
 def fig_morans_i(merged, l20, lch, grid, fig_dir, tbl_dir, dpi, seed, n_perms=99):
     print("\n[Moran's I] Computing spatial autocorrelation (full grid, vectorized)...")
     gdf = grid.copy()  # already sorted by cell_id from load
+    # Guard: grid must be in a projected CRS (meters)
+    assert gdf.crs is not None and gdf.crs.is_projected, \
+        f"Grid CRS must be projected (meters), got: {gdf.crs}"
     # Derive n_gcols deterministically from grid bounds + cell size
     bounds = gdf.total_bounds  # [minx, miny, maxx, maxy]
     cell_size = CFG["grid"]["size_m"]
@@ -682,11 +685,19 @@ def fig_morans_i(merged, l20, lch, grid, fig_dir, tbl_dir, dpi, seed, n_perms=99
     n_grows = int(round((bounds[3] - bounds[1]) / cell_size))
     expected_n = n_gcols * n_grows
     actual_n = len(gdf)
-    print(f"  Grid: {n_grows} rows x {n_gcols} cols = {expected_n} expected, {actual_n} actual")
+    assert expected_n == actual_n, \
+        f"Grid geometry mismatch: {n_grows}x{n_gcols}={expected_n} != {actual_n} cells"
+    print(f"  Grid: {n_grows} rows x {n_gcols} cols = {actual_n} cells (verified)")
 
     cell_ids = gdf["cell_id"].values
     row_idx = cell_ids // n_gcols
     col_idx = cell_ids % n_gcols
+    # Validate row-major assumption: centroid x should increase with col_idx
+    xs = gdf.geometry.centroid.x.values
+    sample_row0 = np.where(row_idx == 0)[0]
+    if len(sample_row0) > 1:
+        assert np.all(np.diff(xs[sample_row0[np.argsort(col_idx[sample_row0])]]) > 0), \
+            "cell_id does not encode row-major order (centroid x not monotonic with col_idx)"
 
     # Build edges once on full grid
     print(f"  Building rook adjacency for {len(cell_ids)} cells...")
@@ -705,6 +716,7 @@ def fig_morans_i(merged, l20, lch, grid, fig_dir, tbl_dir, dpi, seed, n_perms=99
     results = []
     n = len(cell_ids)
     for vname, vals in variables.items():
+        assert np.isfinite(vals).all(), f"{vname} contains NaN or Inf -- cannot compute Moran's I"
         print(f"  {vname} (n={n}, {n_perms} perms)...")
         I, p = compute_morans_i_vectorized(vals, src, dst, n_perms=n_perms, seed=seed)
         results.append({"variable": vname, "morans_I": round(I, 4), "p_value": round(p, 4),
@@ -814,15 +826,20 @@ def fig9_engineering_checks(merged, fig_dir, dpi):
     print("\n[Fig 9] Engineering validation checks...")
     fig, axes = plt.subplots(1, 3, figsize=(18, 5))
 
-    # Check 1: Reflectance scale
+    # Check 1: Reflectance scale (data-driven verdict)
     ax = axes[0]
     nir_cols = [f"B08_mean_{y}_{s}" for y,s in COMPOSITES if f"B08_mean_{y}_{s}" in merged.columns]
     if nir_cols:
         all_nir = pd.concat([merged[c] for c in nir_cols])
+        mn, mx = float(all_nir.min()), float(all_nir.max())
         ax.hist(all_nir, bins=100, color="#27AE60", alpha=.6, edgecolor="white")
         ax.axvline(0, color="black"); ax.axvline(1, color="red", linestyle="--", label="max=1.0")
         ax.legend(fontsize=8)
-    ax.set_title("✓ Scale: values in [0,1]", fontweight="bold", fontsize=10, color="green")
+        ok = mn >= -0.01 and mx <= 1.01
+        color = "green" if ok else "red"
+        mark = "✓" if ok else "✗"
+        ax.set_title(f"{mark} Scale: min={mn:.3f}, max={mx:.3f}",
+                     fontweight="bold", fontsize=10, color=color)
     ax.set_xlabel("B08 Value")
 
     # Check 2: Cell integrity
