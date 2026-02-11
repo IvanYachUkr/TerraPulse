@@ -46,7 +46,9 @@ worldcover:
 grid:
   size_m: 100
   pixel_size: 10
-  # Fixed reference for grid alignment — created by scripts/create_anchor.py
+  n_rows: 161
+  n_cols: 186
+  # Fixed reference for grid alignment -- created by scripts/create_anchor.py
   reference_file: data/grid/anchor_utm32632_10m.tif
 
 scl_mask:
@@ -66,3 +68,11 @@ quality:
   # If filtering removes > max_drop_pct of cells, log a warning
   max_drop_pct: 40
   valid_fraction_definition: "SCL_not_excluded / scenes_after_scene_cloud_filter"
+
+split:
+  block_rows: 10        # cells per tile vertically (10 x 100m = 1km)
+  block_cols: 10         # cells per tile horizontally
+  n_folds: 5
+  seed: 42
+  test_fold: 0           # held-out test set for Phase 8+
+  buffer_tiles: 1        # tile-level buffer around test tiles (0 = no buffer)

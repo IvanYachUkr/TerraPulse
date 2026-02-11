@@ -201,10 +201,11 @@
 
 ## Phase 7 — Train/Test Split Design (avoid spatial leakage) ⚠️
 
-- [ ] Implement a spatially-aware split ⚠️
-  - Recommended: blocked split by spatial tiles (e.g., 10×10 blocks or districts)
-  - Store split indices to disk (reproducible)
-- [ ] Baseline sanity: random split vs spatial split (show leakage effect)
+- [x] Implement a spatially-aware split ⚠️
+  - Tile-based blocked split: 10×10 cells (1km²), 323 tile groups, 5-fold GroupKFold
+  - Split indices saved to `data/processed/v2/split_spatial.parquet`
+- [x] Baseline sanity: random split vs spatial split (show leakage effect)
+  - Ridge regression: spatial R²=0.742 vs random R²=0.767 (gap=+0.025)
 
 ---
 

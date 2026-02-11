@@ -1,0 +1,409 @@
+"""
+Phase 7: Spatial train/test split utilities.
+
+Provides tile-based splitting with multiple fold assignment strategies
+(scattered GroupKFold and contiguous row-bands), optional Chebyshev
+buffer exclusion, and a random baseline for leakage comparison.
+
+Usage (from scripts/run_split.py):
+    from src.splitting import (
+        assign_tile_groups,
+        build_spatial_folds,
+        build_contiguous_band_folds,
+        build_buffered_folds_from_assignments,
+        build_random_folds,
+        get_fold_indices,
+        leakage_comparison,
+        save_split_metadata,
+    )
+"""
+
+import json
+from datetime import datetime, timezone
+from functools import lru_cache
+
+import numpy as np
+import pandas as pd
+from sklearn.linear_model import Ridge
+from sklearn.metrics import r2_score
+from sklearn.model_selection import GroupKFold, KFold
+from sklearn.preprocessing import StandardScaler
+
+
+# =====================================================================
+# Tile assignment
+# =====================================================================
+
+def assign_tile_groups(cell_ids, n_gcols, block_rows, block_cols):
+    """
+    Assign each cell to a rectangular tile group based on its
+    row/col position in the grid.
+
+    Parameters
+    ----------
+    cell_ids : ndarray of int, shape (N,)
+        Row-major cell identifiers (0 .. N-1).
+    n_gcols : int
+        Number of columns in the full grid (186 for Nuremberg).
+    block_rows : int
+        Number of cell rows per tile (e.g. 10 -> 1 km).
+    block_cols : int
+        Number of cell columns per tile (e.g. 10 -> 1 km).
+
+    Returns
+    -------
+    groups : ndarray of int, shape (N,)
+        Tile group ID for each cell.
+    n_tile_cols : int
+        Number of tile columns.
+    n_tile_rows : int
+        Number of tile rows.
+    """
+    row_idx = cell_ids // n_gcols
+    col_idx = cell_ids % n_gcols
+
+    tile_row = row_idx // block_rows
+    tile_col = col_idx // block_cols
+
+    n_tile_cols = int(tile_col.max()) + 1
+    n_tile_rows = int(tile_row.max()) + 1
+
+    groups = tile_row * n_tile_cols + tile_col
+    return groups, n_tile_cols, n_tile_rows
+
+
+# =====================================================================
+# Fold builders
+# =====================================================================
+
+def build_spatial_folds(groups, n_folds):
+    """
+    Build spatial CV folds using sklearn GroupKFold.
+
+    Each tile group is kept intact -- all cells in a tile go to the
+    same fold. GroupKFold distributes tiles for balanced sample counts,
+    which means test tiles are SCATTERED across the grid.
+
+    Returns
+    -------
+    folds : list of (train_idx, test_idx) tuples
+    fold_assignments : ndarray of int, shape (N,)
+        Fold number (0..n_folds-1) for each sample.
+    """
+    gkf = GroupKFold(n_splits=n_folds)
+    dummy_X = np.zeros((len(groups), 1))
+    dummy_y = np.zeros(len(groups))
+
+    folds = list(gkf.split(dummy_X, dummy_y, groups=groups))
+
+    fold_assignments = np.full(len(groups), -1, dtype=int)
+    for fold_idx, (_, test_idx) in enumerate(folds):
+        fold_assignments[test_idx] = fold_idx
+
+    assert (fold_assignments >= 0).all(), "Some cells not assigned to any fold"
+    return folds, fold_assignments
+
+
+def build_contiguous_band_folds(groups, n_folds, n_tile_cols, n_tile_rows):
+    """
+    Build spatial CV folds where each fold is a contiguous horizontal
+    band of tile rows.
+
+    For 17 tile rows and 5 folds, produces chunks like [4, 4, 3, 3, 3].
+    Test regions are spatially contiguous, making buffered CV meaningful.
+
+    Parameters
+    ----------
+    groups : ndarray of int, shape (N,)
+        Tile group IDs from assign_tile_groups.
+    n_folds : int
+    n_tile_cols, n_tile_rows : int
+        Tile grid dimensions.
+
+    Returns
+    -------
+    folds : list of (train_idx, test_idx) tuples
+    fold_assignments : ndarray of int, shape (N,)
+        Fold number (0..n_folds-1) for each sample.
+    """
+    assert n_tile_rows >= n_folds, \
+        f"Need at least one tile row per fold ({n_tile_rows} rows < {n_folds} folds)"
+    # Compute tile_row for each cell from its tile group
+    tile_rows = groups // n_tile_cols
+
+    # Split tile rows into n_folds contiguous chunks
+    # np.array_split handles uneven division (e.g. 17 rows -> [4,4,3,3,3])
+    all_tile_rows = np.arange(n_tile_rows)
+    chunks = np.array_split(all_tile_rows, n_folds)
+
+    # Map tile_row -> fold
+    tile_row_to_fold = np.full(n_tile_rows, -1, dtype=int)
+    for fold_idx, chunk in enumerate(chunks):
+        for tr in chunk:
+            tile_row_to_fold[tr] = fold_idx
+
+    fold_assignments = tile_row_to_fold[tile_rows]
+    assert (fold_assignments >= 0).all(), "Some cells not assigned to any fold"
+
+    # Build (train_idx, test_idx) tuples
+    folds = []
+    for fold_idx in range(n_folds):
+        test_mask = fold_assignments == fold_idx
+        train_idx = np.where(~test_mask)[0]
+        test_idx = np.where(test_mask)[0]
+        folds.append((train_idx, test_idx))
+
+    return folds, fold_assignments
+
+
+@lru_cache(maxsize=8)
+def _precompute_tile_neighbors(n_tile_cols, n_tile_rows, buffer_tiles):
+    """
+    Precompute Chebyshev (square) neighborhood for each tile.
+
+    Cached so repeated calls from get_fold_indices / buffered builders
+    don't recompute. All args are hashable ints.
+
+    Returns dict: tile_id -> frozenset of neighbor tile_ids (excluding self).
+    """
+    neighbors = {}
+    for tr in range(n_tile_rows):
+        for tc in range(n_tile_cols):
+            tile_id = tr * n_tile_cols + tc
+            nbrs = set()
+            for dr in range(-buffer_tiles, buffer_tiles + 1):
+                for dc in range(-buffer_tiles, buffer_tiles + 1):
+                    if dr == 0 and dc == 0:
+                        continue
+                    nr, nc = tr + dr, tc + dc
+                    if 0 <= nr < n_tile_rows and 0 <= nc < n_tile_cols:
+                        nbrs.add(nr * n_tile_cols + nc)
+            neighbors[tile_id] = frozenset(nbrs)
+    return neighbors
+
+
+def build_buffered_folds_from_assignments(groups, fold_assignments, n_folds,
+                                           n_tile_cols, n_tile_rows,
+                                           buffer_tiles=1):
+    """
+    Apply a tile-level Chebyshev (square) buffer to any fold assignment.
+
+    For each fold, training tiles that are within `buffer_tiles`
+    Chebyshev distance of any test tile are excluded from the
+    training set. This prevents near-boundary leakage.
+
+    Works with both scattered (GroupKFold) and contiguous (band)
+    fold assignments.
+
+    Parameters
+    ----------
+    groups : ndarray of int, shape (N,)
+        Tile group IDs.
+    fold_assignments : ndarray of int, shape (N,)
+        Fold number per cell (from any fold builder).
+    n_folds : int
+    n_tile_cols, n_tile_rows : int
+    buffer_tiles : int
+        Chebyshev distance in tiles (default: 1 = 8-neighborhood).
+
+    Returns
+    -------
+    folds : list of (train_idx, test_idx) tuples
+        train_idx excludes cells in the buffer zone.
+    n_excluded_per_fold : list of int
+        Number of cells dropped from training per fold.
+    """
+    # Precompute neighbors once
+    tile_neighbors = _precompute_tile_neighbors(
+        n_tile_cols, n_tile_rows, buffer_tiles
+    )
+
+    buffered_folds = []
+    n_excluded_per_fold = []
+
+    for fold_idx in range(n_folds):
+        test_mask = fold_assignments == fold_idx
+        test_tiles = set(np.unique(groups[test_mask]))
+
+        # Collect buffer tiles: neighbors of test tiles that aren't test
+        buffer_tiles_set = set()
+        for tt in test_tiles:
+            for nbr in tile_neighbors.get(tt, set()):
+                if nbr not in test_tiles:
+                    buffer_tiles_set.add(nbr)
+
+        buffer_cell_mask = np.isin(groups, list(buffer_tiles_set))
+        train_mask = (~test_mask) & (~buffer_cell_mask)
+
+        train_idx = np.where(train_mask)[0]
+        test_idx = np.where(test_mask)[0]
+        n_excluded = int(buffer_cell_mask.sum())
+
+        buffered_folds.append((train_idx, test_idx))
+        n_excluded_per_fold.append(n_excluded)
+
+    return buffered_folds, n_excluded_per_fold
+
+
+def build_random_folds(n_samples, n_folds, seed):
+    """
+    Build standard random CV folds (shuffled) for leakage comparison.
+
+    Returns
+    -------
+    folds : list of (train_idx, test_idx) tuples
+    """
+    kf = KFold(n_splits=n_folds, shuffle=True, random_state=seed)
+    dummy_X = np.zeros((n_samples, 1))
+    return list(kf.split(dummy_X))
+
+
+# =====================================================================
+# Downstream helper
+# =====================================================================
+
+def get_fold_indices(groups, fold_assignments, fold_idx,
+                     n_tile_cols, n_tile_rows, buffer_tiles=0):
+    """
+    Get train/test indices for a single fold, with optional buffer.
+
+    This is the recommended entry point for Phase 8+ scripts.
+    Load split_spatial.parquet, then call this to get indices.
+
+    Parameters
+    ----------
+    groups : ndarray of int
+        Tile group IDs (from split parquet's tile_group column).
+    fold_assignments : ndarray of int
+        Fold IDs (from split parquet's fold column).
+    fold_idx : int
+        Which fold to hold out as test.
+    n_tile_cols, n_tile_rows : int
+        Tile grid dimensions (from config or metadata JSON).
+    buffer_tiles : int
+        Chebyshev buffer in tiles (0 = no buffer).
+
+    Returns
+    -------
+    train_idx, test_idx : ndarrays of int
+    """
+    test_mask = fold_assignments == fold_idx
+
+    if buffer_tiles > 0:
+        test_tiles = set(np.unique(groups[test_mask]))
+        tile_neighbors = _precompute_tile_neighbors(
+            n_tile_cols, n_tile_rows, buffer_tiles
+        )
+        buffer_tiles_set = set()
+        for tt in test_tiles:
+            for nbr in tile_neighbors.get(tt, set()):
+                if nbr not in test_tiles:
+                    buffer_tiles_set.add(nbr)
+        buffer_mask = np.isin(groups, list(buffer_tiles_set))
+        train_mask = (~test_mask) & (~buffer_mask)
+    else:
+        train_mask = ~test_mask
+
+    return np.where(train_mask)[0], np.where(test_mask)[0]
+
+
+# =====================================================================
+# Leakage comparison
+# =====================================================================
+
+def leakage_comparison(X, y, fold_configs):
+    """
+    Train Ridge regression on each fold for multiple split strategies.
+    Compare held-out R2 to quantify spatial leakage.
+
+    Parameters
+    ----------
+    X : ndarray, shape (N, D)
+        Feature matrix (already numeric, no NaNs).
+    y : ndarray, shape (N, C)
+        Multi-output labels (e.g. 6 land-cover proportions).
+    fold_configs : list of (split_name, folds_list)
+        Each entry is (str_name, list_of_(train_idx, test_idx)).
+
+    Returns
+    -------
+    results : pd.DataFrame
+        Columns: split_type, fold, r2_uniform, r2_weighted,
+                 train_size, test_size.
+    """
+    rows = []
+
+    for split_name, folds in fold_configs:
+        for fold_idx, (train_idx, test_idx) in enumerate(folds):
+            # Scale inside the CV loop to prevent leakage
+            scaler = StandardScaler()
+            X_train = scaler.fit_transform(X[train_idx])
+            X_test = scaler.transform(X[test_idx])
+
+            y_train = y[train_idx]
+            y_test = y[test_idx]
+
+            model = Ridge(alpha=1.0)
+            model.fit(X_train, y_train)
+            y_pred = model.predict(X_test)
+
+            # Compute R2 with NaN safety
+            try:
+                r2_uniform = float(r2_score(
+                    y_test, y_pred, multioutput="uniform_average"))
+            except ValueError:
+                r2_uniform = np.nan
+            try:
+                r2_weighted = float(r2_score(
+                    y_test, y_pred, multioutput="variance_weighted"))
+            except ValueError:
+                r2_weighted = np.nan
+
+            if not np.isfinite(r2_uniform):
+                r2_uniform = np.nan
+            if not np.isfinite(r2_weighted):
+                r2_weighted = np.nan
+
+            rows.append({
+                "split_type": split_name,
+                "fold": fold_idx,
+                "r2_uniform": round(r2_uniform, 4) if np.isfinite(r2_uniform) else np.nan,
+                "r2_weighted": round(r2_weighted, 4) if np.isfinite(r2_weighted) else np.nan,
+                "train_size": len(train_idx),
+                "test_size": len(test_idx),
+            })
+
+    return pd.DataFrame(rows)
+
+
+# =====================================================================
+# Metadata
+# =====================================================================
+
+def save_split_metadata(path, *, block_rows, block_cols, cell_size_m,
+                         n_folds, seed, buffer_tiles,
+                         n_cells, n_groups, n_gcols, n_grows,
+                         n_tile_cols, n_tile_rows):
+    """Save split configuration as JSON for reproducibility."""
+    meta = {
+        "strategies": ["grouped_groupkfold", "contiguous_row_bands"],
+        "primary_fold_column": "fold_contiguous",
+        "block_rows": block_rows,
+        "block_cols": block_cols,
+        "cell_size_m": cell_size_m,
+        "block_size_m": f"{block_rows * cell_size_m}x{block_cols * cell_size_m}",
+        "n_folds": n_folds,
+        "seed": seed,
+        "buffer_tiles": buffer_tiles,
+        "buffer_metric": "chebyshev",
+        "n_cells": n_cells,
+        "n_groups": n_groups,
+        "grid_rows": n_grows,
+        "grid_cols": n_gcols,
+        "tile_rows": n_tile_rows,
+        "tile_cols": n_tile_cols,
+        "created_utc": datetime.now(timezone.utc).isoformat(),
+    }
+    with open(path, "w") as f:
+        json.dump(meta, f, indent=2)
+    print(f"  Saved: {path}")
