@@ -285,9 +285,10 @@ def main(feature_set="core"):
         max_dev = m["weight_deviation_pct"].max()
         connected = "YES" if (m["n_components"] == 1).all() else "NO"
         mean_compact = m["compactness"].mean()
+        worst_compact = m["compactness"].max()  # lower = more compact
         print(f"  {strat_name:20s}: components={list(m['n_components'])} "
               f"connected={connected}  max_dev={max_dev:.1f}%  "
-              f"compactness={mean_compact:.3f}")
+              f"compactness={mean_compact:.3f} (worst={worst_compact:.3f})")
 
     metrics_df = pd.concat(all_metrics, ignore_index=True)
     save_table(metrics_df, "fold_contiguity", tbl_dir)
