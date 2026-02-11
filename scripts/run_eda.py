@@ -66,11 +66,17 @@ def sanity_checks(merged, l20, l21, lch, grid):
         assert df["cell_id"].is_unique, f"{name} has duplicate cell_ids"
         assert (df["cell_id"].sort_values().values == np.arange(n)).all(), \
             f"{name} cell_ids not contiguous 0..{n-1}"
+    # Cross-table alignment: all must share identical cell_id order
+    ref_ids = merged["cell_id"].values
+    assert (ref_ids == l20["cell_id"].values).all(), "merged/l20 cell_id mismatch"
+    assert (ref_ids == l21["cell_id"].values).all(), "merged/l21 cell_id mismatch"
+    assert (ref_ids == lch["cell_id"].values).all(), "merged/lch cell_id mismatch"
+    assert (ref_ids == grid["cell_id"].values).all(), "merged/grid cell_id mismatch"
     assert len(merged.columns) == len(set(merged.columns)), "Duplicate columns in merged"
     for y, s in COMPOSITES:
         col = f"NDVI_mean_{y}_{s}"
         assert col in merged.columns, f"Missing expected column: {col}"
-    print(f"  All checks passed ({n} cells, {len(merged.columns)} features)")
+    print(f"  All checks passed ({n} cells, {len(merged.columns)} features, row-aligned)")
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -445,6 +451,10 @@ def fig5_redundancy_and_drift(merged, labels, manifest, fig_dir, tbl_dir, dpi, s
             ax.set_xlabel("Seasonal KS / YoY KS"); ax.legend(fontsize=8)
             ax.set_title("Seasonal/YoY Drift Ratio (>1 = seasonal dominates)", fontweight="bold")
             ax.invert_yaxis()
+            # Caveat: small YoY KS inflates ratio
+            ax.text(.98, .98, "NB: small YoY KS inflates ratio;\ncheck left panel for absolute values",
+                    transform=ax.transAxes, ha="right", va="top", fontsize=7,
+                    style="italic", color="gray")
             fig.tight_layout()
             save_fig(fig, "05d_drift_seasonal_vs_yoy", fig_dir, dpi)
 
@@ -662,13 +672,17 @@ def compute_morans_i_vectorized(values, src, dst, n_perms=99, seed=42):
     return I_obs, p_value
 
 
-def fig_morans_i(merged, l20, lch, grid, fig_dir, tbl_dir, dpi, seed):
+def fig_morans_i(merged, l20, lch, grid, fig_dir, tbl_dir, dpi, seed, n_perms=99):
     print("\n[Moran's I] Computing spatial autocorrelation (full grid, vectorized)...")
-    gdf = grid.sort_values("cell_id").reset_index(drop=True)
-    xs = gdf.geometry.centroid.x.values
-    ys = gdf.geometry.centroid.y.values
-    unique_xs = np.sort(np.unique(np.round(xs, 1)))
-    n_gcols = len(unique_xs)
+    gdf = grid.copy()  # already sorted by cell_id from load
+    # Derive n_gcols deterministically from grid bounds + cell size
+    bounds = gdf.total_bounds  # [minx, miny, maxx, maxy]
+    cell_size = CFG["grid"]["size_m"]
+    n_gcols = int(round((bounds[2] - bounds[0]) / cell_size))
+    n_grows = int(round((bounds[3] - bounds[1]) / cell_size))
+    expected_n = n_gcols * n_grows
+    actual_n = len(gdf)
+    print(f"  Grid: {n_grows} rows x {n_gcols} cols = {expected_n} expected, {actual_n} actual")
 
     cell_ids = gdf["cell_id"].values
     row_idx = cell_ids // n_gcols
@@ -681,20 +695,21 @@ def fig_morans_i(merged, l20, lch, grid, fig_dir, tbl_dir, dpi, seed):
 
     variables = {}
     if "built_up" in l20.columns:
-        variables["built_up_2020"] = l20.sort_values("cell_id")["built_up"].values
+        variables["built_up_2020"] = l20["built_up"].values
     ndvi_col = f"NDVI_mean_{SENTINEL_YEARS[0]}_spring"
     if ndvi_col in merged.columns:
-        variables["NDVI_spring_2020"] = merged.sort_values("cell_id")[ndvi_col].values
+        variables["NDVI_spring_2020"] = merged[ndvi_col].values
     if "delta_built_up" in lch.columns:
-        variables["delta_built_up"] = lch.sort_values("cell_id")["delta_built_up"].values
+        variables["delta_built_up"] = lch["delta_built_up"].values
 
     results = []
     n = len(cell_ids)
     for vname, vals in variables.items():
-        print(f"  {vname} (n={n}, 99 perms)...")
-        I, p = compute_morans_i_vectorized(vals, src, dst, n_perms=99, seed=seed)
+        print(f"  {vname} (n={n}, {n_perms} perms)...")
+        I, p = compute_morans_i_vectorized(vals, src, dst, n_perms=n_perms, seed=seed)
         results.append({"variable": vname, "morans_I": round(I, 4), "p_value": round(p, 4),
-                         "n_cells": n, "n_edges": len(src), "significant": p < 0.05})
+                         "n_cells": n, "n_edges": len(src), "n_perms": n_perms,
+                         "significant": p < 0.05})
         print(f"    I={I:.4f}, p={p:.4f} {'***' if p<0.01 else '**' if p<0.05 else 'ns'}")
 
     if results:
@@ -853,6 +868,7 @@ def main():
     parser.add_argument("--sample-n", type=int, default=10000, help="Sample size for correlations")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--dpi", type=int, default=150)
+    parser.add_argument("--n-perms", type=int, default=99, help="Moran's I permutation count")
     args = parser.parse_args()
 
     # Output directories
@@ -869,21 +885,27 @@ def main():
     print(f"Figures -> {fig_dir}")
     print(f"Tables  -> {tbl_dir}\n")
 
-    # Load
+    # Load + sort by cell_id (critical: ensures row alignment across all tables)
     print("Loading data...")
     merged = pd.read_parquet(os.path.join(V2_DIR, f"features_merged_{args.feature_set}.parquet"))
     l20 = pd.read_parquet(os.path.join(V2_DIR, "labels_2020.parquet"))
     l21 = pd.read_parquet(os.path.join(V2_DIR, "labels_2021.parquet"))
     lch = pd.read_parquet(os.path.join(V2_DIR, "labels_change.parquet"))
     grid = gpd.read_file(os.path.join(V2_DIR, "grid.gpkg"))
+    # Enforce consistent sort order across ALL tables
+    merged = merged.sort_values("cell_id").reset_index(drop=True)
+    l20 = l20.sort_values("cell_id").reset_index(drop=True)
+    l21 = l21.sort_values("cell_id").reset_index(drop=True)
+    lch = lch.sort_values("cell_id").reset_index(drop=True)
+    grid = grid.sort_values("cell_id").reset_index(drop=True)
     print(f"  Features: {merged.shape}, Labels: {l20.shape}, Grid: {len(grid)} cells")
 
-    # Sanity
+    # Sanity (includes cross-table alignment assertion)
     sanity_checks(merged, l20, l21, lch, grid)
 
     # Manifest
     manifest = build_manifest(merged.columns)
-    save_table(manifest, "column_inventory", tbl_dir)
+    save_table(manifest, "manifest", tbl_dir)
     manifest.to_parquet(os.path.join(tbl_dir, "manifest.parquet"), index=False)
 
     # Figures
@@ -894,7 +916,7 @@ def main():
     fig5_redundancy_and_drift(merged, l20, manifest, fig_dir, tbl_dir, args.dpi, args.sample_n, args.seed)
     fig6_quality_coupling(merged, lch, fig_dir, tbl_dir, args.dpi)
     fig7_reflectance_scale(merged, fig_dir, tbl_dir, args.dpi)
-    fig_morans_i(merged, l20, lch, grid, fig_dir, tbl_dir, args.dpi, args.seed)
+    fig_morans_i(merged, l20, lch, grid, fig_dir, tbl_dir, args.dpi, args.seed, args.n_perms)
     drift_path = os.path.join(tbl_dir, "drift_yoy.csv")
     fig8_real_data_issues(merged, lch, drift_path, fig_dir, args.dpi)
     fig9_engineering_checks(merged, fig_dir, args.dpi)
