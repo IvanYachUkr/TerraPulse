@@ -284,7 +284,7 @@ def main(feature_set="core"):
         total_comp = m["n_components"].sum()
         max_dev = m["weight_deviation_pct"].max()
         connected = "YES" if (m["n_components"] == 1).all() else "NO"
-        mean_compact = m["compactness_ratio"].mean()
+        mean_compact = m["compactness"].mean()
         print(f"  {strat_name:20s}: components={list(m['n_components'])} "
               f"connected={connected}  max_dev={max_dev:.1f}%  "
               f"compactness={mean_compact:.3f}")

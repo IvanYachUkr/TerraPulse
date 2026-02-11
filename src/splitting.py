@@ -181,8 +181,8 @@ def build_morton_folds(groups, n_folds, n_tile_cols, n_tile_rows):
     Build spatial CV folds using Morton (Z-order) space-filling curve.
 
     Tiles are sorted along a Z-curve that preserves spatial locality,
-    then split into K contiguous chunks. This produces mostly-contiguous
-    folds with perfect balance.
+    then split into K contiguous chunks along the curve. Folds have
+    near-equal tile counts but may fragment on non-power-of-2 grids.
 
     Parameters
     ----------
@@ -402,9 +402,12 @@ def build_region_growing_folds(groups, n_folds, n_tile_cols, n_tile_rows,
     best_score = float('inf')
     best_assigned = None
 
+    n_starts = max(1, int(n_starts))
+    n_extra = min(n_starts - 1, len(unique_tiles) - 1)
     start_tiles = [unique_tiles[0]]  # always try corner
-    start_tiles.extend(rng.choice(unique_tiles, size=n_starts - 1,
-                                   replace=False))
+    if n_extra > 0:
+        start_tiles.extend(rng.choice(unique_tiles[1:], size=n_extra,
+                                       replace=False))
 
     for start_tile in start_tiles:
         seeds = _farthest_point_seeds(unique_tiles, n_folds,
@@ -450,32 +453,31 @@ def compute_fold_metrics(fold_assignments, groups, n_tile_cols, n_tile_rows):
     -------
     pd.DataFrame with columns:
         fold, n_cells, n_tiles, n_components, weight_deviation_pct,
-        cut_edges, compactness_ratio
+        boundary_edges, compactness  (boundary_edges / sqrt(n_tiles))
     """
     unique_tiles = np.unique(groups)
     tile_adj = _build_tile_adjacency(unique_tiles, n_tile_cols, n_tile_rows)
 
-    # Map tile -> fold assignment (majority vote per tile)
+    # Map tile -> fold assignment (verified: each tile has one fold)
     tile_ids, counts = np.unique(groups, return_counts=True)
     tile_to_fold = {}
     for t in tile_ids:
         mask = groups == t
-        tile_to_fold[t] = int(fold_assignments[mask][0])
+        vals = np.unique(fold_assignments[mask])
+        assert vals.size == 1, f"Tile {t} spans multiple folds: {vals}"
+        tile_to_fold[t] = int(vals[0])
 
     n_folds = int(fold_assignments.max()) + 1
     total_cells = len(fold_assignments)
     target_weight = total_cells / n_folds
 
-    # Count total edges and cut edges per fold
-    # A cut edge: tile t in fold A, neighbor nbr in fold B (A != B)
-    fold_cut_edges = [0] * n_folds
-    fold_total_edges = [0] * n_folds
+    # Count boundary edges per fold (undirected: count t<nbr once)
+    fold_boundary = [0] * n_folds
     for t in unique_tiles:
         t_fold = tile_to_fold[t]
         for nbr in tile_adj[t]:
-            fold_total_edges[t_fold] += 1
-            if tile_to_fold.get(nbr, t_fold) != t_fold:
-                fold_cut_edges[t_fold] += 1
+            if nbr > t and tile_to_fold.get(nbr, t_fold) != t_fold:
+                fold_boundary[t_fold] += 1
 
     rows = []
     for fold_idx in range(n_folds):
@@ -503,11 +505,11 @@ def compute_fold_metrics(fold_assignments, groups, n_tile_cols, n_tile_rows):
 
         weight_dev = abs(fold_cells - target_weight) / target_weight * 100
 
-        # Compactness: fraction of edges that are NOT cut (internal)
-        # 1.0 = perfectly compact (no boundary), lower = more fragmented
-        total_e = fold_total_edges[fold_idx]
-        cut_e = fold_cut_edges[fold_idx]
-        compactness = 1.0 - (cut_e / total_e) if total_e > 0 else 0.0
+        # Compactness: boundary_edges / sqrt(n_tiles)
+        # Lower = more compact. Normalized by sqrt(area) for fair
+        # cross-fold comparison (isoperimetric scaling).
+        bnd = fold_boundary[fold_idx]
+        compactness = bnd / np.sqrt(n_tiles_in_fold) if n_tiles_in_fold > 0 else 0.0
 
         rows.append({
             "fold": fold_idx,
@@ -515,8 +517,8 @@ def compute_fold_metrics(fold_assignments, groups, n_tile_cols, n_tile_rows):
             "n_tiles": n_tiles_in_fold,
             "n_components": n_components,
             "weight_deviation_pct": round(weight_dev, 1),
-            "cut_edges": cut_e,
-            "compactness_ratio": round(compactness, 3),
+            "boundary_edges": bnd,
+            "compactness": round(compactness, 3),
         })
 
     return pd.DataFrame(rows)
@@ -778,6 +780,9 @@ def save_split_metadata(path, *, block_rows, block_cols, cell_size_m,
         "seed": seed,
         "buffer_tiles": buffer_tiles,
         "buffer_metric": "chebyshev",
+        "region_growing_n_starts": 10,
+        "region_growing_score_contiguity_weight": 10.0,
+        "compactness_metric": "boundary_edges / sqrt(n_tiles)",
         "n_cells": n_cells,
         "n_groups": n_groups,
         "grid_rows": n_grows,
