@@ -240,7 +240,7 @@ def fig3_spatial_maps(grid, l20, l21, lch, fig_dir, dpi):
     gdf["dominant_2020"] = gdf[CLASS_NAMES].idxmax(axis=1)
     l21r = l21[["cell_id"]+CLASS_NAMES].rename(columns={c: f"{c}_21" for c in CLASS_NAMES})
     gdf = gdf.merge(l21r, on="cell_id")
-    gdf["dominant_2021"] = gdf[[f"{c}_21" for c in CLASS_NAMES]].idxmax(axis=1).str.replace("_21","")
+    gdf["dominant_2021"] = gdf[[f"{c}_21" for c in CLASS_NAMES]].idxmax(axis=1).str.replace(r"_21$", "", regex=True)
     gdf = gdf.merge(lch[["cell_id","delta_tree_cover","delta_built_up","delta_grassland"]], on="cell_id")
 
     c2i = {c:i for i,c in enumerate(CLASS_NAMES)}
