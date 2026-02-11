@@ -584,10 +584,12 @@ def fig6_quality_coupling(merged, lch, fig_dir, tbl_dir, dpi):
 
 def fig7_reflectance_scale(merged, fig_dir, tbl_dir, dpi):
     print("\n[Fig 7] Reflectance scale verification...")
+    comps_used = []
     nir_data, labels_list, years_used = [], [], []
     for y, s in COMPOSITES:
         col = f"B08_mean_{y}_{s}"
         if col in merged.columns:
+            comps_used.append((y, s))
             nir_data.append(merged[col].values); labels_list.append(f"{s[:2].upper()}\n{y}")
             years_used.append(y)
     if not nir_data: print("  Skipping: no B08 data"); return
@@ -598,7 +600,6 @@ def fig7_reflectance_scale(merged, fig_dir, tbl_dir, dpi):
     for i, patch in enumerate(bp["boxes"]):
         patch.set_facecolor("#3498DB" if years_used[i]==SENTINEL_YEARS[0] else "#E74C3C"); patch.set_alpha(.6)
     ax.set_ylabel("B08 (NIR) Mean Reflectance"); ax.set_title("NIR After /scale Normalization", fontweight="bold")
-    # Quantiles instead of "expected range"
     all_nir = np.concatenate(nir_data)
     q = np.quantile(all_nir, [.01, .25, .50, .75, .99])
     ax.text(.5,.95, f"Q01={q[0]:.3f} Q50={q[2]:.3f} Q99={q[4]:.3f}",
@@ -606,7 +607,7 @@ def fig7_reflectance_scale(merged, fig_dir, tbl_dir, dpi):
 
     ax = axes[1]
     scales, scale_info = [], []
-    for y, s in COMPOSITES:
+    for y, s in comps_used:  # same composites as NIR panel
         col = f"reflectance_scale_{y}_{s}"
         if col in merged.columns:
             vals = merged[col]
@@ -686,18 +687,24 @@ def fig_morans_i(merged, l20, lch, grid, fig_dir, tbl_dir, dpi, seed, n_perms=99
     expected_n = n_gcols * n_grows
     actual_n = len(gdf)
     assert expected_n == actual_n, \
-        f"Grid geometry mismatch: {n_grows}x{n_gcols}={expected_n} != {actual_n} cells"
+        f"Grid geometry mismatch: {n_grows}x{n_gcols}={expected_n} != {actual_n} cells. " \
+        f"This assert assumes a full rectangular grid (no holes from clipping)."
     print(f"  Grid: {n_grows} rows x {n_gcols} cols = {actual_n} cells (verified)")
 
     cell_ids = gdf["cell_id"].values
     row_idx = cell_ids // n_gcols
     col_idx = cell_ids % n_gcols
     # Validate row-major assumption: centroid x should increase with col_idx
+    # Check 3 rows (first, middle, last) with floating-point epsilon
     xs = gdf.geometry.centroid.x.values
-    sample_row0 = np.where(row_idx == 0)[0]
-    if len(sample_row0) > 1:
-        assert np.all(np.diff(xs[sample_row0[np.argsort(col_idx[sample_row0])]]) > 0), \
-            "cell_id does not encode row-major order (centroid x not monotonic with col_idx)"
+    eps = 1e-6
+    for r0 in [0, int(row_idx.max() // 2), int(row_idx.max())]:
+        inds = np.where(row_idx == r0)[0]
+        if len(inds) > 2:
+            order = np.argsort(col_idx[inds])
+            dx = np.diff(xs[inds[order]])
+            assert np.all(dx > -eps), \
+                f"Row {r0}: centroid x not monotonic with col_idx (row-major assumption violated)"
 
     # Build edges once on full grid
     print(f"  Building rook adjacency for {len(cell_ids)} cells...")
