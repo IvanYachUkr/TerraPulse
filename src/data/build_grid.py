@@ -1,93 +1,107 @@
 """
-Phase 2D: Spatial Alignment & Grid Creation
+Phase 3: Build Grid & Labels from Canonical Anchor
 
-Creates the tabular dataset from raw rasters:
-  1. Reproject WorldCover labels from EPSG:4326 -> EPSG:32632 (UTM 32N)
-  2. Create 100m × 100m grid over Nuremberg (aligned with Sentinel-2)
-  3. Aggregate WorldCover labels per grid cell -> class proportions
-  4. Save grid as GeoParquet + labels as Parquet
+Derives everything from the anchor reference created in Phase 1:
+  1. Create 100m grid from anchor pixel blocks (row-major cell_id)
+  2. Reproject WorldCover Map to anchor grid (nearest)
+  3. Compute class proportions + coverage per cell
+  4. Compute change labels (delta = 2021 - 2020)
 
 Usage:
     python src/data/build_grid.py
 
 Outputs:
-    data/processed/grid.gpkg          — 100m grid geometries
-    data/processed/labels_2020.parquet — class proportions per cell, 2020
-    data/processed/labels_2021.parquet — class proportions per cell, 2021
+    data/processed/v2/grid.gpkg
+    data/processed/v2/labels_2020.parquet
+    data/processed/v2/labels_2021.parquet
+    data/processed/v2/labels_change.parquet
 """
 
 import os
+import sys
 import warnings
 
-import geopandas as gpd
 import numpy as np
 import pandas as pd
 import rasterio
-from rasterio.crs import CRS
 from rasterio.warp import Resampling, reproject
 from shapely.geometry import box
 
-warnings.filterwarnings("ignore")
+warnings.filterwarnings("ignore", message=".*Geometry is in a geographic CRS.*")
 
-# ── Configuration ──────────────────────────────────────────────────────────────
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-RAW_DIR = os.path.join(PROJECT_ROOT, "data", "raw")
+# -- Load config ---------------------------------------------------------------
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from src.config import CFG, GRID_REF_PATH, PROJECT_ROOT  # noqa: E402
+
 LABELS_DIR = os.path.join(PROJECT_ROOT, "data", "labels")
-PROCESSED_DIR = os.path.join(PROJECT_ROOT, "data", "processed")
+V2_DIR = os.path.join(PROJECT_ROOT, "data", "processed", "v2")
 
-GRID_SIZE_M = 100  # meters
-TARGET_CRS = CRS.from_epsg(32632)  # UTM 32N
+# Config-driven constants
+GRID_SIZE_M = int(CFG["grid"]["size_m"])
+PIXEL_SIZE = float(CFG["grid"]["pixel_size"])
+BLOCK = int(GRID_SIZE_M / PIXEL_SIZE)  # 10 pixels per 100m cell
 
-# Class mapping: WorldCover code -> our 6 classes
-CLASS_MAP = {10: 0, 30: 1, 90: 1, 40: 2, 50: 3, 60: 4, 80: 5}  # wetland→grassland
-CLASS_NAMES = ["tree_cover", "grassland", "cropland", "built_up", "bare_sparse", "water"]
-N_CLASSES = 6
-
-# Use Sentinel-2 bounds as our AOI (already clipped to Nuremberg bbox)
-SENTINEL_REF = os.path.join(RAW_DIR, "sentinel2_nuremberg_2020.tif")
-
-
-def get_aligned_bounds(sentinel_path: str, grid_size: int) -> tuple:
-    """Get Sentinel-2 bounds, snapped to grid_size multiples."""
-    with rasterio.open(sentinel_path) as ds:
-        b = ds.bounds
-    # Snap bounds outward to grid_size multiples
-    left = np.floor(b.left / grid_size) * grid_size
-    bottom = np.floor(b.bottom / grid_size) * grid_size
-    right = np.ceil(b.right / grid_size) * grid_size
-    top = np.ceil(b.top / grid_size) * grid_size
-    return left, bottom, right, top
+CLASS_MAP = {int(k): int(v) for k, v in CFG["worldcover"]["class_map"].items()}
+CLASS_NAMES = CFG["worldcover"]["class_names"]
+N_CLASSES = len(CLASS_NAMES)
+WC_YEARS = CFG["worldcover"]["years"]
+WC_TILE = CFG["worldcover"]["tile"]
 
 
-def create_grid(bounds: tuple, grid_size: int) -> gpd.GeoDataFrame:
-    """Create a regular grid of square cells."""
-    left, bottom, right, top = bounds
-    xs = np.arange(left, right, grid_size)
-    ys = np.arange(bottom, top, grid_size)
+def read_anchor():
+    """Read canonical anchor geometry."""
+    assert os.path.exists(GRID_REF_PATH), (
+        f"Missing anchor: {GRID_REF_PATH}. Run scripts/create_anchor.py first."
+    )
+    with rasterio.open(GRID_REF_PATH) as src:
+        return {
+            "crs": src.crs,
+            "transform": src.transform,
+            "width": src.width,
+            "height": src.height,
+        }
+
+
+def create_grid_from_anchor(anchor):
+    """Create grid cells from anchor pixel blocks.
+
+    Each cell is a BLOCK x BLOCK pixel window (100m x 100m).
+    cell_id is row-major: row 0 left-to-right, then row 1, etc.
+    """
+    transform = anchor["transform"]
+    n_cols_cells = anchor["width"] // BLOCK
+    n_rows_cells = anchor["height"] // BLOCK
 
     cells = []
     cell_ids = []
     cell_id = 0
-    for y in ys:
-        for x in xs:
-            cells.append(box(x, y, x + grid_size, y + grid_size))
+
+    for row_idx in range(n_rows_cells):
+        for col_idx in range(n_cols_cells):
+            # Top-left pixel of this cell
+            px_col = col_idx * BLOCK
+            px_row = row_idx * BLOCK
+            # Transform pixel coords to map coords
+            x_ul, y_ul = transform * (px_col, px_row)
+            x_lr, y_lr = transform * (px_col + BLOCK, px_row + BLOCK)
+            cells.append(box(x_ul, y_lr, x_lr, y_ul))
             cell_ids.append(cell_id)
             cell_id += 1
 
-    grid = gpd.GeoDataFrame({"cell_id": cell_ids}, geometry=cells, crs=TARGET_CRS)
-    print(f"  Grid: {len(xs)} cols × {len(ys)} rows = {len(grid)} cells")
-    print(f"  Bounds: [{left:.0f}, {bottom:.0f}, {right:.0f}, {top:.0f}] (EPSG:32632)")
-    return grid
+    import geopandas as gpd
+    grid = gpd.GeoDataFrame(
+        {"cell_id": cell_ids},
+        geometry=cells,
+        crs=anchor["crs"],
+    )
+    print(f"  Grid: {n_cols_cells} cols x {n_rows_cells} rows = {len(grid)} cells")
+    print(f"  Cell size: {GRID_SIZE_M}m ({BLOCK}x{BLOCK} pixels)")
+    return grid, n_cols_cells, n_rows_cells
 
 
-def reproject_worldcover(wc_path: str, bounds: tuple, pixel_size: float = 10.0) -> np.ndarray:
-    """Reproject WorldCover from EPSG:4326 to EPSG:32632, clipped to bounds."""
-    left, bottom, right, top = bounds
-    dst_width = int((right - left) / pixel_size)
-    dst_height = int((top - bottom) / pixel_size)
-
-    dst_transform = rasterio.transform.from_bounds(left, bottom, right, top, dst_width, dst_height)
-    dst_array = np.zeros((dst_height, dst_width), dtype=np.uint8)
+def reproject_worldcover_to_anchor(wc_path, anchor):
+    """Reproject WorldCover from EPSG:4326 to anchor grid (nearest)."""
+    dst_array = np.zeros((anchor["height"], anchor["width"]), dtype=np.uint8)
 
     with rasterio.open(wc_path) as src:
         reproject(
@@ -95,90 +109,100 @@ def reproject_worldcover(wc_path: str, bounds: tuple, pixel_size: float = 10.0) 
             destination=dst_array,
             src_transform=src.transform,
             src_crs=src.crs,
-            dst_transform=dst_transform,
-            dst_crs=TARGET_CRS,
-            resampling=Resampling.nearest,  # categorical data -> nearest neighbor
+            dst_transform=anchor["transform"],
+            dst_crs=anchor["crs"],
+            resampling=Resampling.nearest,
         )
 
-    print(f"  Reprojected to {dst_width}×{dst_height} pixels at {pixel_size}m")
-    return dst_array, dst_transform
+    print(f"  Reprojected to anchor grid: {anchor['width']}x{anchor['height']} px")
+    return dst_array
 
 
-def aggregate_labels(
-    wc_array: np.ndarray, wc_transform: rasterio.Affine, grid: gpd.GeoDataFrame
-) -> pd.DataFrame:
-    """Compute class proportions per grid cell from WorldCover raster."""
-    pixel_size = abs(wc_transform.a)
-    grid_px = int(GRID_SIZE_M / pixel_size)  # pixels per grid cell side
+def aggregate_labels(wc_array, n_cols_cells, n_rows_cells):
+    """Compute class proportions + coverage per cell using pixel windows.
 
-    # Origin of the raster (top-left corner in UTM)
-    origin_x = wc_transform.c
-    origin_y = wc_transform.f  # top of raster
-
+    Returns DataFrame with columns:
+      cell_id, mapped_pixels, unmapped_pixels, coverage, <class_names...>
+    """
+    total_px = BLOCK * BLOCK
     records = []
-    for _, row in grid.iterrows():
-        geom = row.geometry
-        # Convert cell bounds to pixel indices
-        col_start = int((geom.bounds[0] - origin_x) / pixel_size)
-        row_start = int((origin_y - geom.bounds[3]) / pixel_size)  # y is flipped
+    cell_id = 0
 
-        # Extract patch
-        patch = wc_array[row_start : row_start + grid_px, col_start : col_start + grid_px]
+    for row_idx in range(n_rows_cells):
+        for col_idx in range(n_cols_cells):
+            r0 = row_idx * BLOCK
+            c0 = col_idx * BLOCK
+            patch = wc_array[r0 : r0 + BLOCK, c0 : c0 + BLOCK]
 
-        # Remap to our 6 classes and compute proportions
-        proportions = np.zeros(N_CLASSES, dtype=np.float32)
-        total_valid = 0
-        for wc_code, our_class in CLASS_MAP.items():
-            count = np.sum(patch == wc_code)
-            proportions[our_class] += count
-            total_valid += count
+            # Count mapped pixels (those that appear in CLASS_MAP)
+            proportions = np.zeros(N_CLASSES, dtype=np.float32)
+            mapped = 0
+            for wc_code, our_class in CLASS_MAP.items():
+                count = int(np.sum(patch == wc_code))
+                proportions[our_class] += count
+                mapped += count
 
-        if total_valid > 0:
-            proportions /= total_valid
+            unmapped = total_px - mapped
+            coverage = mapped / total_px if total_px > 0 else 0.0
 
-        record = {"cell_id": row.cell_id, "valid_pixels": int(total_valid)}
-        for i, name in enumerate(CLASS_NAMES):
-            record[name] = proportions[i]
-        records.append(record)
+            # Proportions over total pixels (not just mapped)
+            if total_px > 0:
+                proportions /= total_px
 
-    df = pd.DataFrame(records)
-    return df
+            record = {
+                "cell_id": cell_id,
+                "mapped_pixels": mapped,
+                "unmapped_pixels": unmapped,
+                "coverage": float(coverage),
+            }
+            for i, name in enumerate(CLASS_NAMES):
+                record[name] = float(proportions[i])
+            records.append(record)
+            cell_id += 1
+
+    return pd.DataFrame(records)
 
 
 def main():
-    os.makedirs(PROCESSED_DIR, exist_ok=True)
+    os.makedirs(V2_DIR, exist_ok=True)
 
-    # Step 1: Get aligned bounds from Sentinel-2
-    print("Step 1: Computing grid-aligned bounds from Sentinel-2...")
-    bounds = get_aligned_bounds(SENTINEL_REF, GRID_SIZE_M)
-    print(f"  Aligned bounds: {bounds}")
+    # -- Step 1: Read anchor geometry --
+    print("Step 1: Reading anchor geometry...")
+    anchor = read_anchor()
+    print(f"  Anchor: {anchor['width']}x{anchor['height']} px, CRS={anchor['crs']}")
+    print(f"  Transform: {anchor['transform']}")
 
-    # Step 2: Create grid
-    print("\nStep 2: Creating 100m × 100m grid...")
-    grid = create_grid(bounds, GRID_SIZE_M)
+    # -- Step 2: Create grid from anchor blocks --
+    print("\nStep 2: Creating grid from anchor pixel blocks...")
+    grid, n_cols_cells, n_rows_cells = create_grid_from_anchor(anchor)
 
-    # Save grid
-    grid_path = os.path.join(PROCESSED_DIR, "grid.gpkg")
+    grid_path = os.path.join(V2_DIR, "grid.gpkg")
     grid.to_file(grid_path, driver="GPKG")
-    print(f"  Saved grid -> {grid_path}")
+    print(f"  Saved -> {grid_path}")
 
-    # Step 3: Reproject and aggregate labels for each year
-    for year, filename in [
-        (2020, "ESA_WorldCover_2020_N48E009.tif"),
-        (2021, "ESA_WorldCover_2021_N48E009.tif"),
-    ]:
+    # -- Step 3: Labels for each year --
+    for year in WC_YEARS:
+        # Find the Map file (try both naming conventions)
+        wc_filename_map = f"ESA_WorldCover_{year}_{WC_TILE}_Map.tif"
+        wc_filename_plain = f"ESA_WorldCover_{year}_{WC_TILE}.tif"
+        wc_path = os.path.join(LABELS_DIR, wc_filename_map)
+        if not os.path.exists(wc_path):
+            wc_path = os.path.join(LABELS_DIR, wc_filename_plain)
+        if not os.path.exists(wc_path):
+            print(f"\n  [{year}] WARNING: WorldCover Map not found, skipping")
+            continue
+
         print(f"\nStep 3: Processing WorldCover {year}...")
-        wc_path = os.path.join(LABELS_DIR, filename)
+        print(f"  Source: {os.path.basename(wc_path)}")
 
-        # Reproject
-        print(f"  Reprojecting {filename} to EPSG:32632...")
-        wc_array, wc_transform = reproject_worldcover(wc_path, bounds)
+        # Reproject to anchor grid
+        wc_array = reproject_worldcover_to_anchor(wc_path, anchor)
 
-        # Aggregate
+        # Aggregate labels per cell
         print(f"  Aggregating labels per grid cell...")
-        labels_df = aggregate_labels(wc_array, wc_transform, grid)
+        labels_df = aggregate_labels(wc_array, n_cols_cells, n_rows_cells)
 
-        # Summary statistics
+        # Summary
         print(f"\n  Label summary ({year}):")
         for name in CLASS_NAMES:
             col = labels_df[name]
@@ -186,42 +210,55 @@ def main():
                 f"    {name:<15} mean={col.mean():.3f}  std={col.std():.3f}  "
                 f"min={col.min():.3f}  max={col.max():.3f}"
             )
-        print(f"    Valid cells: {(labels_df['valid_pixels'] > 0).sum()} / {len(labels_df)}")
-        print(f"    Avg valid pixels/cell: {labels_df['valid_pixels'].mean():.1f}")
+        n_valid = (labels_df["coverage"] > 0).sum()
+        print(f"    Cells with data: {n_valid} / {len(labels_df)}")
+        print(f"    Mean coverage:   {labels_df['coverage'].mean():.3f}")
 
-        # Save
-        labels_path = os.path.join(PROCESSED_DIR, f"labels_{year}.parquet")
+        labels_path = os.path.join(V2_DIR, f"labels_{year}.parquet")
         labels_df.to_parquet(labels_path, index=False)
-        print(f"  Saved labels -> {labels_path}")
+        print(f"  Saved -> {labels_path}")
 
-    # Step 4: Compute change labels
-    print("\nStep 4: Computing change labels (Δ = 2021 − 2020)...")
-    labels_2020 = pd.read_parquet(os.path.join(PROCESSED_DIR, "labels_2020.parquet"))
-    labels_2021 = pd.read_parquet(os.path.join(PROCESSED_DIR, "labels_2021.parquet"))
+    # -- Step 4: Change labels --
+    print("\nStep 4: Computing change labels (delta = 2021 - 2020)...")
+    l2020_path = os.path.join(V2_DIR, "labels_2020.parquet")
+    l2021_path = os.path.join(V2_DIR, "labels_2021.parquet")
 
-    change_df = pd.DataFrame({"cell_id": labels_2020["cell_id"]})
-    for name in CLASS_NAMES:
-        change_df[f"delta_{name}"] = labels_2021[name] - labels_2020[name]
+    if os.path.exists(l2020_path) and os.path.exists(l2021_path):
+        labels_2020 = pd.read_parquet(l2020_path)
+        labels_2021 = pd.read_parquet(l2021_path)
 
-    change_path = os.path.join(PROCESSED_DIR, "labels_change.parquet")
-    change_df.to_parquet(change_path, index=False)
+        assert len(labels_2020) == len(labels_2021), "Label row count mismatch!"
+        assert (labels_2020["cell_id"] == labels_2021["cell_id"]).all(), "cell_id mismatch!"
 
-    print(f"  Change summary:")
-    for name in CLASS_NAMES:
-        col = change_df[f"delta_{name}"]
-        print(
-            f"    Δ {name:<15} mean={col.mean():+.4f}  std={col.std():.4f}  "
-            f"[{col.min():+.3f}, {col.max():+.3f}]"
-        )
-    print(f"  Saved change labels -> {change_path}")
+        change_df = pd.DataFrame({"cell_id": labels_2020["cell_id"]})
+        for name in CLASS_NAMES:
+            change_df[f"delta_{name}"] = labels_2021[name] - labels_2020[name]
 
-    # Final summary
+        print("  Change summary:")
+        for name in CLASS_NAMES:
+            col = change_df[f"delta_{name}"]
+            print(
+                f"    delta_{name:<15} mean={col.mean():+.4f}  std={col.std():.4f}  "
+                f"[{col.min():+.3f}, {col.max():+.3f}]"
+            )
+
+        change_path = os.path.join(V2_DIR, "labels_change.parquet")
+        change_df.to_parquet(change_path, index=False)
+        print(f"  Saved -> {change_path}")
+    else:
+        print("  WARNING: Missing labels for one or both years, skipping change computation")
+
+    # -- Final summary --
     print(f"\n{'='*60}")
-    print("DONE! Processed files in data/processed/:")
-    for f in sorted(os.listdir(PROCESSED_DIR)):
-        fp = os.path.join(PROCESSED_DIR, f)
+    print("DONE! Files in data/processed/v2/:")
+    for f in sorted(os.listdir(V2_DIR)):
+        fp = os.path.join(V2_DIR, f)
         if os.path.isfile(fp):
-            print(f"  {f}: {os.path.getsize(fp) / 1024:.1f} KB")
+            size_kb = os.path.getsize(fp) / 1024
+            if size_kb > 1024:
+                print(f"  {f}: {size_kb/1024:.1f} MB")
+            else:
+                print(f"  {f}: {size_kb:.1f} KB")
 
 
 if __name__ == "__main__":
