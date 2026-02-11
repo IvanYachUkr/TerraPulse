@@ -2,8 +2,9 @@
 Phase 7: Spatial train/test split utilities.
 
 Provides tile-based splitting with multiple fold assignment strategies
-(scattered GroupKFold and contiguous row-bands), optional Chebyshev
-buffer exclusion, and a random baseline for leakage comparison.
+(scattered GroupKFold, contiguous row-bands, Morton Z-curve,
+multi-start region growing), optional Chebyshev buffer exclusion,
+contiguity/balance/compactness metrics, and leakage comparison.
 
 Usage (from scripts/run_split.py):
     from src.splitting import (
@@ -392,9 +393,8 @@ def build_region_growing_folds(groups, n_folds, n_tile_cols, n_tile_rows,
     unique_tiles = np.unique(groups)
     n_tiles = len(unique_tiles)
 
-    tile_weight = {}
-    for t in unique_tiles:
-        tile_weight[t] = int(np.sum(groups == t))
+    tile_ids, counts = np.unique(groups, return_counts=True)
+    tile_weight = dict(zip(tile_ids.tolist(), counts.tolist()))
 
     tile_adj = _build_tile_adjacency(unique_tiles, n_tile_cols, n_tile_rows)
 
@@ -433,10 +433,12 @@ def build_region_growing_folds(groups, n_folds, n_tile_cols, n_tile_rows,
 
 def compute_fold_metrics(fold_assignments, groups, n_tile_cols, n_tile_rows):
     """
-    Compute contiguity and balance metrics for each fold.
+    Compute contiguity, balance and compactness metrics for each fold.
 
     For each fold, performs BFS on the tile adjacency graph to count
-    connected components, and reports weight balance statistics.
+    connected components, reports weight balance, and counts cut edges
+    (adjacent tile pairs belonging to different folds) as a compactness
+    proxy.
 
     Parameters
     ----------
@@ -447,14 +449,33 @@ def compute_fold_metrics(fold_assignments, groups, n_tile_cols, n_tile_rows):
     Returns
     -------
     pd.DataFrame with columns:
-        fold, n_cells, n_tiles, n_components, weight_deviation_pct
+        fold, n_cells, n_tiles, n_components, weight_deviation_pct,
+        cut_edges, compactness_ratio
     """
     unique_tiles = np.unique(groups)
     tile_adj = _build_tile_adjacency(unique_tiles, n_tile_cols, n_tile_rows)
 
+    # Map tile -> fold assignment (majority vote per tile)
+    tile_ids, counts = np.unique(groups, return_counts=True)
+    tile_to_fold = {}
+    for t in tile_ids:
+        mask = groups == t
+        tile_to_fold[t] = int(fold_assignments[mask][0])
+
     n_folds = int(fold_assignments.max()) + 1
     total_cells = len(fold_assignments)
     target_weight = total_cells / n_folds
+
+    # Count total edges and cut edges per fold
+    # A cut edge: tile t in fold A, neighbor nbr in fold B (A != B)
+    fold_cut_edges = [0] * n_folds
+    fold_total_edges = [0] * n_folds
+    for t in unique_tiles:
+        t_fold = tile_to_fold[t]
+        for nbr in tile_adj[t]:
+            fold_total_edges[t_fold] += 1
+            if tile_to_fold.get(nbr, t_fold) != t_fold:
+                fold_cut_edges[t_fold] += 1
 
     rows = []
     for fold_idx in range(n_folds):
@@ -482,12 +503,20 @@ def compute_fold_metrics(fold_assignments, groups, n_tile_cols, n_tile_rows):
 
         weight_dev = abs(fold_cells - target_weight) / target_weight * 100
 
+        # Compactness: fraction of edges that are NOT cut (internal)
+        # 1.0 = perfectly compact (no boundary), lower = more fragmented
+        total_e = fold_total_edges[fold_idx]
+        cut_e = fold_cut_edges[fold_idx]
+        compactness = 1.0 - (cut_e / total_e) if total_e > 0 else 0.0
+
         rows.append({
             "fold": fold_idx,
             "n_cells": fold_cells,
             "n_tiles": n_tiles_in_fold,
             "n_components": n_components,
             "weight_deviation_pct": round(weight_dev, 1),
+            "cut_edges": cut_e,
+            "compactness_ratio": round(compactness, 3),
         })
 
     return pd.DataFrame(rows)
@@ -673,6 +702,16 @@ def leakage_comparison(X, y, fold_configs):
 
     for split_name, folds in fold_configs:
         for fold_idx, (train_idx, test_idx) in enumerate(folds):
+            # Guard against degenerate folds
+            if len(train_idx) < 2 or len(test_idx) < 2:
+                rows.append({
+                    "split_type": split_name, "fold": fold_idx,
+                    "r2_uniform": np.nan, "r2_weighted": np.nan,
+                    "train_size": len(train_idx),
+                    "test_size": len(test_idx),
+                })
+                continue
+
             # Scale inside the CV loop to prevent leakage
             scaler = StandardScaler()
             X_train = scaler.fit_transform(X[train_idx])

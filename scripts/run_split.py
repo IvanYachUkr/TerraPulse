@@ -6,6 +6,7 @@ Outputs:
   data/processed/v2/split_spatial_meta.json         -- reproducibility metadata
   reports/phase7/tables/leakage_comparison.csv
   reports/phase7/tables/buffer_sweep.csv
+  reports/phase7/tables/fold_contiguity.csv
   reports/phase7/figures/fold_map_grouped.png
   reports/phase7/figures/fold_map_contiguous.png
   reports/phase7/figures/fold_map_morton.png
@@ -283,8 +284,10 @@ def main(feature_set="core"):
         total_comp = m["n_components"].sum()
         max_dev = m["weight_deviation_pct"].max()
         connected = "YES" if (m["n_components"] == 1).all() else "NO"
+        mean_compact = m["compactness_ratio"].mean()
         print(f"  {strat_name:20s}: components={list(m['n_components'])} "
-              f"connected={connected}  max_dev={max_dev:.1f}%")
+              f"connected={connected}  max_dev={max_dev:.1f}%  "
+              f"compactness={mean_compact:.3f}")
 
     metrics_df = pd.concat(all_metrics, ignore_index=True)
     save_table(metrics_df, "fold_contiguity", tbl_dir)
