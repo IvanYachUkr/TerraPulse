@@ -202,12 +202,36 @@
 ## Phase 7 — Train/Test Split Design (avoid spatial leakage) ⚠️
 
 - [x] Implement a spatially-aware split ⚠️
-  - Tile-based blocked split: 10×10 cells (1km²), 323 tile groups, 5-fold GroupKFold
+  - Tile-based blocked split: 10×10 cells (1 km²), 323 tile groups, 5-fold
   - Split indices saved to `data/processed/v2/split_spatial.parquet`
-- [x] Baseline sanity: random split vs spatial split (show leakage effect)
-  - Ridge regression: spatial R²=0.742 vs random R²=0.767 (gap=+0.025)
-
----
+  - Metadata: `data/processed/v2/split_spatial_meta.json` (full repro params)
+- [x] 6-way leakage comparison (Ridge regression) ⚠️
+  - Random: R²=0.767 (baseline)
+  - Grouped (scattered tiles): R²=0.742 (gap +0.025)
+  - Contiguous (row bands): R²=0.691 (gap +0.076)
+  - Morton Z-curve: R²=0.527 (gap +0.240)
+  - Region growing: R²=0.429 (gap +0.338)
+  - Region growing + buffer: R²=0.386 (gap +0.381)
+- [x] Morton Z-curve fold builder (bit-interleaved, explicit uint64)
+- [x] Multi-start region growing fold builder (10 restarts, balance+contiguity scoring)
+- [x] Chebyshev buffer exclusion zone (configurable buffer_tiles)
+- [x] Buffer sweep figure (R² vs separation distance)
+- [x] Contiguity/balance/compactness metrics (`compute_fold_metrics`, BFS on tile graph)
+  - Contiguous: connected=YES, max_dev=34.8%, compactness=1.878
+  - Morton: connected=NO (fragments on 17×19), max_dev=27.9%, compactness=1.765
+  - Region growing: connected=YES, max_dev=2.1%, compactness=1.871
+- [x] Exported tables: `leakage_comparison.csv`, `buffer_sweep.csv`, `fold_contiguity.csv`
+- [x] Fold maps: grouped, contiguous, Morton, region growing
+- [x] Unit tests: 14 invariant tests in `tests/test_splitting.py` (all pass in ~3s)
+  - Partition correctness, tile integrity, connectedness, balance, determinism,
+    buffer no-overlap, n_starts overflow, metrics schema
+- [x] Hardening fixes applied:
+  - Morton: explicit uint64 + bit extraction (no signed overflow risk)
+  - Region growing: multi-start + scoring, n_starts guard, tile integrity assert
+  - Leakage comparison: fold-size guard for degenerate folds
+  - Buffer_m: `max(tile_h, tile_w)` for non-square tile safety
+  - Compactness: isoperimetric scaling `boundary_edges / sqrt(n_tiles)`
+  - Metadata: region growing params recorded for reproducibility
 
 ## Phase 8 — Modeling ⚠️
 

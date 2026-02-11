@@ -10,9 +10,11 @@ dist/
 build/
 
 # === Data (too large for git) ===
-data/raw/
-data/labels/
-data/processed/
+data/
+reports/figures/
+reports/phase6/
+reports/phase7/
+research/
 *.tif
 *.tiff
 *.gpkg
