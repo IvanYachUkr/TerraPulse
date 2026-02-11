@@ -69,6 +69,8 @@ def create_grid_from_anchor(anchor):
     cell_id is row-major: row 0 left-to-right, then row 1, etc.
     """
     transform = anchor["transform"]
+    assert anchor["width"] % BLOCK == 0, f"Anchor width {anchor['width']} not divisible by BLOCK={BLOCK}"
+    assert anchor["height"] % BLOCK == 0, f"Anchor height {anchor['height']} not divisible by BLOCK={BLOCK}"
     n_cols_cells = anchor["width"] // BLOCK
     n_rows_cells = anchor["height"] // BLOCK
 
@@ -104,13 +106,16 @@ def reproject_worldcover_to_anchor(wc_path, anchor):
     dst_array = np.zeros((anchor["height"], anchor["width"]), dtype=np.uint8)
 
     with rasterio.open(wc_path) as src:
+        src_nodata = src.nodata  # WorldCover Map nodata is typically 0
         reproject(
             source=rasterio.band(src, 1),
             destination=dst_array,
             src_transform=src.transform,
             src_crs=src.crs,
+            src_nodata=src_nodata,
             dst_transform=anchor["transform"],
             dst_crs=anchor["crs"],
+            dst_nodata=0,
             resampling=Resampling.nearest,
         )
 
@@ -233,6 +238,7 @@ def main():
         change_df = pd.DataFrame({"cell_id": labels_2020["cell_id"]})
         for name in CLASS_NAMES:
             change_df[f"delta_{name}"] = labels_2021[name] - labels_2020[name]
+        change_df["delta_coverage"] = labels_2021["coverage"] - labels_2020["coverage"]
 
         print("  Change summary:")
         for name in CLASS_NAMES:
@@ -241,6 +247,8 @@ def main():
                 f"    delta_{name:<15} mean={col.mean():+.4f}  std={col.std():.4f}  "
                 f"[{col.min():+.3f}, {col.max():+.3f}]"
             )
+        dc = change_df["delta_coverage"]
+        print(f"    delta_coverage       mean={dc.mean():+.4f}  std={dc.std():.4f}  [{dc.min():+.3f}, {dc.max():+.3f}]")
 
         change_path = os.path.join(V2_DIR, "labels_change.parquet")
         change_df.to_parquet(change_path, index=False)
