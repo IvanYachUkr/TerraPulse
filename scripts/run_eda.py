@@ -80,6 +80,13 @@ def sanity_checks(merged, l20, l21, lch, grid):
     for y, s in COMPOSITES:
         col = f"NDVI_mean_{y}_{s}"
         assert col in merged.columns, f"Missing expected column: {col}"
+    # Ensure required columns exist BEFORE accessing them
+    missing_l20 = set(CLASS_NAMES) - set(l20.columns)
+    missing_l21 = set(CLASS_NAMES) - set(l21.columns)
+    assert not missing_l20, f"labels_2020 missing class cols: {sorted(missing_l20)}"
+    assert not missing_l21, f"labels_2021 missing class cols: {sorted(missing_l21)}"
+    missing_deltas = {f"delta_{c}" for c in CLASS_NAMES} - set(lch.columns)
+    assert not missing_deltas, f"labels_change missing delta cols: {sorted(missing_deltas)}"
     # Label invariants: proportions in [0,1], rows sum to ~1, deltas sum to ~0
     tol = 1e-2
     for name, lab in [("l20", l20), ("l21", l21)]:
@@ -89,18 +96,10 @@ def sanity_checks(merged, l20, l21, lch, grid):
         row_sums = np.nansum(vals, axis=1)
         assert np.all(np.abs(row_sums - 1) < tol), \
             f"{name} label proportions don't sum to 1 (max deviation: {np.max(np.abs(row_sums-1)):.4f})"
-    delta_cols_check = [f"delta_{c}" for c in CLASS_NAMES if f"delta_{c}" in lch.columns]
-    if delta_cols_check:
-        d = lch[delta_cols_check].to_numpy()
-        assert np.all(np.abs(np.nansum(d, axis=1)) < tol), \
-            "label deltas do not sum to ~0"
-    # Ensure required columns exist (prevents KeyError deep in plotting)
-    missing_l20 = set(CLASS_NAMES) - set(l20.columns)
-    missing_l21 = set(CLASS_NAMES) - set(l21.columns)
-    assert not missing_l20, f"labels_2020 missing class cols: {sorted(missing_l20)}"
-    assert not missing_l21, f"labels_2021 missing class cols: {sorted(missing_l21)}"
-    missing_deltas = {f"delta_{c}" for c in CLASS_NAMES} - set(lch.columns)
-    assert not missing_deltas, f"labels_change missing delta cols: {sorted(missing_deltas)}"
+    delta_cols_check = [f"delta_{c}" for c in CLASS_NAMES]
+    d = lch[delta_cols_check].to_numpy()
+    assert np.all(np.abs(np.nansum(d, axis=1)) < tol), \
+        "label deltas do not sum to ~0"
     print(f"  All checks passed ({n} cells, {len(merged.columns)} features, row-aligned)")
 
 
@@ -523,6 +522,7 @@ def fig6_quality_coupling(merged, lch, fig_dir, tbl_dir, dpi):
     control_prefixes = ["valid_fraction","low_valid","reflectance_scale","full_features","cell_id"]
     # Include base + delta features
     feature_cols = [c for c in merged.columns if not any(c.startswith(p) for p in control_prefixes)]
+    feature_cols = [c for c in feature_cols if pd.api.types.is_numeric_dtype(merged[c])]
 
     # Vectorized coupling via corrwith (much faster than per-column loop)
     coupling_records = []
@@ -598,7 +598,8 @@ def fig6_quality_coupling(merged, lch, fig_dir, tbl_dir, dpi):
                     ax.plot(means["vf_mean"], means["delta_mean"], "ro-", markersize=6, linewidth=2, label="Decile mean")
                     ax.legend(fontsize=8)
                 except ValueError:
-                    pass  # degenerate VF distribution
+                    ax.text(.5, .9, "qcut failed (degenerate VF)", transform=ax.transAxes,
+                            ha="center", fontsize=8, color="gray")
             ax.set_xlabel("Valid Fraction"); ax.set_ylabel("|delta Built-Up|")
             ax.set_title("Quality vs Change Magnitude", fontweight="bold")
 
