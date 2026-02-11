@@ -39,6 +39,8 @@ assert not _missing_colors, f"Missing CLASS_COLORS for: {sorted(_missing_colors)
 SENTINEL_YEARS = sorted(CFG["sentinel2"]["years"])
 SEASON_ORDER = CFG["sentinel2"]["season_order"]
 COMPOSITES = [(y, s) for y in SENTINEL_YEARS for s in SEASON_ORDER]
+assert len(CLASS_NAMES) == 6, f"Script assumes 6 classes for 2x3 plots, got {len(CLASS_NAMES)}"
+assert len(COMPOSITES) == 6, f"Script assumes 2 years x 3 seasons = 6 composites, got {len(COMPOSITES)}"
 
 sns.set_theme(style="whitegrid", font_scale=1.1)
 
@@ -92,6 +94,13 @@ def sanity_checks(merged, l20, l21, lch, grid):
         d = lch[delta_cols_check].to_numpy()
         assert np.all(np.abs(np.nansum(d, axis=1)) < tol), \
             "label deltas do not sum to ~0"
+    # Ensure required columns exist (prevents KeyError deep in plotting)
+    missing_l20 = set(CLASS_NAMES) - set(l20.columns)
+    missing_l21 = set(CLASS_NAMES) - set(l21.columns)
+    assert not missing_l20, f"labels_2020 missing class cols: {sorted(missing_l20)}"
+    assert not missing_l21, f"labels_2021 missing class cols: {sorted(missing_l21)}"
+    missing_deltas = {f"delta_{c}" for c in CLASS_NAMES} - set(lch.columns)
+    assert not missing_deltas, f"labels_change missing delta cols: {sorted(missing_deltas)}"
     print(f"  All checks passed ({n} cells, {len(merged.columns)} features, row-aligned)")
 
 
@@ -576,15 +585,22 @@ def fig6_quality_coupling(merged, lch, fig_dir, tbl_dir, dpi):
         ax = axes[1, 0]
         ref_vf = vf_cols[0]
         if "delta_built_up" in lch.columns:
-            vf_vals = merged[ref_vf].values
-            delta_bu = np.abs(lch["delta_built_up"].values)  # already sorted by cell_id
+            vf_vals = merged[ref_vf].to_numpy()
+            delta_bu = np.abs(lch["delta_built_up"].to_numpy())
+            mask = np.isfinite(vf_vals) & np.isfinite(delta_bu)
+            vf_vals, delta_bu = vf_vals[mask], delta_bu[mask]
             ax.scatter(vf_vals, delta_bu, s=1, alpha=.2, c="#555", rasterized=True)
-            deciles = pd.qcut(vf_vals, 10, duplicates="drop")
-            means = pd.DataFrame({"vf": vf_vals, "delta": delta_bu, "dec": deciles}).groupby("dec").agg(
-                vf_mean=("vf","mean"), delta_mean=("delta","mean")).reset_index()
-            ax.plot(means["vf_mean"], means["delta_mean"], "ro-", markersize=6, linewidth=2, label="Decile mean")
+            if len(vf_vals) >= 100 and np.unique(vf_vals).size >= 5:
+                try:
+                    deciles = pd.qcut(vf_vals, 10, duplicates="drop")
+                    means = pd.DataFrame({"vf": vf_vals, "delta": delta_bu, "dec": deciles}).groupby("dec").agg(
+                        vf_mean=("vf","mean"), delta_mean=("delta","mean")).reset_index()
+                    ax.plot(means["vf_mean"], means["delta_mean"], "ro-", markersize=6, linewidth=2, label="Decile mean")
+                    ax.legend(fontsize=8)
+                except ValueError:
+                    pass  # degenerate VF distribution
             ax.set_xlabel("Valid Fraction"); ax.set_ylabel("|delta Built-Up|")
-            ax.set_title("Quality vs Change Magnitude", fontweight="bold"); ax.legend(fontsize=8)
+            ax.set_title("Quality vs Change Magnitude", fontweight="bold")
 
         # Panel 4: Low-VF cells count
         ax = axes[1, 1]
