@@ -10,6 +10,8 @@ Usage (from scripts/run_split.py):
         assign_tile_groups,
         build_spatial_folds,
         build_contiguous_band_folds,
+        build_morton_folds,
+        build_region_growing_folds,
         build_buffered_folds_from_assignments,
         build_random_folds,
         get_fold_indices,
@@ -154,6 +156,220 @@ def build_contiguous_band_folds(groups, n_folds, n_tile_cols, n_tile_rows):
         folds.append((train_idx, test_idx))
 
     return folds, fold_assignments
+
+
+def _morton_interleave(x, y):
+    """
+    Compute Morton (Z-order) index by bit-interleaving x and y.
+
+    For a 2D grid, this maps (row, col) to a single index along
+    the Z-curve, which preserves spatial locality better than
+    row-major ordering.
+    """
+    z = np.zeros_like(x)
+    # Interleave up to 16 bits (supports grids up to 65535 x 65535)
+    for i in range(16):
+        z |= ((x & (1 << i)) << i) | ((y & (1 << i)) << (i + 1))
+    return z
+
+
+def build_morton_folds(groups, n_folds, n_tile_cols, n_tile_rows):
+    """
+    Build spatial CV folds using Morton (Z-order) space-filling curve.
+
+    Tiles are sorted along a Z-curve that preserves spatial locality,
+    then split into K contiguous chunks. This produces mostly-contiguous
+    folds with perfect balance.
+
+    Parameters
+    ----------
+    groups : ndarray of int, shape (N,)
+        Tile group IDs from assign_tile_groups.
+    n_folds : int
+    n_tile_cols, n_tile_rows : int
+        Tile grid dimensions.
+
+    Returns
+    -------
+    folds : list of (train_idx, test_idx) tuples
+    fold_assignments : ndarray of int, shape (N,)
+    """
+    # Get tile_row, tile_col for each cell
+    tile_rows = groups // n_tile_cols
+    tile_cols = groups % n_tile_cols
+
+    # Compute Morton index for each unique tile
+    unique_tiles = np.unique(groups)
+    tile_tr = unique_tiles // n_tile_cols
+    tile_tc = unique_tiles % n_tile_cols
+    morton_idx = _morton_interleave(tile_tr.astype(np.int64),
+                                    tile_tc.astype(np.int64))
+
+    # Sort tiles by Morton index, then split into K chunks
+    sort_order = np.argsort(morton_idx)
+    sorted_tiles = unique_tiles[sort_order]
+    chunks = np.array_split(sorted_tiles, n_folds)
+
+    # Map tile -> fold
+    tile_to_fold = {}
+    for fold_idx, chunk in enumerate(chunks):
+        for t in chunk:
+            tile_to_fold[t] = fold_idx
+
+    fold_assignments = np.array([tile_to_fold[g] for g in groups], dtype=int)
+
+    folds = []
+    for fold_idx in range(n_folds):
+        test_mask = fold_assignments == fold_idx
+        train_idx = np.where(~test_mask)[0]
+        test_idx = np.where(test_mask)[0]
+        folds.append((train_idx, test_idx))
+
+    return folds, fold_assignments
+
+
+def build_region_growing_folds(groups, n_folds, n_tile_cols, n_tile_rows,
+                                seed=42):
+    """
+    Build spatial CV folds via region growing on the tile adjacency graph.
+
+    Algorithm:
+    1. Farthest-point seeding: pick K seed tiles that are maximally
+       spread out (greedy farthest-point heuristic).
+    2. Greedy BFS growth: each region grows one tile at a time,
+       prioritizing the region with the smallest current weight.
+       Tiles are added from the region's frontier (4-connected neighbors).
+
+    Produces K connected, roughly equal-weight spatial regions.
+
+    Parameters
+    ----------
+    groups : ndarray of int, shape (N,)
+        Tile group IDs from assign_tile_groups.
+    n_folds : int (K)
+    n_tile_cols, n_tile_rows : int
+    seed : int
+        RNG seed for tie-breaking during growth.
+
+    Returns
+    -------
+    folds : list of (train_idx, test_idx) tuples
+    fold_assignments : ndarray of int, shape (N,)
+    """
+    rng = np.random.RandomState(seed)
+    unique_tiles = np.unique(groups)
+    n_tiles = len(unique_tiles)
+
+    # Tile -> (row, col) and weight (number of cells)
+    tile_tr = unique_tiles // n_tile_cols
+    tile_tc = unique_tiles % n_tile_cols
+    tile_weight = {}
+    for t in unique_tiles:
+        tile_weight[t] = int(np.sum(groups == t))
+
+    # Build 4-connected adjacency (rook) on tile grid
+    tile_set = set(unique_tiles.tolist())
+    tile_adj = {t: [] for t in unique_tiles}
+    for t in unique_tiles:
+        tr, tc = t // n_tile_cols, t % n_tile_cols
+        for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+            nr, nc = tr + dr, tc + dc
+            if 0 <= nr < n_tile_rows and 0 <= nc < n_tile_cols:
+                nbr = nr * n_tile_cols + nc
+                if nbr in tile_set:
+                    tile_adj[t].append(nbr)
+
+    # --- Step 1: Farthest-point seeding ---
+    # Start from a corner tile, then greedily pick the tile farthest
+    # from all existing seeds (using Manhattan distance on tile grid)
+    def tile_dist(t1, t2):
+        r1, c1 = t1 // n_tile_cols, t1 % n_tile_cols
+        r2, c2 = t2 // n_tile_cols, t2 % n_tile_cols
+        return abs(r1 - r2) + abs(c1 - c2)
+
+    # Start from the tile closest to (0, 0)
+    seeds = [unique_tiles[0]]
+    for _ in range(1, n_folds):
+        best_tile = None
+        best_min_dist = -1
+        for t in unique_tiles:
+            if t in seeds:
+                continue
+            min_d = min(tile_dist(t, s) for s in seeds)
+            if min_d > best_min_dist:
+                best_min_dist = min_d
+                best_tile = t
+        seeds.append(best_tile)
+
+    # --- Step 2: Greedy region growing ---
+    assigned = {}  # tile -> fold_idx
+    region_weight = [0] * n_folds
+    frontier = [set() for _ in range(n_folds)]
+
+    # Initialize seeds
+    for fold_idx, s in enumerate(seeds):
+        assigned[s] = fold_idx
+        region_weight[fold_idx] += tile_weight[s]
+        for nbr in tile_adj[s]:
+            if nbr not in assigned:
+                frontier[fold_idx].add(nbr)
+
+    target_weight = sum(tile_weight.values()) / n_folds
+
+    # Grow: always expand the lightest region first
+    while len(assigned) < n_tiles:
+        # Find the lightest region that still has a frontier
+        order = sorted(range(n_folds), key=lambda i: region_weight[i])
+        grown = False
+        for fold_idx in order:
+            if not frontier[fold_idx]:
+                continue
+
+            # Pick the frontier tile closest to the region's seed
+            candidates = list(frontier[fold_idx] - set(assigned.keys()))
+            if not candidates:
+                frontier[fold_idx].clear()
+                continue
+
+            # Choose candidate: prefer the one closest to seed
+            seed_t = seeds[fold_idx]
+            candidates.sort(key=lambda t: (tile_dist(t, seed_t),
+                                           rng.random()))
+            chosen = candidates[0]
+            assigned[chosen] = fold_idx
+            region_weight[fold_idx] += tile_weight[chosen]
+            frontier[fold_idx].discard(chosen)
+
+            # Add new neighbors to frontier
+            for nbr in tile_adj[chosen]:
+                if nbr not in assigned:
+                    frontier[fold_idx].add(nbr)
+
+            grown = True
+            break
+
+        if not grown:
+            # All frontiers empty but tiles remain -- assign orphans
+            # to nearest region (shouldn't happen on a connected grid)
+            for t in unique_tiles:
+                if t not in assigned:
+                    dists = [tile_dist(t, seeds[i]) for i in range(n_folds)]
+                    assigned[t] = int(np.argmin(dists))
+                    region_weight[assigned[t]] += tile_weight[t]
+
+    # Map tile assignments back to cell assignments
+    fold_assignments = np.array([assigned[g] for g in groups], dtype=int)
+
+    folds = []
+    for fold_idx in range(n_folds):
+        test_mask = fold_assignments == fold_idx
+        train_idx = np.where(~test_mask)[0]
+        test_idx = np.where(test_mask)[0]
+        folds.append((train_idx, test_idx))
+
+    return folds, fold_assignments
+
+
 
 
 @lru_cache(maxsize=8)
@@ -386,8 +602,13 @@ def save_split_metadata(path, *, block_rows, block_cols, cell_size_m,
                          n_tile_cols, n_tile_rows):
     """Save split configuration as JSON for reproducibility."""
     meta = {
-        "strategies": ["grouped_groupkfold", "contiguous_row_bands"],
-        "primary_fold_column": "fold_contiguous",
+        "strategies": [
+            "grouped_groupkfold",
+            "contiguous_row_bands",
+            "morton_z_curve",
+            "region_growing",
+        ],
+        "primary_fold_column": "fold_region_growing",
         "block_rows": block_rows,
         "block_cols": block_cols,
         "cell_size_m": cell_size_m,
