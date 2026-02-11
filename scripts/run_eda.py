@@ -34,6 +34,8 @@ V2_DIR = os.path.join(PROJECT_ROOT, "data", "processed", "v2")
 CLASS_NAMES = CFG["worldcover"]["class_names"]
 CLASS_COLORS = {"tree_cover":"#228B22","grassland":"#90EE90","cropland":"#FFD700",
                 "built_up":"#DC143C","bare_sparse":"#D2B48C","water":"#4169E1"}
+_missing_colors = set(CLASS_NAMES) - set(CLASS_COLORS)
+assert not _missing_colors, f"Missing CLASS_COLORS for: {sorted(_missing_colors)}"
 SENTINEL_YEARS = sorted(CFG["sentinel2"]["years"])
 SEASON_ORDER = CFG["sentinel2"]["season_order"]
 COMPOSITES = [(y, s) for y in SENTINEL_YEARS for s in SEASON_ORDER]
@@ -76,6 +78,20 @@ def sanity_checks(merged, l20, l21, lch, grid):
     for y, s in COMPOSITES:
         col = f"NDVI_mean_{y}_{s}"
         assert col in merged.columns, f"Missing expected column: {col}"
+    # Label invariants: proportions in [0,1], rows sum to ~1, deltas sum to ~0
+    tol = 1e-2
+    for name, lab in [("l20", l20), ("l21", l21)]:
+        vals = lab[CLASS_NAMES].to_numpy()
+        assert np.nanmin(vals) >= -tol and np.nanmax(vals) <= 1+tol, \
+            f"{name} label proportions outside [0,1]"
+        row_sums = np.nansum(vals, axis=1)
+        assert np.all(np.abs(row_sums - 1) < tol), \
+            f"{name} label proportions don't sum to 1 (max deviation: {np.max(np.abs(row_sums-1)):.4f})"
+    delta_cols_check = [f"delta_{c}" for c in CLASS_NAMES if f"delta_{c}" in lch.columns]
+    if delta_cols_check:
+        d = lch[delta_cols_check].to_numpy()
+        assert np.all(np.abs(np.nansum(d, axis=1)) < tol), \
+            "label deltas do not sum to ~0"
     print(f"  All checks passed ({n} cells, {len(merged.columns)} features, row-aligned)")
 
 
@@ -260,6 +276,10 @@ def fig4_feature_distributions(merged, fig_dir, dpi):
                 data_list.append(merged[col].values)
                 labels_list.append(f"{s[:2].upper()}\n{y}")
                 years_used.append(y)
+        if not data_list:
+            ax.text(.5, .5, f"{idx}\nMissing", transform=ax.transAxes, ha="center", va="center", fontsize=11, color="gray")
+            ax.set_axis_off()
+            continue
         parts = ax.violinplot(data_list, showmeans=True, showmedians=False, showextrema=False)
         for i, pc in enumerate(parts["bodies"]):
             pc.set_facecolor("#3498DB" if years_used[i]==SENTINEL_YEARS[0] else "#E74C3C")
@@ -488,22 +508,25 @@ def fig6_quality_coupling(merged, lch, fig_dir, tbl_dir, dpi):
     # 6b: Systematic quality coupling — all 6 VF columns, all features, by family
     print("  Computing systematic quality coupling...")
     vf_cols = [f"valid_fraction_{y}_{s}" for y,s in COMPOSITES if f"valid_fraction_{y}_{s}" in merged.columns]
+    if not vf_cols:
+        print("  Skipping: no valid_fraction columns found")
+        return
     control_prefixes = ["valid_fraction","low_valid","reflectance_scale","full_features","cell_id"]
     # Include base + delta features
     feature_cols = [c for c in merged.columns if not any(c.startswith(p) for p in control_prefixes)]
 
+    # Vectorized coupling via corrwith (much faster than per-column loop)
     coupling_records = []
     for vf_col in vf_cols:
         vf_tag = vf_col.replace("valid_fraction_", "")
-        for fc in feature_cols:
-            r = merged[fc].corr(merged[vf_col])
-            if np.isfinite(r):
-                # Parse feature family from manifest if available
-                coupling_records.append({"feature": fc, "vf_composite": vf_tag,
-                                         "corr_with_vf": r})
+        corrs = merged[feature_cols].corrwith(merged[vf_col])
+        tmp = pd.DataFrame({"feature": corrs.index, "vf_composite": vf_tag,
+                            "corr_with_vf": corrs.values})
+        tmp = tmp[np.isfinite(tmp["corr_with_vf"].values)]
+        coupling_records.append(tmp)
 
     if coupling_records:
-        cpl_df = pd.DataFrame(coupling_records)
+        cpl_df = pd.concat(coupling_records, ignore_index=True)
         # Add family info
         def _extract_family(col):
             for pat, fam in FAMILY_PATTERNS:
@@ -570,7 +593,13 @@ def fig6_quality_coupling(merged, lch, fig_dir, tbl_dir, dpi):
         if low_vf_cols:
             counts = [(c.replace("low_valid_fraction_",""), int(merged[c].sum())) for c in low_vf_cols]
             tags, vals = zip(*counts)
-            ax.bar(range(len(tags)), vals, color=["#3498DB"]*3+["#E74C3C"]*3, alpha=.7)
+            colors_bar = [
+                "#3498DB" if str(SENTINEL_YEARS[0]) in t else
+                "#E74C3C" if str(SENTINEL_YEARS[1]) in t else
+                "#95A5A6"
+                for t in tags
+            ]
+            ax.bar(range(len(tags)), vals, color=colors_bar, alpha=.7)
             ax.set_xticks(range(len(tags))); ax.set_xticklabels([t.replace("_","\n") for t in tags], fontsize=8)
             ax.set_ylabel("Low-VF Cells"); ax.set_title("Low Quality Cells per Composite", fontweight="bold")
         fig.suptitle("Quality Coupling Analysis (all 6 VF cols, all features)", fontweight="bold", fontsize=14)
