@@ -356,7 +356,7 @@ def fig5_redundancy_and_drift(merged, labels, manifest, fig_dir, tbl_dir, dpi, s
         save_fig(fig, "05b_redundancy_heatmap", fig_dir, dpi)
 
     # 5c: Drift metrics (KS + Wasserstein)
-    print("  Computing drift metrics...")
+    print("  Computing YoY drift metrics...")
     roots = manifest[manifest.kind=="base"]["feature_root"].unique()
     drift_records = []
     for root in roots:
@@ -375,7 +375,6 @@ def fig5_redundancy_and_drift(merged, labels, manifest, fig_dir, tbl_dir, dpi, s
     drift_df = pd.DataFrame(drift_records)
     if not drift_df.empty:
         save_table(drift_df, "drift_yoy", tbl_dir)
-        # Plot: top drifting features per family
         fig, axes = plt.subplots(1, 2, figsize=(16, 6))
         top_ks = drift_df.nlargest(15, "ks_stat")
         ax = axes[0]
@@ -393,6 +392,61 @@ def fig5_redundancy_and_drift(merged, labels, manifest, fig_dir, tbl_dir, dpi, s
         ax.invert_yaxis()
         fig.tight_layout()
         save_fig(fig, "05c_drift_yoy", fig_dir, dpi)
+
+    # 5d: Seasonal drift (within-year) — the smoking gun
+    print("  Computing seasonal drift metrics...")
+    season_pairs = [(SEASON_ORDER[i], SEASON_ORDER[j])
+                    for i in range(len(SEASON_ORDER)) for j in range(i+1, len(SEASON_ORDER))]
+    sdrift_records = []
+    for root in roots:
+        for y in SENTINEL_YEARS:
+            for s1, s2 in season_pairs:
+                c1 = f"{root}_{y}_{s1}"
+                c2 = f"{root}_{y}_{s2}"
+                if c1 in merged.columns and c2 in merged.columns:
+                    v1, v2 = merged[c1].dropna().values, merged[c2].dropna().values
+                    if len(v1) > 100 and len(v2) > 100:
+                        ks, _ = ks_2samp(v1, v2)
+                        fam = classify_family(root)
+                        sdrift_records.append({"feature_root": root, "year": y,
+                                               "pair": f"{s1}_vs_{s2}", "family": fam,
+                                               "ks_stat": ks})
+
+    sdrift_df = pd.DataFrame(sdrift_records)
+    if not sdrift_df.empty:
+        save_table(sdrift_df, "drift_seasonal", tbl_dir)
+
+        # Comparison: seasonal vs YoY by family
+        if not drift_df.empty:
+            yoy_by_fam = drift_df.groupby("family")["ks_stat"].mean().rename("yoy_ks")
+            sea_by_fam = sdrift_df.groupby("family")["ks_stat"].mean().rename("seasonal_ks")
+            comp = pd.concat([yoy_by_fam, sea_by_fam], axis=1).dropna()
+            comp["ratio_seasonal_yoy"] = comp["seasonal_ks"] / comp["yoy_ks"].clip(lower=1e-6)
+            comp = comp.sort_values("ratio_seasonal_yoy", ascending=False)
+            save_table(comp.reset_index(), "drift_seasonal_vs_yoy", tbl_dir)
+
+            fig, axes = plt.subplots(1, 2, figsize=(16, 6))
+            # Panel 1: grouped bar
+            ax = axes[0]
+            x = np.arange(len(comp))
+            ax.barh(x - 0.2, comp["yoy_ks"].values, 0.35, color="#E74C3C", alpha=.7, label="YoY")
+            ax.barh(x + 0.2, comp["seasonal_ks"].values, 0.35, color="#3498DB", alpha=.7, label="Seasonal")
+            ax.set_yticks(x); ax.set_yticklabels(comp.index, fontsize=9)
+            ax.set_xlabel("Mean KS Statistic"); ax.legend(fontsize=9)
+            ax.set_title("Seasonal vs YoY Drift by Family", fontweight="bold")
+            ax.invert_yaxis()
+
+            # Panel 2: ratio (smoking gun)
+            ax = axes[1]
+            colors = ["#E74C3C" if r > 1 else "#27AE60" for r in comp["ratio_seasonal_yoy"]]
+            ax.barh(range(len(comp)), comp["ratio_seasonal_yoy"].values, color=colors, alpha=.7)
+            ax.axvline(1.0, color="black", linewidth=1.5, linestyle="--", label="ratio=1")
+            ax.set_yticks(range(len(comp))); ax.set_yticklabels(comp.index, fontsize=9)
+            ax.set_xlabel("Seasonal KS / YoY KS"); ax.legend(fontsize=8)
+            ax.set_title("Seasonal/YoY Drift Ratio (>1 = seasonal dominates)", fontweight="bold")
+            ax.invert_yaxis()
+            fig.tight_layout()
+            save_fig(fig, "05d_drift_seasonal_vs_yoy", fig_dir, dpi)
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -421,59 +475,97 @@ def fig6_quality_coupling(merged, lch, fig_dir, tbl_dir, dpi):
     fig.tight_layout(rect=[0,0,1,.95])
     save_fig(fig, "06a_valid_fraction_distribution", fig_dir, dpi)
 
-    # 6b: Quality coupling — corr(|delta_built_up|, valid_fraction) + scatter
-    fig, axes = plt.subplots(1, 3, figsize=(18, 5))
+    # 6b: Systematic quality coupling — all 6 VF columns, all features, by family
+    print("  Computing systematic quality coupling...")
     vf_cols = [f"valid_fraction_{y}_{s}" for y,s in COMPOSITES if f"valid_fraction_{y}_{s}" in merged.columns]
+    control_prefixes = ["valid_fraction","low_valid","reflectance_scale","full_features","cell_id"]
+    # Include base + delta features
+    feature_cols = [c for c in merged.columns if not any(c.startswith(p) for p in control_prefixes)]
 
-    # Panel 1: corr of features with valid_fraction
     coupling_records = []
-    ref_vf = vf_cols[0] if vf_cols else None
-    if ref_vf:
-        feature_cols = [c for c in merged.columns if not any(c.startswith(p) for p in
-                        ["valid_fraction","low_valid","reflectance_scale","full_features","cell_id","delta_"])]
-        for fc in feature_cols[:200]:  # cap for speed
-            r = merged[fc].corr(merged[ref_vf])
+    for vf_col in vf_cols:
+        vf_tag = vf_col.replace("valid_fraction_", "")
+        for fc in feature_cols:
+            r = merged[fc].corr(merged[vf_col])
             if np.isfinite(r):
-                coupling_records.append({"feature": fc, "corr_with_vf": r})
+                # Parse feature family from manifest if available
+                coupling_records.append({"feature": fc, "vf_composite": vf_tag,
+                                         "corr_with_vf": r})
+
     if coupling_records:
-        cpl_df = pd.DataFrame(coupling_records).sort_values("corr_with_vf", key=abs, ascending=False)
+        cpl_df = pd.DataFrame(coupling_records)
+        # Add family info
+        def _extract_family(col):
+            for pat, fam in FAMILY_PATTERNS:
+                if re.match(pat, col, re.IGNORECASE):
+                    return fam
+            if col.startswith("delta_yoy_") or col.startswith("delta_"):
+                return "delta"
+            return "other"
+        cpl_df["family"] = cpl_df["feature"].apply(_extract_family)
+        cpl_df["abs_r"] = cpl_df["corr_with_vf"].abs()
         save_table(cpl_df, "quality_coupling", tbl_dir)
-        top10 = cpl_df.head(10)
-        ax = axes[0]
-        colors = ["#E74C3C" if v<0 else "#3498DB" for v in top10["corr_with_vf"]]
-        ax.barh(range(len(top10)), top10["corr_with_vf"].values, color=colors, alpha=.7)
-        ax.set_yticks(range(len(top10)))
-        ax.set_yticklabels([f.split(f"_{SENTINEL_YEARS[0]}_")[0] if f"_{SENTINEL_YEARS[0]}_" in f else f
-                            for f in top10["feature"]], fontsize=8)
-        ax.set_xlabel("Pearson r with valid_fraction"); ax.set_title("Top Quality-Coupled Features", fontweight="bold")
+
+        # Summary by family (mean/median |r| across all VF cols)
+        fam_summary = cpl_df.groupby("family").agg(
+            mean_abs_r=("abs_r", "mean"), median_abs_r=("abs_r", "median"),
+            n_features=("feature", "nunique")
+        ).sort_values("mean_abs_r", ascending=False).reset_index()
+        save_table(fam_summary, "quality_coupling_by_family", tbl_dir)
+
+        # Plot: 4 panels
+        fig, axes = plt.subplots(2, 2, figsize=(16, 12))
+
+        # Panel 1: Top quality-coupled features (averaged across VF cols)
+        avg_coupling = cpl_df.groupby("feature")["abs_r"].mean().nlargest(15)
+        ax = axes[0, 0]
+        colors_top = ["#E74C3C" if v > 0.15 else "#F39C12" if v > 0.1 else "#3498DB" for v in avg_coupling.values]
+        ax.barh(range(len(avg_coupling)), avg_coupling.values, color=colors_top, alpha=.7)
+        ax.set_yticks(range(len(avg_coupling)))
+        short_names = []
+        for f in avg_coupling.index:
+            for yr in SENTINEL_YEARS:
+                f = f.replace(f"_{yr}_spring","").replace(f"_{yr}_summer","").replace(f"_{yr}_autumn","")
+            short_names.append(f[:30])
+        ax.set_yticklabels(short_names, fontsize=8)
+        ax.set_xlabel("Mean |r| with VF (across composites)")
+        ax.set_title("Top Quality-Coupled Features", fontweight="bold")
         ax.invert_yaxis()
 
-    # Panel 2: VF vs |delta_built_up| scatter
-    ax = axes[1]
-    if ref_vf and "delta_built_up" in lch.columns:
-        vf_vals = merged[ref_vf].values
-        delta_bu = np.abs(lch.sort_values("cell_id")["delta_built_up"].values)
-        ax.scatter(vf_vals, delta_bu, s=1, alpha=.2, c="#555", rasterized=True)
-        # Decile means
-        deciles = pd.qcut(vf_vals, 10, duplicates="drop")
-        means = pd.DataFrame({"vf": vf_vals, "delta": delta_bu, "dec": deciles}).groupby("dec").agg(
-            vf_mean=("vf","mean"), delta_mean=("delta","mean")).reset_index()
-        ax.plot(means["vf_mean"], means["delta_mean"], "ro-", markersize=6, linewidth=2, label="Decile mean")
-        ax.set_xlabel("Valid Fraction"); ax.set_ylabel("|Δ Built-Up|")
-        ax.set_title("Quality vs Change Magnitude", fontweight="bold"); ax.legend(fontsize=8)
+        # Panel 2: Coupling by family
+        ax = axes[0, 1]
+        ax.barh(range(len(fam_summary)), fam_summary["mean_abs_r"].values, color="#E67E22", alpha=.7)
+        ax.set_yticks(range(len(fam_summary))); ax.set_yticklabels(fam_summary["family"], fontsize=9)
+        ax.set_xlabel("Mean |r| with VF"); ax.set_title("Quality Coupling by Family", fontweight="bold")
+        ax.invert_yaxis()
 
-    # Panel 3: low_vf cells count
-    ax = axes[2]
-    low_vf_cols = [f"low_valid_fraction_{y}_{s}" for y,s in COMPOSITES
-                   if f"low_valid_fraction_{y}_{s}" in merged.columns]
-    if low_vf_cols:
-        counts = [(c.replace("low_valid_fraction_",""), int(merged[c].sum())) for c in low_vf_cols]
-        tags, vals = zip(*counts)
-        ax.bar(range(len(tags)), vals, color=["#3498DB"]*3+["#E74C3C"]*3, alpha=.7)
-        ax.set_xticks(range(len(tags))); ax.set_xticklabels([t.replace("_","\n") for t in tags], fontsize=8)
-        ax.set_ylabel("Low-VF Cells"); ax.set_title("Low Quality Cells per Composite", fontweight="bold")
-    fig.tight_layout()
-    save_fig(fig, "06b_quality_coupling", fig_dir, dpi)
+        # Panel 3: VF vs |delta_built_up| scatter
+        ax = axes[1, 0]
+        ref_vf = vf_cols[0]
+        if "delta_built_up" in lch.columns:
+            vf_vals = merged[ref_vf].values
+            delta_bu = np.abs(lch.sort_values("cell_id")["delta_built_up"].values)
+            ax.scatter(vf_vals, delta_bu, s=1, alpha=.2, c="#555", rasterized=True)
+            deciles = pd.qcut(vf_vals, 10, duplicates="drop")
+            means = pd.DataFrame({"vf": vf_vals, "delta": delta_bu, "dec": deciles}).groupby("dec").agg(
+                vf_mean=("vf","mean"), delta_mean=("delta","mean")).reset_index()
+            ax.plot(means["vf_mean"], means["delta_mean"], "ro-", markersize=6, linewidth=2, label="Decile mean")
+            ax.set_xlabel("Valid Fraction"); ax.set_ylabel("|delta Built-Up|")
+            ax.set_title("Quality vs Change Magnitude", fontweight="bold"); ax.legend(fontsize=8)
+
+        # Panel 4: Low-VF cells count
+        ax = axes[1, 1]
+        low_vf_cols = [f"low_valid_fraction_{y}_{s}" for y,s in COMPOSITES
+                       if f"low_valid_fraction_{y}_{s}" in merged.columns]
+        if low_vf_cols:
+            counts = [(c.replace("low_valid_fraction_",""), int(merged[c].sum())) for c in low_vf_cols]
+            tags, vals = zip(*counts)
+            ax.bar(range(len(tags)), vals, color=["#3498DB"]*3+["#E74C3C"]*3, alpha=.7)
+            ax.set_xticks(range(len(tags))); ax.set_xticklabels([t.replace("_","\n") for t in tags], fontsize=8)
+            ax.set_ylabel("Low-VF Cells"); ax.set_title("Low Quality Cells per Composite", fontweight="bold")
+        fig.suptitle("Quality Coupling Analysis (all 6 VF cols, all features)", fontweight="bold", fontsize=14)
+        fig.tight_layout(rect=[0,0,1,.95])
+        save_fig(fig, "06b_quality_coupling", fig_dir, dpi)
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -525,73 +617,67 @@ def fig7_reflectance_scale(merged, fig_dir, tbl_dir, dpi):
 
 
 # ═══════════════════════════════════════════════════════════════════════
-# C4: Moran's I (manual rook adjacency)
+# C4: Moran's I — vectorized, full-grid, precomputed edge arrays
 # ═══════════════════════════════════════════════════════════════════════
 
-def compute_morans_i(values, row_idx, col_idx, n_rows, n_cols, n_perms=199, seed=42):
-    """Manual Moran's I with rook (4-neighbor) adjacency."""
-    n = len(values)
-    z = values - values.mean()
-    s2 = np.mean(z**2)
-    if s2 < 1e-12: return 0.0, 1.0
-
-    # Build neighbor indices (rook: up/down/left/right)
+def _build_rook_edges(row_idx, col_idx):
+    """Build edge arrays (src, dst) for rook adjacency on the full grid."""
     grid_map = {}
-    for i in range(n):
+    for i in range(len(row_idx)):
         grid_map[(row_idx[i], col_idx[i])] = i
-
-    W_sum = 0.0; lag_sum = 0.0
-    for i in range(n):
+    src, dst = [], []
+    for i in range(len(row_idx)):
         r, c = row_idx[i], col_idx[i]
         for dr, dc in [(-1,0),(1,0),(0,-1),(0,1)]:
             j = grid_map.get((r+dr, c+dc))
             if j is not None:
-                lag_sum += z[i] * z[j]
-                W_sum += 1
+                src.append(i); dst.append(j)
+    return np.array(src, dtype=np.int32), np.array(dst, dtype=np.int32)
 
-    if W_sum == 0: return 0.0, 1.0
-    I_obs = (n / W_sum) * (lag_sum / (n * s2))
 
-    # Permutation test
+def compute_morans_i_vectorized(values, src, dst, n_perms=99, seed=42):
+    """Vectorized Moran's I using precomputed edge arrays."""
+    n = len(values)
+    z = values - values.mean()
+    s2 = np.mean(z**2)
+    if s2 < 1e-12:
+        return 0.0, 1.0
+    W = len(src)  # total directed edges
+    lag_sum = np.sum(z[src] * z[dst])
+    I_obs = (n / W) * (lag_sum / (n * s2))
+
+    # Permutation test (vectorized per permutation)
     rng = np.random.RandomState(seed)
     count_extreme = 0
     for _ in range(n_perms):
         z_perm = rng.permutation(z)
-        lag_p = 0.0
-        for i in range(n):
-            r, c = row_idx[i], col_idx[i]
-            for dr, dc in [(-1,0),(1,0),(0,-1),(0,1)]:
-                j = grid_map.get((r+dr, c+dc))
-                if j is not None:
-                    lag_p += z_perm[i] * z_perm[j]
-        I_perm = (n / W_sum) * (lag_p / (n * np.mean(z_perm**2) + 1e-15))
+        s2_p = np.mean(z_perm**2)
+        if s2_p < 1e-12:
+            continue
+        lag_p = np.sum(z_perm[src] * z_perm[dst])
+        I_perm = (n / W) * (lag_p / (n * s2_p))
         if abs(I_perm) >= abs(I_obs):
             count_extreme += 1
     p_value = (count_extreme + 1) / (n_perms + 1)
     return I_obs, p_value
 
 
-def fig_morans_i(merged, l20, grid, fig_dir, tbl_dir, dpi, seed):
-    print("\n[Moran's I] Computing spatial autocorrelation...")
-    # Derive row/col from cell_id
-    n_cols_grid = int(grid.sort_values("cell_id").iloc[-1].geometry.bounds[2] -
-                      grid.sort_values("cell_id").iloc[0].geometry.bounds[0]) // 100
-    # Simpler: use grid dimensions from config
-    ref = CFG["grid"]
-    block = ref["size_m"] // ref["pixel_size"]  # 10
-
+def fig_morans_i(merged, l20, lch, grid, fig_dir, tbl_dir, dpi, seed):
+    print("\n[Moran's I] Computing spatial autocorrelation (full grid, vectorized)...")
     gdf = grid.sort_values("cell_id").reset_index(drop=True)
-    # Get grid dimensions from geometry
     xs = gdf.geometry.centroid.x.values
     ys = gdf.geometry.centroid.y.values
     unique_xs = np.sort(np.unique(np.round(xs, 1)))
-    unique_ys = np.sort(np.unique(np.round(ys, 1)))
     n_gcols = len(unique_xs)
-    n_grows = len(unique_ys)
 
     cell_ids = gdf["cell_id"].values
     row_idx = cell_ids // n_gcols
     col_idx = cell_ids % n_gcols
+
+    # Build edges once on full grid
+    print(f"  Building rook adjacency for {len(cell_ids)} cells...")
+    src, dst = _build_rook_edges(row_idx, col_idx)
+    print(f"  {len(src)} directed edges")
 
     variables = {}
     if "built_up" in l20.columns:
@@ -599,39 +685,37 @@ def fig_morans_i(merged, l20, grid, fig_dir, tbl_dir, dpi, seed):
     ndvi_col = f"NDVI_mean_{SENTINEL_YEARS[0]}_spring"
     if ndvi_col in merged.columns:
         variables["NDVI_spring_2020"] = merged.sort_values("cell_id")[ndvi_col].values
-
-    # Use sample for speed (Moran's I on 30k cells with permutations is slow)
-    rng = np.random.RandomState(seed)
-    sample_size = min(5000, len(cell_ids))
-    sample_idx = rng.choice(len(cell_ids), sample_size, replace=False)
+    if "delta_built_up" in lch.columns:
+        variables["delta_built_up"] = lch.sort_values("cell_id")["delta_built_up"].values
 
     results = []
+    n = len(cell_ids)
     for vname, vals in variables.items():
-        print(f"  {vname} (n={sample_size}, 199 perms)...")
-        I, p = compute_morans_i(vals[sample_idx], row_idx[sample_idx], col_idx[sample_idx],
-                                 n_grows, n_gcols, n_perms=199, seed=seed)
+        print(f"  {vname} (n={n}, 99 perms)...")
+        I, p = compute_morans_i_vectorized(vals, src, dst, n_perms=99, seed=seed)
         results.append({"variable": vname, "morans_I": round(I, 4), "p_value": round(p, 4),
-                         "n_cells": sample_size, "significant": p < 0.05})
+                         "n_cells": n, "n_edges": len(src), "significant": p < 0.05})
         print(f"    I={I:.4f}, p={p:.4f} {'***' if p<0.01 else '**' if p<0.05 else 'ns'}")
 
     if results:
         res_df = pd.DataFrame(results)
         save_table(res_df, "morans_i", tbl_dir)
 
-        fig, ax = plt.subplots(figsize=(8, 4))
+        fig, ax = plt.subplots(figsize=(8, 5))
         colors = ["#E74C3C" if r["significant"] else "#95A5A6" for r in results]
         ax.barh(range(len(results)), [r["morans_I"] for r in results], color=colors, alpha=.7)
         ax.set_yticks(range(len(results)))
         ax.set_yticklabels([r["variable"] for r in results])
         ax.set_xlabel("Moran's I")
-        ax.set_title("Spatial Autocorrelation (Rook Adjacency)\nMotivates blocked CV split", fontweight="bold")
+        ax.set_title(f"Spatial Autocorrelation (Rook, n={n}, {len(src)} edges)\n"
+                     f"Motivates blocked CV split", fontweight="bold")
         for i, r in enumerate(results):
             sig = "***" if r["p_value"]<.01 else "**" if r["p_value"]<.05 else "ns"
             ax.text(r["morans_I"]+.01, i, f"I={r['morans_I']:.3f} (p={r['p_value']:.3f}) {sig}",
                     va="center", fontsize=9)
         ax.axvline(0, color="black", linewidth=.5)
         fig.tight_layout()
-        save_fig(fig, "09_morans_i", fig_dir, dpi)
+        save_fig(fig, "10_morans_i", fig_dir, dpi)
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -656,16 +740,28 @@ def fig8_real_data_issues(merged, lch, drift_path, fig_dir, dpi):
     ax.set_title("Issue 1 (NOT FIXED): WorldCover v100→v200\nAlgorithm shift → fake change signal",
                  fontweight="bold", fontsize=10)
 
-    # Issue 2: Seasonal confound (drift >> YoY)
+    # Issue 2: Seasonal confound — now with MEASURED ratio
     ax = axes[0, 1]
-    if os.path.exists(drift_path):
+    comp_path = os.path.join(os.path.dirname(drift_path), "drift_seasonal_vs_yoy.csv")
+    if os.path.exists(comp_path):
+        comp = pd.read_csv(comp_path)
+        x = np.arange(len(comp))
+        ax.barh(x - 0.2, comp["yoy_ks"].values, 0.35, color="#E74C3C", alpha=.7, label="YoY")
+        ax.barh(x + 0.2, comp["seasonal_ks"].values, 0.35, color="#3498DB", alpha=.7, label="Seasonal")
+        ax.set_yticks(x); ax.set_yticklabels(comp["family"], fontsize=9)
+        ax.set_xlabel("Mean KS Statistic")
+        ax.legend(fontsize=8); ax.invert_yaxis()
+        n_dominated = (comp["ratio_seasonal_yoy"] > 1).sum()
+        ax.text(.95, .05, f"{n_dominated}/{len(comp)} families: seasonal>YoY",
+                transform=ax.transAxes, ha="right", fontsize=9, fontweight="bold",
+                color="red", bbox=dict(boxstyle="round", fc="lightyellow", alpha=.9))
+    elif os.path.exists(drift_path):
         drift = pd.read_csv(drift_path)
         seasonal_ks = drift.groupby("family")["ks_stat"].mean()
         ax.barh(range(len(seasonal_ks)), seasonal_ks.values, color="#E67E22", alpha=.7)
         ax.set_yticks(range(len(seasonal_ks))); ax.set_yticklabels(seasonal_ks.index, fontsize=9)
-        ax.set_xlabel("Mean KS Statistic (YoY)")
-        ax.invert_yaxis()
-    ax.set_title("Issue 2: Seasonal Phenology Confound\nSeasonal drift may exceed real YoY change",
+        ax.set_xlabel("Mean KS Statistic (YoY)"); ax.invert_yaxis()
+    ax.set_title("Issue 2: Seasonal Phenology Confound (MEASURED)\nSeasonal drift vs YoY by family",
                  fontweight="bold", fontsize=10)
 
     # Issue 3: Quality coupling
@@ -798,7 +894,7 @@ def main():
     fig5_redundancy_and_drift(merged, l20, manifest, fig_dir, tbl_dir, args.dpi, args.sample_n, args.seed)
     fig6_quality_coupling(merged, lch, fig_dir, tbl_dir, args.dpi)
     fig7_reflectance_scale(merged, fig_dir, tbl_dir, args.dpi)
-    fig_morans_i(merged, l20, grid, fig_dir, tbl_dir, args.dpi, args.seed)
+    fig_morans_i(merged, l20, lch, grid, fig_dir, tbl_dir, args.dpi, args.seed)
     drift_path = os.path.join(tbl_dir, "drift_yoy.csv")
     fig8_real_data_issues(merged, lch, drift_path, fig_dir, args.dpi)
     fig9_engineering_checks(merged, fig_dir, args.dpi)
