@@ -237,16 +237,35 @@
 
 > At least 2 models: one interpretable + one flexible.
 
-- [ ] Decide target(s):
-  - Option A: predict 2021 proportions from 2020 features (per season / merged)
-  - Option B: predict Δ directly using merged features + deltas
-- [ ] Model 1 (interpretable) ⚠️
-  - Ridge/ElasticNet (multi-output) OR linear models per class
-  - Coefficients + stability across folds
-- [ ] Model 2 (flexible) ⚠️
-  - RandomForest / XGBoost / LightGBM (multi-output via wrappers or per-class)
-- [ ] Hyperparameter tuning (time-boxed) ⚠️
+- [x] Target: predict 2021 proportions from merged 2020+2021 seasonal features
+- [x] Model 1 (interpretable) ⚠️ — Ridge baseline
+  - Ridge CV R²≈0.43 (region growing + buffer) — anchors "no leakage" claim
+- [/] Model 2 (flexible) ⚠️ — Trees + MLPs
+- [/] Hyperparameter tuning (time-boxed) ⚠️
 - [ ] Compare models (performance vs interpretability)
+
+### Tree results (28 configs, complete — `trees_reduced_features.csv`)
+- Best: **ExtraTrees R²=0.692**, MAE=3.13pp (`all_core`, 2109 features)
+- RF: R²=0.684 | CatBoost: R²=0.671 (but best Aitchison=4.19)
+- Feature sets: `all_core` barely beats `bands_and_indices` (798 feats)
+- Trees plateau at ~0.69 regardless of ensemble size or feature set
+
+### MLP V2 sweep (in progress — 41/156 configs)
+- Best so far: **relu L5 h256 R²=0.858**, MAE=2.55pp (`bands_indices`, 798 feats)
+- MLP–Tree gap: **+0.17 R²** — MLPs learn cross-spectral interactions trees cannot
+- ⚠️ V2 has BatchNorm confound on ReLU (fixed in V3)
+
+### MLP V3 sweep (ready to launch — 168 configs)
+- All GPT fixes: LayerNorm everywhere, topK on train only, scale-once speedup
+- State-of-the-art: ResMLPBlock (4-12 layers), cosine+warmup, MixUp, SWA
+- ILR-MLP variant added to `mlp_torch.py` (Aitchison-aware loss)
+- Will run on GPU (RTX 4070) parallel with V2 on CPU
+
+> [!IMPORTANT]
+> **Before submission — still needed for trees:**
+> - Rerun trees with `min_samples_leaf=50,200` and `max_depth=12,16` (GPT suggestion)
+> - Ensures "trees can't close the gap" claim is airtight (not just under-tuned)
+> - Also fix `topK_by_variance` leak in V2 for final rerun if reporting V2 numbers
 
 ---
 
