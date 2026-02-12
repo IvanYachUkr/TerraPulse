@@ -1,23 +1,25 @@
 """
-MLP Mega Sweep V3: State-of-the-art tabular MLP + all GPT fixes.
+MLP Mega Sweep V3: Comprehensive tabular MLP sweep + all GPT fixes.
 
 Key improvements vs V2:
 FIX:  BatchNorm → LayerNorm everywhere (fair activation comparison)
 FIX:  topK_by_variance on TRAIN ONLY (no test leakage)
 FIX:  Scale once per feature set (huge speedup)
 FIX:  full_no_deltas enforced via col.startswith("delta")
-FIX:  CUDA seeds + deterministic mode
-NEW:  ResMLPBlock — pre-norm residual blocks for stable deep networks (6-12 layers)
+FIX:  SWA returns .module (has .predict()), val loss re-evaluated on SWA weights
+FIX:  MixUp stays on GPU via torch.distributions.Beta
+NEW:  GPU pre-loading — all data on device, index-batch (zero CPU→GPU transfer)
+NEW:  ResMLPBlock — pre-norm residual blocks for stable deep networks (4-12 layers)
 NEW:  Cosine annealing with linear warmup
 NEW:  MixUp regularization (interpolates samples + targets)
 NEW:  SWA (Stochastic Weight Averaging) for final generalization boost
 NEW:  Multi-fidelity screening: 15-epoch quick pass, full train for survivors
-NEW:  GPU-optimized (pin_memory, TF32, persistent workers)
 
-Architecture families:
-  - plain:    V2-style blocks (LayerNorm fixed), 2-5 layers
+Architecture families (~65 configs × 6 feature sets ≈ 390 configs):
+  - plain:    V2-style blocks (LayerNorm fixed), 2-5 layers, 5 activations
   - residual: pre-norm residual blocks, 4-12 layers, stable gradients
-  - residual+mixup: same + MixUp regularization
+  - residual+regularization: MixUp, SWA, input dropout, dropout sweeps
+  - residual+scaling: wide (d512), narrow-deep (d128), expansion=4
 
 Usage:
     .venv\\Scripts\\python.exe scripts/run_mlp_mega_sweep_v3.py
@@ -29,7 +31,6 @@ import json
 import os
 import sys
 import time
-import copy
 
 import numpy as np
 import pandas as pd
@@ -37,7 +38,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from sklearn.preprocessing import StandardScaler
-from torch.utils.data import DataLoader, TensorDataset
 from torch.optim.swa_utils import AveragedModel, SWALR
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -211,10 +211,13 @@ def cosine_warmup_scheduler(optimizer, warmup_steps, total_steps, min_lr=1e-6):
 
 
 def mixup_batch(x, y, alpha=0.2):
-    """MixUp: interpolate samples and targets within a batch."""
+    """MixUp: interpolate samples and targets within a batch.
+    Uses torch.distributions.Beta to stay fully on GPU.
+    """
     if alpha <= 0:
         return x, y
-    lam = np.random.beta(alpha, alpha)
+    dist = torch.distributions.Beta(alpha, alpha)
+    lam = dist.sample().item()
     lam = max(lam, 1 - lam)  # ensure lam >= 0.5
     idx = torch.randperm(x.size(0), device=x.device)
     x_mix = lam * x + (1 - lam) * x[idx]
@@ -424,126 +427,176 @@ def top_k_by_variance(X_train_only, k):
 
 # Feature sets to test (focused on V2 winners + full)
 FEATURE_SETS = [
-    "bands_indices",         # V2 winner (798)
-    "bands_indices_texture", # core + all texture
-    "bands_indices_hog",     # core + HOG
+    "bands_indices",         # V2 winner (798 features)
+    "bands_indices_texture", # core + all texture (~1368)
+    "bands_indices_hog",     # core + HOG (~1002)
     "full_no_deltas",        # everything minus deltas
     "top500_full",           # top-500 by train variance
-    "all_full",              # everything
+    "all_full",              # everything (~3535)
 ]
+
+
+def _cfg(run_id, feat_set, arch, act, nl, dm, **kw):
+    """Shorthand config builder with sensible defaults."""
+    return {
+        "run_id": run_id, "feature_set": feat_set,
+        "arch": arch, "activation": act,
+        "n_layers": nl, "d_model": dm,
+        "expansion": kw.get("expansion", 0 if arch == "plain" else 2),
+        "dropout": kw.get("dropout", 0.15),
+        "input_dropout": kw.get("input_dropout", 0.0),
+        "lr": kw.get("lr", 1e-3),
+        "weight_decay": kw.get("weight_decay", 1e-4),
+        "mixup_alpha": kw.get("mixup_alpha", 0.0),
+        "use_swa": kw.get("use_swa", False),
+        "use_cosine": kw.get("use_cosine", True),
+    }
+
 
 def generate_configs():
     """
-    Sweep config space:
-      - Plain MLP: 2-5 layers, various activations
-      - ResMLP: 4-10 blocks, with/without MixUp and SWA
+    Comprehensive sweep: ~65 configs per feature set × 6 feature sets ≈ 390.
+
+    Axes explored:
+      Plain MLP:  5 activations × 4 architectures + dropout/LR/WD variations
+      ResMLP:     3 activations × 5 depths (4-12) + dropout/expansion/width/LR
+      Regularization: MixUp (0.2, 0.4), SWA, input dropout, combined
+      Scaling:    d_model ∈ {128, 256, 512}, expansion ∈ {2, 4}
     """
     configs = []
-    run_id = 0
+    rid = 0
 
-    for feat_set in FEATURE_SETS:
-        # ---- Plain MLPs (corrected, for comparison with V2) ----
-        for act in ["gelu", "silu", "relu"]:
-            for nl, hd in [(3, 256), (5, 256), (3, 512)]:
-                configs.append({
-                    "run_id": run_id, "feature_set": feat_set,
-                    "arch": "plain", "activation": act,
-                    "n_layers": nl, "d_model": hd,
-                    "expansion": 0, "dropout": 0.15,
-                    "input_dropout": 0.0,
-                    "lr": 1e-3, "weight_decay": 1e-4,
-                    "mixup_alpha": 0.0, "use_swa": False,
-                    "use_cosine": True,
-                })
-                run_id += 1
+    for fs in FEATURE_SETS:
 
-        # ---- GeGLU plain (reference) ----
+        # =============================================================
+        # A) Plain MLPs — direct V2 comparison (all LayerNorm now)
+        # =============================================================
+
+        # Core grid: 4 activations × 4 architectures = 16
+        for act in ["gelu", "silu", "relu", "mish"]:
+            for nl, hd in [(3, 256), (5, 256), (3, 512), (3, 128)]:
+                configs.append(_cfg(rid, fs, "plain", act, nl, hd))
+                rid += 1
+
+        # GeGLU (gated, separate block) = 2
         for nl, hd in [(3, 256), (5, 256)]:
-            configs.append({
-                "run_id": run_id, "feature_set": feat_set,
-                "arch": "plain", "activation": "geglu",
-                "n_layers": nl, "d_model": hd,
-                "expansion": 0, "dropout": 0.15,
-                "input_dropout": 0.0,
-                "lr": 1e-3, "weight_decay": 1e-4,
-                "mixup_alpha": 0.0, "use_swa": False,
-                "use_cosine": True,
-            })
-            run_id += 1
+            configs.append(_cfg(rid, fs, "plain", "geglu", nl, hd))
+            rid += 1
 
-        # ---- ResMLP: depth sweep ----
+        # Plain variations on relu (V2's best activation) = 3
+        configs.append(_cfg(rid, fs, "plain", "relu", 5, 256, dropout=0.10))
+        rid += 1
+        configs.append(_cfg(rid, fs, "plain", "relu", 3, 256, lr=5e-4))
+        rid += 1
+        configs.append(_cfg(rid, fs, "plain", "relu", 3, 256, weight_decay=5e-4))
+        rid += 1
+
+        # Plain subtotal: 21
+
+        # =============================================================
+        # B) ResMLP — depth × activation sweep
+        # =============================================================
+
+        # Core grid: 3 activations × 5 depths = 15
+        for act in ["gelu", "silu", "relu"]:
+            for nb in [4, 6, 8, 10, 12]:
+                configs.append(_cfg(rid, fs, "residual", act, nb, 256))
+                rid += 1
+
+        # Dropout variations (gelu, key depths) = 3
+        for nb in [6, 8]:
+            configs.append(_cfg(rid, fs, "residual", "gelu", nb, 256,
+                                dropout=0.10))
+            rid += 1
+        configs.append(_cfg(rid, fs, "residual", "gelu", 8, 256,
+                            dropout=0.25))
+        rid += 1
+
+        # =============================================================
+        # C) ResMLP + MixUp
+        # =============================================================
+
+        # 3 activations × 2 depths, alpha=0.2 = 6
+        for act in ["gelu", "silu", "relu"]:
+            for nb in [6, 8]:
+                configs.append(_cfg(rid, fs, "residual", act, nb, 256,
+                                    mixup_alpha=0.2))
+                rid += 1
+
+        # Higher MixUp alpha = 1
+        configs.append(_cfg(rid, fs, "residual", "gelu", 8, 256,
+                            mixup_alpha=0.4))
+        rid += 1
+
+        # =============================================================
+        # D) ResMLP + SWA
+        # =============================================================
+
+        # 2 activations × 2 depths = 4
         for act in ["gelu", "silu"]:
-            for n_blocks in [4, 6, 8, 10]:
-                for dm in [256]:
-                    configs.append({
-                        "run_id": run_id, "feature_set": feat_set,
-                        "arch": "residual", "activation": act,
-                        "n_layers": n_blocks, "d_model": dm,
-                        "expansion": 2, "dropout": 0.15,
-                        "input_dropout": 0.0,
-                        "lr": 1e-3, "weight_decay": 1e-4,
-                        "mixup_alpha": 0.0, "use_swa": False,
-                        "use_cosine": True,
-                    })
-                    run_id += 1
+            for nb in [6, 8]:
+                configs.append(_cfg(rid, fs, "residual", act, nb, 256,
+                                    use_swa=True))
+                rid += 1
 
-        # ---- ResMLP + MixUp ----
+        # =============================================================
+        # E) ResMLP + MixUp + SWA ("kitchen sink")
+        # =============================================================
+
+        # 2 activations × 1 depth = 2
         for act in ["gelu", "silu"]:
-            for n_blocks in [6, 8]:
-                configs.append({
-                    "run_id": run_id, "feature_set": feat_set,
-                    "arch": "residual", "activation": act,
-                    "n_layers": n_blocks, "d_model": 256,
-                    "expansion": 2, "dropout": 0.15,
-                    "input_dropout": 0.0,
-                    "lr": 1e-3, "weight_decay": 1e-4,
-                    "mixup_alpha": 0.2, "use_swa": False,
-                    "use_cosine": True,
-                })
-                run_id += 1
+            configs.append(_cfg(rid, fs, "residual", act, 8, 256,
+                                mixup_alpha=0.2, use_swa=True))
+            rid += 1
 
-        # ---- ResMLP + SWA (best depth configs) ----
+        # + input dropout variant = 1
+        configs.append(_cfg(rid, fs, "residual", "gelu", 8, 256,
+                            mixup_alpha=0.2, use_swa=True, input_dropout=0.05))
+        rid += 1
+
+        # =============================================================
+        # F) ResMLP scaling variants
+        # =============================================================
+
+        # Wide d512: 2 activations × 2 depths = 4
         for act in ["gelu", "silu"]:
-            configs.append({
-                "run_id": run_id, "feature_set": feat_set,
-                "arch": "residual", "activation": act,
-                "n_layers": 8, "d_model": 256,
-                "expansion": 2, "dropout": 0.15,
-                "input_dropout": 0.0,
-                "lr": 1e-3, "weight_decay": 1e-4,
-                "mixup_alpha": 0.0, "use_swa": True,
-                "use_cosine": True,
-            })
-            run_id += 1
+            for nb in [4, 6]:
+                configs.append(_cfg(rid, fs, "residual", act, nb, 512,
+                                    lr=5e-4))
+                rid += 1
 
-        # ---- ResMLP + MixUp + SWA (the "everything" config) ----
-        for act in ["gelu"]:
-            configs.append({
-                "run_id": run_id, "feature_set": feat_set,
-                "arch": "residual", "activation": act,
-                "n_layers": 8, "d_model": 256,
-                "expansion": 2, "dropout": 0.15,
-                "input_dropout": 0.05,
-                "lr": 1e-3, "weight_decay": 1e-4,
-                "mixup_alpha": 0.2, "use_swa": True,
-                "use_cosine": True,
-            })
-            run_id += 1
+        # Wide d512 + MixUp = 1
+        configs.append(_cfg(rid, fs, "residual", "gelu", 6, 512,
+                            lr=5e-4, mixup_alpha=0.2))
+        rid += 1
 
-        # ---- ResMLP wider (d_model=512, fewer blocks) ----
-        for act in ["gelu"]:
-            for n_blocks in [4, 6]:
-                configs.append({
-                    "run_id": run_id, "feature_set": feat_set,
-                    "arch": "residual", "activation": act,
-                    "n_layers": n_blocks, "d_model": 512,
-                    "expansion": 2, "dropout": 0.15,
-                    "input_dropout": 0.0,
-                    "lr": 5e-4, "weight_decay": 1e-4,
-                    "mixup_alpha": 0.0, "use_swa": False,
-                    "use_cosine": True,
-                })
-                run_id += 1
+        # Narrow-deep d128 = 2
+        for nb in [8, 12]:
+            configs.append(_cfg(rid, fs, "residual", "gelu", nb, 128))
+            rid += 1
+
+        # Expansion=4 (wider FFN inside residual blocks) = 2
+        for nb in [6, 8]:
+            configs.append(_cfg(rid, fs, "residual", "gelu", nb, 256,
+                                expansion=4))
+            rid += 1
+
+        # =============================================================
+        # G) ResMLP LR + weight decay variations
+        # =============================================================
+
+        # Deep (10, 12) + lower LR = 2
+        for nb in [10, 12]:
+            configs.append(_cfg(rid, fs, "residual", "gelu", nb, 256,
+                                lr=5e-4))
+            rid += 1
+
+        # 8-block + higher weight decay = 1
+        configs.append(_cfg(rid, fs, "residual", "gelu", 8, 256,
+                            weight_decay=5e-4))
+        rid += 1
+
+        # Per feature set: 21 + 15 + 3 + 7 + 4 + 3 + 9 + 3 = 65
 
     print(f"Generated {len(configs)} configurations across {len(FEATURE_SETS)} feature sets")
     return configs
