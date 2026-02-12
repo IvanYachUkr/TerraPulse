@@ -603,18 +603,22 @@ def generate_configs():
 
 
 def make_name(cfg):
-    """Human-readable config name."""
+    """Human-readable config name. Encodes all knobs that vary across configs."""
     name = f"{cfg['feature_set']}_{cfg['arch']}_{cfg['activation']}_L{cfg['n_layers']}_d{cfg['d_model']}"
+    if cfg.get("expansion", 2) != 2 and cfg["arch"] == "residual":
+        name += f"_exp{cfg['expansion']}"
+    if cfg.get("dropout", 0.15) != 0.15:
+        name += f"_do{cfg['dropout']}"
     if cfg.get("mixup_alpha", 0) > 0:
-        name += "_mixup"
+        name += f"_mix{cfg['mixup_alpha']}"
     if cfg.get("use_swa", False):
         name += "_swa"
     if cfg.get("input_dropout", 0) > 0:
         name += f"_idrop{cfg['input_dropout']}"
-    if cfg["d_model"] != 256:
-        pass  # already in name
     if cfg["lr"] != 1e-3:
         name += f"_lr{cfg['lr']}"
+    if cfg.get("weight_decay", 1e-4) != 1e-4:
+        name += f"_wd{cfg['weight_decay']}"
     return name
 
 
@@ -758,7 +762,7 @@ def main():
         print("\n=== STAGE 1: Screening (15 epochs on bands_indices) ===")
         screen_feat = "bands_indices"
         if screen_feat in scaled_cache:
-            X_trn_t, X_val_t, X_test_t, n_feat = scaled_cache[screen_feat]
+            X_scr_trn, X_scr_val, _, n_feat = scaled_cache[screen_feat]
             screen_results = []
 
             # Consistent arch key for screening — includes all training knobs
@@ -786,7 +790,7 @@ def main():
 
                 t0 = time.time()
                 epochs, val_loss, _ = train_model(
-                    net, X_trn_t, y_trn_t, X_val_t, y_val_t,
+                    net, X_scr_trn, y_trn_t, X_scr_val, y_val_t,
                     lr=cfg["lr"], weight_decay=cfg["weight_decay"],
                     batch_size=1024, max_epochs=15, patience=15,
                     mixup_alpha=cfg.get("mixup_alpha", 0),
@@ -860,6 +864,11 @@ def main():
         with torch.no_grad():
             y_pred = final_model.predict(X_test_t).cpu().numpy()
         elapsed = time.time() - t0
+
+        # Free model GPU memory before next config
+        del net, final_model
+        if device == "cuda":
+            torch.cuda.empty_cache()
 
         summary, _ = evaluate_model(y[test_idx], y_pred, CLASS_NAMES)
         summary.update({
