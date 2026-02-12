@@ -237,33 +237,25 @@ def soft_cross_entropy(log_probs, targets):
     return -(targets * log_probs).sum(dim=-1).mean()
 
 
-def train_model(net, X_trn, y_trn, X_val, y_val,
+def train_model(net, X_trn_t, y_trn_t, X_val_t, y_val_t,
                 lr=1e-3, weight_decay=1e-4,
                 batch_size=1024, max_epochs=300, patience=20,
                 mixup_alpha=0.0, use_swa=False, use_cosine=True,
-                device="cpu", max_steps=None):
-    """Train with soft CE loss, optional MixUp, cosine schedule, SWA."""
+                max_steps=None):
+    """Train with soft CE loss, optional MixUp, cosine schedule, SWA.
 
-    y_trn = normalize_targets(y_trn, N_CLASSES)
-    y_val = normalize_targets(y_val, N_CLASSES)
-
-    X_t = torch.tensor(X_trn, dtype=torch.float32)
-    y_t = torch.tensor(y_trn, dtype=torch.float32)
-    X_vt = torch.tensor(X_val, dtype=torch.float32).to(device)
-    y_vt = torch.tensor(y_val, dtype=torch.float32).to(device)
-
-    use_pin = device == "cuda"
-    dl = DataLoader(
-        TensorDataset(X_t, y_t),
-        batch_size=batch_size, shuffle=True, drop_last=False,
-        num_workers=0, pin_memory=use_pin,
-    )
+    All tensor inputs (X_trn_t, y_trn_t, X_val_t, y_val_t) must already
+    be on the correct device (GPU or CPU). No DataLoader is used —
+    index-batching directly on GPU avoids CPU→GPU transfer overhead.
+    """
+    n_trn = X_trn_t.size(0)
+    device = X_trn_t.device
 
     optimizer = torch.optim.AdamW(
         net.parameters(), lr=lr, weight_decay=weight_decay,
     )
 
-    steps_per_epoch = len(dl)
+    steps_per_epoch = (n_trn + batch_size - 1) // batch_size
     total_steps = max_epochs * steps_per_epoch
 
     if use_cosine:
@@ -291,9 +283,12 @@ def train_model(net, X_trn, y_trn, X_val, y_val,
         epoch_loss = 0.0
         n_b = 0
 
-        for xb, yb in dl:
-            xb = xb.to(device, non_blocking=True)
-            yb = yb.to(device, non_blocking=True)
+        # Index-batch on device — no DataLoader, no CPU→GPU copies
+        perm = torch.randperm(n_trn, device=device)
+        for i in range(0, n_trn, batch_size):
+            idx = perm[i:i + batch_size]
+            xb = X_trn_t[idx]
+            yb = y_trn_t[idx]
 
             if mixup_alpha > 0:
                 xb, yb = mixup_batch(xb, yb, alpha=mixup_alpha)
@@ -326,8 +321,8 @@ def train_model(net, X_trn, y_trn, X_val, y_val,
         # Validation
         net.eval()
         with torch.no_grad():
-            log_val = net(X_vt)
-            val_loss = soft_cross_entropy(log_val, y_vt).item()
+            log_val = net(X_val_t)
+            val_loss = soft_cross_entropy(log_val, y_val_t).item()
 
         if val_loss < best_val - 1e-6:
             best_val = val_loss
@@ -349,8 +344,14 @@ def train_model(net, X_trn, y_trn, X_val, y_val,
     # Return SWA model if it was active, otherwise best early-stop checkpoint
     final_model = net
     if use_swa and swa_model is not None and n_epochs_done > swa_start_epoch:
-        final_model = swa_model
-        # No BN update needed — we use LayerNorm everywhere
+        # .module exposes the actual network class (with .predict())
+        # AveragedModel wrapper doesn't have custom methods like .predict()
+        final_model = swa_model.module
+        # Re-evaluate val loss on SWA weights so CSV logs are consistent
+        final_model.eval()
+        with torch.no_grad():
+            log_val = final_model(X_val_t)
+            best_val = soft_cross_entropy(log_val, y_val_t).item()
 
     return n_epochs_done, best_val, final_model
 
@@ -667,9 +668,9 @@ def main():
         completed = set(df_old["name"].values)
         print(f"Found {len(completed)} completed configs, resuming...")
 
-    # ---- Pre-scale per feature set (HUGE speedup) ----
-    print("Pre-scaling feature sets...")
-    scaled_cache = {}
+    # ---- Pre-scale and move to GPU (all data lives on device) ----
+    print("Pre-scaling feature sets and moving to GPU...")
+    scaled_cache = {}  # {feat_set: (X_trn_t, X_val_t, X_test_t, n_features)}
     for feat_set in FEATURE_SETS:
         feat_idx = feat_groups.get(feat_set)
         if feat_idx is None or len(feat_idx) == 0:
@@ -679,9 +680,23 @@ def main():
         X_trn_s = scaler.fit_transform(X[trn_idx]).astype(np.float32)
         X_val_s = scaler.transform(X[val_idx]).astype(np.float32)
         X_test_s = scaler.transform(X[test_idx]).astype(np.float32)
-        scaled_cache[feat_set] = (X_trn_s, X_val_s, X_test_s, len(feat_idx))
-        print(f"  {feat_set}: {len(feat_idx)} features scaled")
+        # Move to GPU once — stays there for ALL configs using this feature set
+        scaled_cache[feat_set] = (
+            torch.tensor(X_trn_s, dtype=torch.float32).to(device),
+            torch.tensor(X_val_s, dtype=torch.float32).to(device),
+            torch.tensor(X_test_s, dtype=torch.float32).to(device),
+            len(feat_idx),
+        )
+        print(f"  {feat_set}: {len(feat_idx)} features scaled → {device}")
     del X_all  # free ~500MB
+
+    # Pre-normalize and move targets to GPU
+    y_trn_t = torch.tensor(normalize_targets(y[trn_idx], N_CLASSES)).to(device)
+    y_val_t = torch.tensor(normalize_targets(y[val_idx], N_CLASSES)).to(device)
+
+    if device == "cuda":
+        mem_mb = torch.cuda.memory_allocated() / 1e6
+        print(f"  GPU memory used: {mem_mb:.0f} MB")
 
     # ---- Multi-fidelity screening (optional) ----
     # Stage 1: 15-epoch quick pass on bands_indices to eliminate bad archs
@@ -690,7 +705,7 @@ def main():
         print("\n=== STAGE 1: Screening (15 epochs on bands_indices) ===")
         screen_feat = "bands_indices"
         if screen_feat in scaled_cache:
-            X_trn_s, X_val_s, X_test_s, n_feat = scaled_cache[screen_feat]
+            X_trn_t, X_val_t, X_test_t, n_feat = scaled_cache[screen_feat]
             screen_results = []
 
             # Consistent arch key for screening — includes all training knobs
@@ -718,12 +733,11 @@ def main():
 
                 t0 = time.time()
                 epochs, val_loss, _ = train_model(
-                    net, X_trn_s, y[trn_idx], X_val_s, y[val_idx],
+                    net, X_trn_t, y_trn_t, X_val_t, y_val_t,
                     lr=cfg["lr"], weight_decay=cfg["weight_decay"],
                     batch_size=1024, max_epochs=15, patience=15,
                     mixup_alpha=cfg.get("mixup_alpha", 0),
                     use_cosine=False,  # too few epochs for cosine
-                    device=device,
                 )
                 elapsed = time.time() - t0
 
@@ -772,7 +786,7 @@ def main():
             if ak not in screening_survivors:
                 continue
 
-        X_trn_s, X_val_s, X_test_s, n_features = scaled_cache[feat_set]
+        X_trn_t, X_val_t, X_test_t, n_features = scaled_cache[feat_set]
 
         torch.manual_seed(SEED)
         net = build_model(cfg, n_features, device)
@@ -780,18 +794,16 @@ def main():
 
         t0 = time.time()
         epochs, best_val_loss, final_model = train_model(
-            net, X_trn_s, y[trn_idx], X_val_s, y[val_idx],
+            net, X_trn_t, y_trn_t, X_val_t, y_val_t,
             lr=cfg["lr"], weight_decay=cfg["weight_decay"],
             batch_size=1024, max_epochs=300, patience=20,
             mixup_alpha=cfg.get("mixup_alpha", 0),
             use_swa=cfg.get("use_swa", False),
             use_cosine=cfg.get("use_cosine", True),
-            device=device,
         )
 
-        # Evaluate
+        # Evaluate — X_test_t is already on GPU
         final_model.eval()
-        X_test_t = torch.tensor(X_test_s, dtype=torch.float32).to(device)
         with torch.no_grad():
             y_pred = final_model.predict(X_test_t).cpu().numpy()
         elapsed = time.time() - t0
