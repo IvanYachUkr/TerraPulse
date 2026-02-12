@@ -1,39 +1,65 @@
-# Python core
+# ============================================================
+# TerraPulse — Python Dependencies
+# ============================================================
+#
+# Setup (Windows):
+#   python -m venv .venv
+#   .venv\Scripts\activate
+#   pip install torch --index-url https://download.pytorch.org/whl/cu124
+#   pip install -r requirements.txt
+#
+# This installs CUDA-enabled PyTorch first, then everything else.
+# JAX is CPU-only (GPU JAX on Windows requires Docker/WSL).
+# ============================================================
+
+# ---- Core geospatial ----
 rasterio
 geopandas
 shapely
 pyproj
-numpy
-pandas
+rasterstats
 
-# Satellite data access
+# ---- Satellite data access ----
 pystac-client
 planetary-computer
 stackstac
 rioxarray
 xarray
 
-# OpenStreetMap
-osmnx
+# ---- Data processing ----
+numpy
+pandas
+pyarrow
+scipy
+tqdm
+pyyaml
 
-# ML
+# ---- ML: classical ----
 scikit-learn
 catboost
-shap
 optuna
+shap
 
-# Visualization & Dashboard
+# ---- ML: deep learning ----
+# NOTE: torch is installed separately with CUDA (see header)
+jax
+jaxlib
+
+# ---- Image processing / features ----
+scikit-image
+
+# ---- Spatial statistics (Moran's I) ----
+libpysal
+esda
+
+# ---- Visualization ----
 matplotlib
 seaborn
 folium
+
+# ---- Dashboard ----
 streamlit
 streamlit-folium
 
-# Config
-pyyaml
-
-# Image processing
-scikit-image
-
-# Geospatial utilities
-rasterstats
+# ---- OpenStreetMap ----
+osmnx
