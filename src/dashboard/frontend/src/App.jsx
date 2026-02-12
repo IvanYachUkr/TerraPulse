@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import Header from './components/Header.jsx';
 import Sidebar from './components/Sidebar.jsx';
 import MapView from './components/MapView.jsx';
 import CellInspector from './components/CellInspector.jsx';
+import ModelComparison from './components/ModelComparison.jsx';
 import { useApi } from './hooks/useApi.js';
 
 const CLASSES = ['tree_cover', 'grassland', 'cropland', 'built_up', 'bare_sparse', 'water'];
@@ -39,6 +40,8 @@ export default function App() {
     const [selectedClass, setSelectedClass] = useState('all');
     const [selectedCell, setSelectedCell] = useState(null);
     const [sidebarOpen, setSidebarOpen] = useState(true);
+    const [searchCellId, setSearchCellId] = useState(null);
+    const [showComparison, setShowComparison] = useState(false);
 
     // Data fetching
     const { data: grid, loading: gridLoading } = useApi('/api/grid');
@@ -48,6 +51,7 @@ export default function App() {
     const { data: models } = useApi('/api/models');
     const { data: conformal } = useApi('/api/conformal');
     const { data: predictions } = useApi(`/api/predictions/${selectedModel}`);
+    const { data: splitData } = useApi('/api/split');
     const { data: cellDetail } = useApi(
         selectedCell != null ? `/api/cell/${selectedCell}` : null
     );
@@ -58,21 +62,29 @@ export default function App() {
             case 'labels':
                 if (selectedYear === 2020) return labels2020;
                 if (selectedYear === 2021) return labels2021;
-                // Future years: show predictions instead
                 return predictions;
             case 'predictions': return predictions;
             case 'change': return changeData;
+            case 'folds': return splitData;
             default: return labels2021;
         }
     };
 
     const isFutureYear = selectedYear > 2021;
 
+    // When user searches a cell, also select it for inspection
+    const handleSearchCell = (id) => {
+        setSearchCellId(id);
+        if (id != null) setSelectedCell(id);
+    };
+
     return (
         <>
             <Header
                 sidebarOpen={sidebarOpen}
                 onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
+                showComparison={showComparison}
+                onToggleComparison={() => setShowComparison(!showComparison)}
             />
             <div className="app-layout">
                 {sidebarOpen && (
@@ -97,6 +109,8 @@ export default function App() {
                         labelYears={LABEL_YEARS}
                         allYears={ALL_YEARS}
                         isFutureYear={isFutureYear}
+                        searchCellId={searchCellId}
+                        onSearchCellId={handleSearchCell}
                     />
                 )}
                 <MapView
@@ -110,14 +124,27 @@ export default function App() {
                     labels2020={labels2020}
                     labels2021={labels2021}
                     changeData={changeData}
+                    splitData={splitData}
                     classColors={CLASS_COLORS}
                     classes={CLASSES}
                     classLabels={CLASS_LABELS}
                     loading={gridLoading}
                     onCellClick={setSelectedCell}
                     selectedCell={selectedCell}
-                    isFutureYear={selectedYear > 2021}
+                    isFutureYear={isFutureYear}
+                    searchCellId={searchCellId}
                 />
+                {showComparison && (
+                    <div className="comparison-panel">
+                        <div className="inspector-header">
+                            <span className="inspector-title">Model Comparison</span>
+                            <button className="inspector-close" onClick={() => setShowComparison(false)}>
+                                &times;
+                            </button>
+                        </div>
+                        <ModelComparison models={models} />
+                    </div>
+                )}
                 <CellInspector
                     cellDetail={cellDetail}
                     selectedCell={selectedCell}
@@ -126,6 +153,7 @@ export default function App() {
                     classColors={CLASS_COLORS}
                     classes={CLASSES}
                     models={models}
+                    selectedModel={selectedModel}
                 />
             </div>
         </>

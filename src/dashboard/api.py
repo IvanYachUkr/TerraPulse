@@ -131,10 +131,17 @@ def models():
     return get_benchmark()
 
 
+
 @app.get("/api/conformal")
 def conformal():
     """Conformal prediction coverage and interval widths per model per class."""
     return get_conformal()
+
+
+@app.get("/api/split")
+def split():
+    """Per-cell spatial CV fold and tile group assignments."""
+    return get_split()
 
 
 @app.get("/api/cell/{cell_id}")

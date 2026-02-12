@@ -1,4 +1,4 @@
-export default function Header({ sidebarOpen, onToggleSidebar }) {
+export default function Header({ sidebarOpen, onToggleSidebar, showComparison, onToggleComparison }) {
     return (
         <header className="header">
             <button
@@ -11,6 +11,13 @@ export default function Header({ sidebarOpen, onToggleSidebar }) {
             <span className="header-logo">TerraPulse</span>
             <span className="header-subtitle">Urban Land Cover Dashboard &mdash; Nuremberg</span>
             <div className="header-spacer" />
+            <button
+                className={`header-btn ${showComparison ? 'active' : ''}`}
+                onClick={onToggleComparison}
+                title="Model comparison charts"
+            >
+                &#9776; Compare
+            </button>
             <span className="header-badge">100m Grid &middot; 29,946 Cells</span>
         </header>
     );

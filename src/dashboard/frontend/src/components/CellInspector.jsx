@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useMemo } from 'react';
 import { Chart, registerables } from 'chart.js';
 
 Chart.register(...registerables);
@@ -12,6 +12,16 @@ const MODEL_DISPLAY = {
     mlp: 'MLP',
 };
 
+// Distinct palette for each model (not tied to class colors)
+const MODEL_COLORS = {
+    ridge: { bg: 'rgba(59,130,246,0.5)', border: 'rgb(59,130,246)' },
+    elasticnet: { bg: 'rgba(139,92,246,0.5)', border: 'rgb(139,92,246)' },
+    extratrees: { bg: 'rgba(16,185,129,0.5)', border: 'rgb(16,185,129)' },
+    rf: { bg: 'rgba(245,158,11,0.5)', border: 'rgb(245,158,11)' },
+    catboost: { bg: 'rgba(239,68,68,0.5)', border: 'rgb(239,68,68)' },
+    mlp: { bg: 'rgba(236,72,153,0.5)', border: 'rgb(236,72,153)' },
+};
+
 export default function CellInspector({
     cellDetail,
     selectedCell,
@@ -20,6 +30,7 @@ export default function CellInspector({
     classColors,
     classes,
     models,
+    selectedModel,
 }) {
     const barRef = useRef(null);
     const chartRef = useRef(null);
@@ -55,26 +66,22 @@ export default function CellInspector({
             });
         }
 
-        // Predictions from all models
-        if (cellDetail.predictions) {
-            const modelKeys = Object.keys(cellDetail.predictions);
-            // Just show all model predictions as grouped bars
-            for (const mKey of modelKeys) {
-                const preds = cellDetail.predictions[mKey];
-                datasets.push({
-                    label: MODEL_DISPLAY[mKey] || mKey,
-                    data: classes.map((c) => (preds[c] || 0) * 100),
-                    backgroundColor: bgColors.map((c) => c.replace('0.8', '0.4')),
-                    borderColor: borderColors,
-                    borderWidth: 1,
-                    borderDash: [3, 3],
-                });
-            }
+        // Show selected model's prediction (not all models — avoids clutter)
+        if (cellDetail.predictions && cellDetail.predictions[selectedModel]) {
+            const preds = cellDetail.predictions[selectedModel];
+            const mc = MODEL_COLORS[selectedModel] || { bg: 'rgba(148,163,184,0.5)', border: 'rgb(148,163,184)' };
+            datasets.push({
+                label: `${MODEL_DISPLAY[selectedModel] || selectedModel} Pred`,
+                data: classes.map((c) => (preds[c] || 0) * 100),
+                backgroundColor: mc.bg,
+                borderColor: mc.border,
+                borderWidth: 1,
+            });
         }
 
         chartRef.current = new Chart(barRef.current, {
             type: 'bar',
-            data: { labels, datasets: datasets.length > 2 ? [datasets[0], datasets[datasets.length - 1]] : datasets },
+            data: { labels, datasets },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
@@ -111,9 +118,11 @@ export default function CellInspector({
                 chartRef.current = null;
             }
         };
-    }, [cellDetail, classes, classLabels, classColors]);
+    }, [cellDetail, selectedModel, classes, classLabels, classColors]);
 
     if (selectedCell == null) return null;
+
+    const isHoldout = cellDetail?.split?.fold === 0;
 
     return (
         <div className={`inspector ${selectedCell == null ? 'hidden' : ''}`}>
@@ -133,6 +142,11 @@ export default function CellInspector({
                     {/* Proportions chart */}
                     <div className="card">
                         <div className="card-title">True vs Predicted Proportions</div>
+                        {!isHoldout && (
+                            <div className="info-badge" style={{ marginBottom: 8 }}>
+                                Training cell &mdash; no predictions available
+                            </div>
+                        )}
                         <div style={{ height: 220, position: 'relative' }}>
                             <canvas ref={barRef} />
                         </div>
@@ -143,12 +157,13 @@ export default function CellInspector({
                         <div className="card-title">Label Change (2020 &rarr; 2021)</div>
                         <div className="metric-grid">
                             {classes.map((c) => {
-                                const v2020 = cellDetail.labels_2020?.[c];
-                                const v2021 = cellDetail.labels_2021?.[c];
                                 const delta = cellDetail.change?.[`delta_${c}`];
                                 return (
                                     <div className="metric-item" key={c}>
-                                        <span className="metric-value" style={{ fontSize: 14 }}>
+                                        <span className="metric-value" style={{
+                                            fontSize: 14,
+                                            color: delta > 0.01 ? '#10b981' : delta < -0.01 ? '#ef4444' : '#94a3b8'
+                                        }}>
                                             {delta != null ? (delta > 0 ? '+' : '') + (delta * 100).toFixed(1) + 'pp' : '-'}
                                         </span>
                                         <span className="metric-label">
@@ -183,8 +198,11 @@ export default function CellInspector({
                                 <span className="metric-label">Models Available</span>
                             </div>
                             <div className="metric-item">
-                                <span className="metric-value" style={{ fontSize: 14 }}>
-                                    {cellDetail.split?.fold === 0 ? 'Holdout' : 'Training'}
+                                <span className="metric-value" style={{
+                                    fontSize: 14,
+                                    color: isHoldout ? '#3b82f6' : '#94a3b8'
+                                }}>
+                                    {isHoldout ? 'Holdout' : 'Training'}
                                 </span>
                                 <span className="metric-label">Split Role</span>
                             </div>

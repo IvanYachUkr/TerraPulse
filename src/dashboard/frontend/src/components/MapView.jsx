@@ -1,4 +1,4 @@
-import { useMemo, useCallback } from 'react';
+import { useMemo, useCallback, useRef } from 'react';
 import { Map } from 'react-map-gl/maplibre';
 import DeckGL from '@deck.gl/react';
 import { GeoJsonLayer } from '@deck.gl/layers';
@@ -48,6 +48,15 @@ function changeColor(v) {
     }
 }
 
+// Fold colors (5 distinct hues for spatial CV folds)
+const FOLD_COLORS = [
+    [59, 130, 246, 200],  // 0: blue (holdout)
+    [239, 68, 68, 200],   // 1: red
+    [16, 185, 129, 200],  // 2: green
+    [245, 158, 11, 200],  // 3: amber
+    [139, 92, 246, 200],  // 4: purple
+];
+
 // Get the dominant class and its proportion
 function dominantClass(props, classes) {
     let maxVal = -1, maxCls = null;
@@ -65,30 +74,52 @@ export default function MapView({
     grid,
     viewData,
     viewMode,
+    selectedYear,
     selectedClass,
     selectedModel,
     predictions,
     labels2020,
     labels2021,
     changeData,
+    splitData,
     classColors,
     classes,
     classLabels,
     loading,
     onCellClick,
     selectedCell,
+    isFutureYear,
+    searchCellId,
 }) {
+    const deckRef = useRef(null);
+
+    // Determine which label data to use based on year
+    const activeLabels = selectedYear === 2020 ? labels2020 : labels2021;
+
     const getFillColor = useCallback(
         (feature) => {
             const cellId = String(feature.properties.cell_id);
-            let data;
 
-            // Pick data source based on view mode
-            if (viewMode === 'labels_2020') data = labels2020?.[cellId];
-            else if (viewMode === 'labels_2021') data = labels2021?.[cellId];
-            else if (viewMode === 'predictions') data = predictions?.[cellId];
-            else if (viewMode === 'change') data = changeData?.[cellId];
-            else data = labels2021?.[cellId];
+            // Fold overlay mode
+            if (viewMode === 'folds') {
+                const split = splitData?.[cellId];
+                if (split && split.fold != null) {
+                    return FOLD_COLORS[split.fold] || [30, 41, 59, 100];
+                }
+                return [30, 41, 59, 100];
+            }
+
+            let data;
+            if (viewMode === 'labels') {
+                // Future years fall back to predictions
+                data = isFutureYear ? predictions?.[cellId] : activeLabels?.[cellId];
+            } else if (viewMode === 'predictions') {
+                data = predictions?.[cellId];
+            } else if (viewMode === 'change') {
+                data = changeData?.[cellId];
+            } else {
+                data = activeLabels?.[cellId];
+            }
 
             if (!data) return [30, 41, 59, 80]; // No data - dim
 
@@ -123,24 +154,27 @@ export default function MapView({
             }
             return [30, 41, 59, 100];
         },
-        [viewMode, selectedClass, labels2020, labels2021, predictions, changeData, classColors, classes]
+        [viewMode, selectedYear, selectedClass, activeLabels, predictions, changeData, splitData, classColors, classes, isFutureYear]
     );
 
     const getLineColor = useCallback(
         (feature) => {
-            if (feature.properties.cell_id === selectedCell) {
+            const cellId = feature.properties.cell_id;
+            if (cellId === selectedCell || cellId === searchCellId) {
                 return [255, 255, 255, 255];
             }
             return [255, 255, 255, 15];
         },
-        [selectedCell]
+        [selectedCell, searchCellId]
     );
 
     const getLineWidth = useCallback(
         (feature) => {
-            return feature.properties.cell_id === selectedCell ? 3 : 0.5;
+            const cellId = feature.properties.cell_id;
+            if (cellId === selectedCell || cellId === searchCellId) return 3;
+            return 0.5;
         },
-        [selectedCell]
+        [selectedCell, searchCellId]
     );
 
     const layer = useMemo(() => {
@@ -156,9 +190,9 @@ export default function MapView({
             getLineWidth,
             lineWidthUnits: 'pixels',
             updateTriggers: {
-                getFillColor: [viewMode, selectedClass, predictions, labels2020, labels2021, changeData],
-                getLineColor: [selectedCell],
-                getLineWidth: [selectedCell],
+                getFillColor: [viewMode, selectedYear, selectedClass, predictions, activeLabels, changeData, splitData, isFutureYear],
+                getLineColor: [selectedCell, searchCellId],
+                getLineWidth: [selectedCell, searchCellId],
             },
             onClick: (info) => {
                 if (info.object) {
@@ -166,18 +200,32 @@ export default function MapView({
                 }
             },
         });
-    }, [grid, getFillColor, getLineColor, getLineWidth, viewMode, selectedClass, predictions, labels2020, labels2021, changeData, selectedCell, onCellClick]);
+    }, [grid, getFillColor, getLineColor, getLineWidth, viewMode, selectedYear, selectedClass, predictions, activeLabels, changeData, splitData, selectedCell, searchCellId, onCellClick, isFutureYear]);
 
     const getTooltip = useCallback(
         ({ object }) => {
             if (!object) return null;
             const cellId = String(object.properties.cell_id);
+
+            // Fold mode tooltip
+            if (viewMode === 'folds') {
+                const split = splitData?.[cellId];
+                return {
+                    html: `<div class="tooltip-title">Cell ${cellId}</div><div style="font-size: 11px;">Fold: ${split?.fold ?? '?'}<br/>Tile: ${split?.tile_group ?? '?'}<br/>Role: ${split?.fold === 0 ? 'Holdout' : 'Training'}</div>`,
+                    className: 'deck-tooltip',
+                };
+            }
+
             let data;
-            if (viewMode === 'labels_2020') data = labels2020?.[cellId];
-            else if (viewMode === 'labels_2021') data = labels2021?.[cellId];
-            else if (viewMode === 'predictions') data = predictions?.[cellId];
-            else if (viewMode === 'change') data = changeData?.[cellId];
-            else data = labels2021?.[cellId];
+            if (viewMode === 'labels') {
+                data = isFutureYear ? predictions?.[cellId] : activeLabels?.[cellId];
+            } else if (viewMode === 'predictions') {
+                data = predictions?.[cellId];
+            } else if (viewMode === 'change') {
+                data = changeData?.[cellId];
+            } else {
+                data = activeLabels?.[cellId];
+            }
 
             if (!data) return { text: `Cell ${cellId}\nNo data` };
 
@@ -195,12 +243,13 @@ export default function MapView({
                     .join('\n');
             }
 
+            const suffix = viewMode === 'labels' && isFutureYear ? ' (predicted)' : '';
             return {
-                html: `<div class="tooltip-title">Cell ${cellId}</div><div style="white-space: pre-line; font-size: 11px;">${rows}</div>`,
+                html: `<div class="tooltip-title">Cell ${cellId}${suffix}</div><div style="white-space: pre-line; font-size: 11px;">${rows}</div>`,
                 className: 'deck-tooltip',
             };
         },
-        [viewMode, labels2020, labels2021, predictions, changeData, classes, classLabels]
+        [viewMode, selectedYear, activeLabels, predictions, changeData, splitData, classes, classLabels, isFutureYear]
     );
 
     return (
@@ -211,6 +260,7 @@ export default function MapView({
                 </div>
             )}
             <DeckGL
+                ref={deckRef}
                 initialViewState={INITIAL_VIEW}
                 controller={true}
                 layers={layer ? [layer] : []}
