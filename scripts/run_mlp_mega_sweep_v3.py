@@ -744,7 +744,7 @@ def main():
             torch.tensor(X_test_s, dtype=torch.float32).to(device),
             len(feat_idx),
         )
-        print(f"  {feat_set}: {len(feat_idx)} features scaled → {device}")
+        print(f"  {feat_set}: {len(feat_idx)} features scaled -> {device}")
     del X_all  # free ~500MB
 
     # Pre-normalize and move targets to GPU
@@ -812,9 +812,9 @@ def main():
             for r in screen_results[:n_keep]:
                 screening_survivors.add(r["arch_key"])
 
-            print(f"\nScreening: {len(screen_results)} → {n_keep} architectures survive")
+            print(f"\nScreening: {len(screen_results)} -> {n_keep} architectures survive")
             for r in screen_results[:n_keep]:
-                print(f"  ✓ {r['name']:55s} val={r['val_loss']:.5f}")
+                print(f"  + {r['name']:55s} val={r['val_loss']:.5f}")
             print()
 
     # ---- STAGE 2: Full training ----
