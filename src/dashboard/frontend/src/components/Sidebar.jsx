@@ -30,10 +30,6 @@ export default function Sidebar({
     onViewModeChange,
     selectedYear,
     onYearChange,
-    changeYearFrom,
-    onChangeYearFromChange,
-    changeYearTo,
-    onChangeYearToChange,
     selectedClass,
     onClassChange,
     classes,
@@ -46,7 +42,7 @@ export default function Sidebar({
     onSearchCellId,
 }) {
     const showModels = viewMode === 'predictions' || viewMode === 'labels';
-    const showYears = viewMode === 'labels' || viewMode === 'change';
+    const showYears = viewMode === 'labels';
     const showClasses = viewMode !== 'folds';
 
     return (
@@ -67,52 +63,35 @@ export default function Sidebar({
                 </div>
             </div>
 
-            {/* Year Selector */}
             {showYears && (
                 <div className="section">
-                    <div className="section-title">
-                        {viewMode === 'change' ? 'Year Range' : 'Year'}
-                    </div>
-                    {viewMode === 'change' ? (
-                        <div className="year-range">
-                            <select
-                                className="select"
-                                value={changeYearFrom}
-                                onChange={(e) => onChangeYearFromChange(Number(e.target.value))}
-                            >
-                                {allYears.map((y) => (
-                                    <option key={y} value={y}>{y}{!labelYears.includes(y) ? ' (pred)' : ''}</option>
-                                ))}
-                            </select>
-                            <span className="year-range-arrow">&rarr;</span>
-                            <select
-                                className="select"
-                                value={changeYearTo}
-                                onChange={(e) => onChangeYearToChange(Number(e.target.value))}
-                            >
-                                {allYears.map((y) => (
-                                    <option key={y} value={y}>{y}{!labelYears.includes(y) ? ' (pred)' : ''}</option>
-                                ))}
-                            </select>
-                        </div>
-                    ) : (
-                        <select
-                            className="select"
-                            value={selectedYear}
-                            onChange={(e) => onYearChange(Number(e.target.value))}
-                        >
-                            {allYears.map((y) => (
-                                <option key={y} value={y}>
-                                    {y}{!labelYears.includes(y) ? ' (predicted)' : ''}
-                                </option>
-                            ))}
-                        </select>
-                    )}
+                    <div className="section-title">Year</div>
+                    <select
+                        className="select"
+                        value={selectedYear}
+                        onChange={(e) => onYearChange(Number(e.target.value))}
+                    >
+                        {allYears.map((y) => (
+                            <option key={y} value={y}>
+                                {y}{!labelYears.includes(y) ? ' (predicted)' : ''}
+                            </option>
+                        ))}
+                    </select>
                     {isFutureYear && viewMode === 'labels' && (
                         <div className="info-badge">
                             No labels for {selectedYear} &mdash; showing model predictions
                         </div>
                     )}
+                </div>
+            )}
+
+            {/* Change mode note */}
+            {viewMode === 'change' && (
+                <div className="section">
+                    <div className="section-title">Year Range</div>
+                    <div className="info-badge">
+                        Showing change: 2020 &rarr; 2021
+                    </div>
                 </div>
             )}
 

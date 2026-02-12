@@ -35,8 +35,7 @@ export default function App() {
     const [selectedModel, setSelectedModel] = useState('mlp');
     const [viewMode, setViewMode] = useState('labels');
     const [selectedYear, setSelectedYear] = useState(2021);
-    const [changeYearFrom, setChangeYearFrom] = useState(2020);
-    const [changeYearTo, setChangeYearTo] = useState(2021);
+
     const [selectedClass, setSelectedClass] = useState('all');
     const [selectedCell, setSelectedCell] = useState(null);
     const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -49,8 +48,8 @@ export default function App() {
     const { data: labels2021 } = useApi('/api/labels/2021');
     const { data: changeData } = useApi('/api/change');
     const { data: models } = useApi('/api/models');
-    const { data: conformal } = useApi('/api/conformal');
     const { data: predictions } = useApi(`/api/predictions/${selectedModel}`);
+    const { data: conformal } = useApi('/api/conformal');
     const { data: splitData } = useApi('/api/split');
     const { data: cellDetail } = useApi(
         selectedCell != null ? `/api/cell/${selectedCell}` : null
@@ -96,16 +95,11 @@ export default function App() {
                         onViewModeChange={setViewMode}
                         selectedYear={selectedYear}
                         onYearChange={setSelectedYear}
-                        changeYearFrom={changeYearFrom}
-                        onChangeYearFromChange={setChangeYearFrom}
-                        changeYearTo={changeYearTo}
-                        onChangeYearToChange={setChangeYearTo}
                         selectedClass={selectedClass}
                         onClassChange={setSelectedClass}
                         classes={CLASSES}
                         classLabels={CLASS_LABELS}
                         classColors={CLASS_COLORS}
-                        conformal={conformal}
                         labelYears={LABEL_YEARS}
                         allYears={ALL_YEARS}
                         isFutureYear={isFutureYear}
@@ -154,6 +148,7 @@ export default function App() {
                     classes={CLASSES}
                     models={models}
                     selectedModel={selectedModel}
+                    conformal={conformal}
                 />
             </div>
         </>

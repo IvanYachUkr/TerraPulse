@@ -1,4 +1,4 @@
-import { useEffect, useRef, useMemo } from 'react';
+import { useEffect, useRef } from 'react';
 import { Chart, registerables } from 'chart.js';
 
 Chart.register(...registerables);
@@ -31,6 +31,7 @@ export default function CellInspector({
     classes,
     models,
     selectedModel,
+    conformal,
 }) {
     const barRef = useRef(null);
     const chartRef = useRef(null);
@@ -66,17 +67,44 @@ export default function CellInspector({
             });
         }
 
-        // Show selected model's prediction (not all models — avoids clutter)
+        // Show selected model's prediction with conformal error bars
         if (cellDetail.predictions && cellDetail.predictions[selectedModel]) {
             const preds = cellDetail.predictions[selectedModel];
             const mc = MODEL_COLORS[selectedModel] || { bg: 'rgba(148,163,184,0.5)', border: 'rgb(148,163,184)' };
+
+            // Get conformal interval widths for this model (half-width for symmetric bars)
+            const conformalData = conformal?.[selectedModel];
+            const errorBars = classes.map((c) => {
+                if (!conformalData?.[c]) return 0;
+                return conformalData[c].median_width_pp / 2; // half-width in pp
+            });
+
+            const predData = classes.map((c) => (preds[c] || 0) * 100);
+
             datasets.push({
                 label: `${MODEL_DISPLAY[selectedModel] || selectedModel} Pred`,
-                data: classes.map((c) => (preds[c] || 0) * 100),
+                data: predData,
                 backgroundColor: mc.bg,
                 borderColor: mc.border,
                 borderWidth: 1,
             });
+
+            // Conformal interval band (low and high as a separate floating bar dataset)
+            if (conformalData) {
+                const floatingData = classes.map((c, i) => {
+                    const pred = predData[i];
+                    const halfW = errorBars[i];
+                    return [Math.max(0, pred - halfW), Math.min(100, pred + halfW)];
+                });
+                datasets.push({
+                    label: `Conformal 90% CI`,
+                    data: floatingData,
+                    backgroundColor: 'rgba(255,255,255,0.07)',
+                    borderColor: 'rgba(255,255,255,0.3)',
+                    borderWidth: 1,
+                    borderSkipped: false,
+                });
+            }
         }
 
         chartRef.current = new Chart(barRef.current, {
@@ -93,6 +121,17 @@ export default function CellInspector({
                             color: '#94a3b8',
                             font: { size: 10, family: 'Inter' },
                             boxWidth: 12,
+                        },
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: (ctx) => {
+                                if (ctx.dataset.label.startsWith('Conformal')) {
+                                    const [lo, hi] = ctx.raw;
+                                    return `${ctx.dataset.label}: [${lo.toFixed(1)}%, ${hi.toFixed(1)}%]`;
+                                }
+                                return `${ctx.dataset.label}: ${ctx.formattedValue}%`;
+                            },
                         },
                     },
                 },
@@ -118,11 +157,14 @@ export default function CellInspector({
                 chartRef.current = null;
             }
         };
-    }, [cellDetail, selectedModel, classes, classLabels, classColors]);
+    }, [cellDetail, selectedModel, conformal, classes, classLabels, classColors]);
 
     if (selectedCell == null) return null;
 
     const isHoldout = cellDetail?.split?.fold === 0;
+
+    // Conformal coverage summary for the selected model
+    const conformalSummary = conformal?.[selectedModel];
 
     return (
         <div className={`inspector ${selectedCell == null ? 'hidden' : ''}`}>
@@ -151,6 +193,38 @@ export default function CellInspector({
                             <canvas ref={barRef} />
                         </div>
                     </div>
+
+                    {/* Conformal summary */}
+                    {conformalSummary && isHoldout && (
+                        <div className="card">
+                            <div className="card-title">
+                                Conformal Intervals ({MODEL_DISPLAY[selectedModel] || selectedModel})
+                            </div>
+                            <div className="metric-grid">
+                                {classes.map((c) => {
+                                    const ci = conformalSummary[c];
+                                    if (!ci) return null;
+                                    return (
+                                        <div className="metric-item" key={c}>
+                                            <span className="metric-value" style={{
+                                                fontSize: 13,
+                                                color: ci.coverage_pct >= 85 ? '#10b981' : ci.coverage_pct >= 70 ? '#f59e0b' : '#ef4444',
+                                            }}>
+                                                {ci.coverage_pct.toFixed(0)}%
+                                            </span>
+                                            <span className="metric-label" style={{ fontSize: 10 }}>
+                                                {classLabels[c]}
+                                                <br />
+                                                <span style={{ color: '#64748b' }}>
+                                                    &plusmn;{(ci.median_width_pp / 2).toFixed(1)}pp
+                                                </span>
+                                            </span>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
 
                     {/* Labels comparison */}
                     <div className="card">
