@@ -1,12 +1,15 @@
 """
 Phase 8: PyTorch MLP model wrappers.
 
-SoftmaxMLP — Predicts land-cover proportions directly via softmax + KL loss.
-             Uses GeGLU activation blocks for improved tabular performance.
+SoftmaxMLP   -- Predicts proportions via softmax + KL divergence loss.
+                Architecture: GeGLU blocks. Best R2 accuracy.
 
-DirichletMLP — (stretch goal) Predicts Dirichlet concentration parameters,
-               providing both mean predictions and uncertainty from a single
-               forward pass.
+ILR_MLP      -- Predicts 5 ILR coordinates via MSE loss, then inverts
+                to proportions. Respects Aitchison geometry, so Aitchison
+                distance and compositional bias should improve.
+
+DirichletMLP -- (stretch goal) Predicts Dirichlet concentration parameters
+                for both mean predictions and calibrated uncertainty.
 """
 
 import numpy as np
@@ -495,6 +498,191 @@ class DirichletMLP:
     def get_params_dict(self):
         return {
             "model": "DirichletMLP",
+            "hidden_dim": self.hidden_dim,
+            "n_layers": self.n_layers,
+            "dropout": self.dropout,
+            "lr": self.lr,
+            "weight_decay": self.weight_decay,
+            "batch_size": self.batch_size,
+            "max_epochs": self.max_epochs,
+            "patience": self.patience,
+            "epochs_trained": len(self.train_losses),
+            "device": str(self.device),
+        }
+
+
+# =====================================================================
+# ILR-MLP (compositional-aware)
+# =====================================================================
+
+class _ILR_MLPNet(nn.Module):
+    """MLP that predicts ILR coordinates directly with MSE loss."""
+
+    def __init__(self, input_dim, ilr_dim, hidden_dim=256,
+                 n_layers=3, dropout=0.15):
+        super().__init__()
+        layers = []
+        current_dim = input_dim
+        for _ in range(n_layers):
+            layers.append(GeGLUBlock(current_dim, hidden_dim, dropout))
+            current_dim = hidden_dim
+        self.backbone = nn.Sequential(*layers)
+        self.head = nn.Linear(hidden_dim, ilr_dim)
+
+    def forward(self, x):
+        """Return ILR coordinates (N, D-1)."""
+        return self.head(self.backbone(x))
+
+
+class ILR_MLP:
+    """
+    MLP trained in ILR space with MSE loss.
+
+    Unlike SoftmaxMLP which predicts proportions directly, this model
+    predicts ILR coordinates and inverts them to proportions. This
+    respects Aitchison geometry:
+    - MSE in ILR space = squared Aitchison distance
+    - Training optimizes compositional accuracy directly
+    - Expected to have better Aitchison distance and Moran's I
+      at possibly slight cost to R2
+
+    Architecture: same GeGLU backbone as SoftmaxMLP.
+    Output: 5 ILR coordinates (for 6 classes)
+    Loss: MSE(z_pred, z_true) where z = ILR(y)
+    Inference: proportions = ILR_inverse(z_pred)
+    """
+
+    def __init__(self, n_classes=6, hidden_dim=256, n_layers=3,
+                 dropout=0.15, lr=1e-3, weight_decay=1e-4,
+                 batch_size=512, max_epochs=200, patience=15,
+                 device=None, random_state=42, basis=None):
+        self.n_classes = n_classes
+        self.ilr_dim = n_classes - 1
+        self.hidden_dim = hidden_dim
+        self.n_layers = n_layers
+        self.dropout = dropout
+        self.lr = lr
+        self.weight_decay = weight_decay
+        self.batch_size = batch_size
+        self.max_epochs = max_epochs
+        self.patience = patience
+        self.random_state = random_state
+        self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+        self.basis = basis  # ILR basis matrix
+
+        self.scaler = StandardScaler()
+        self.net = None
+        self.train_losses = []
+        self.val_losses = []
+
+    def _build_net(self, input_dim):
+        torch.manual_seed(self.random_state)
+        self.net = _ILR_MLPNet(
+            input_dim, self.ilr_dim, self.hidden_dim,
+            self.n_layers, self.dropout,
+        ).to(self.device)
+
+    def fit(self, X_train, z_train, X_val=None, z_val=None):
+        """
+        Fit on ILR-transformed targets (same interface as tree models).
+
+        Parameters
+        ----------
+        X_train : ndarray (N, D)
+        z_train : ndarray (N, C-1) -- ILR coordinates
+        X_val, z_val : optional validation data
+        """
+        X_scaled = self.scaler.fit_transform(X_train)
+        self._build_net(X_scaled.shape[1])
+
+        X_t = torch.tensor(X_scaled, dtype=torch.float32)
+        z_t = torch.tensor(z_train, dtype=torch.float32)
+
+        train_ds = TensorDataset(X_t, z_t)
+        train_dl = DataLoader(train_ds, batch_size=self.batch_size,
+                              shuffle=True, drop_last=False)
+
+        has_val = X_val is not None and z_val is not None
+        if has_val:
+            X_val_s = self.scaler.transform(X_val)
+            X_val_t = torch.tensor(X_val_s, dtype=torch.float32).to(self.device)
+            z_val_t = torch.tensor(z_val, dtype=torch.float32).to(self.device)
+
+        optimizer = torch.optim.AdamW(
+            self.net.parameters(), lr=self.lr, weight_decay=self.weight_decay,
+        )
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer, mode="min", factor=0.5, patience=5, min_lr=1e-6,
+        )
+
+        best_val_loss = float("inf")
+        epochs_no_improve = 0
+        best_state = None
+
+        self.train_losses = []
+        self.val_losses = []
+
+        for epoch in range(self.max_epochs):
+            self.net.train()
+            epoch_loss = 0.0
+            n_batches = 0
+            for xb, zb in train_dl:
+                xb, zb = xb.to(self.device), zb.to(self.device)
+                z_pred = self.net(xb)
+                loss = F.mse_loss(z_pred, zb)
+                optimizer.zero_grad()
+                loss.backward()
+                torch.nn.utils.clip_grad_norm_(self.net.parameters(), 1.0)
+                optimizer.step()
+                epoch_loss += loss.item()
+                n_batches += 1
+
+            avg_train_loss = epoch_loss / max(n_batches, 1)
+            self.train_losses.append(avg_train_loss)
+
+            if has_val:
+                self.net.eval()
+                with torch.no_grad():
+                    z_val_pred = self.net(X_val_t)
+                    val_loss = F.mse_loss(z_val_pred, z_val_t).item()
+                self.val_losses.append(val_loss)
+                scheduler.step(val_loss)
+
+                if val_loss < best_val_loss - 1e-6:
+                    best_val_loss = val_loss
+                    epochs_no_improve = 0
+                    best_state = {k: v.cpu().clone()
+                                  for k, v in self.net.state_dict().items()}
+                else:
+                    epochs_no_improve += 1
+                    if epochs_no_improve >= self.patience:
+                        break
+            else:
+                scheduler.step(avg_train_loss)
+
+        if best_state is not None:
+            self.net.load_state_dict(best_state)
+
+        return self
+
+    def predict_ilr(self, X):
+        """Predict ILR coordinates."""
+        self.net.eval()
+        X_scaled = self.scaler.transform(X)
+        X_t = torch.tensor(X_scaled, dtype=torch.float32).to(self.device)
+        with torch.no_grad():
+            z_pred = self.net(X_t).cpu().numpy()
+        return z_pred
+
+    def predict_proportions(self, X):
+        """Predict ILR then invert to simplex proportions."""
+        from src.transforms import ilr_inverse
+        z_pred = self.predict_ilr(X)
+        return ilr_inverse(z_pred, basis=self.basis)
+
+    def get_params_dict(self):
+        return {
+            "model": "ILR_MLP",
             "hidden_dim": self.hidden_dim,
             "n_layers": self.n_layers,
             "dropout": self.dropout,

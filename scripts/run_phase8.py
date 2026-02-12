@@ -221,6 +221,17 @@ def build_model(model_name, **hparams):
             weight_decay=hparams.get("weight_decay", 1e-4),
         )
 
+    elif model_name == "ilr_mlp":
+        from src.models.mlp_torch import ILR_MLP
+        return ILR_MLP(
+            n_classes=N_CLASSES,
+            hidden_dim=hparams.get("hidden_dim", 256),
+            n_layers=hparams.get("n_layers", 3),
+            dropout=hparams.get("dropout", 0.15),
+            lr=hparams.get("lr", 1e-3),
+            weight_decay=hparams.get("weight_decay", 1e-4),
+        )
+
     elif model_name == "histgbr":
         from src.models.hist_gbr import HistGBRModel
         return HistGBRModel(
@@ -239,12 +250,13 @@ def build_model(model_name, **hparams):
         raise ValueError(f"Unknown model: {model_name}")
 
 
-# MLP-based models that train on raw proportions, not ILR
+# MLP-based models that train on raw proportions (softmax / KL), not ILR
+# NOTE: ilr_mlp trains on ILR coords like tree models, so NOT in this set
 MLP_MODELS = {"mlp", "dirichlet_mlp"}
 
 # All available model names
 ALL_MODELS = ["dummy", "ridge", "elasticnet", "extratrees", "rf",
-              "catboost", "histgbr", "mlp"]
+              "catboost", "histgbr", "mlp", "ilr_mlp"]
 
 
 # =====================================================================
