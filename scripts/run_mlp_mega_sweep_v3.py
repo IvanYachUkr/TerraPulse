@@ -167,6 +167,10 @@ class ResMLP(nn.Module):
         self.input_drop = nn.Dropout(input_dropout) if input_dropout > 0 else nn.Identity()
         self.proj = nn.Linear(input_dim, d_model)
         self.proj_norm = nn.LayerNorm(d_model)
+        # Use same activation for projection as for blocks (no GELU hardcode)
+        self.act_fn = {
+            "gelu": F.gelu, "silu": F.silu, "relu": F.relu, "mish": F.mish,
+        }[activation]
         d_hidden = d_model * expansion
         self.blocks = nn.ModuleList([
             ResMLPBlock(d_model, d_hidden, dropout, activation)
@@ -175,21 +179,18 @@ class ResMLP(nn.Module):
         self.final_norm = nn.LayerNorm(d_model)
         self.head = nn.Linear(d_model, n_classes)
 
-    def forward(self, x):
+    def _encode(self, x):
         x = self.input_drop(x)
-        h = F.gelu(self.proj_norm(self.proj(x)))
+        h = self.act_fn(self.proj_norm(self.proj(x)))
         for block in self.blocks:
             h = block(h)
-        h = self.final_norm(h)
-        return F.log_softmax(self.head(h), dim=-1)
+        return self.final_norm(h)
+
+    def forward(self, x):
+        return F.log_softmax(self.head(self._encode(x)), dim=-1)
 
     def predict(self, x):
-        x = self.input_drop(x)
-        h = F.gelu(self.proj_norm(self.proj(x)))
-        for block in self.blocks:
-            h = block(h)
-        h = self.final_norm(h)
-        return F.softmax(self.head(h), dim=-1)
+        return F.softmax(self.head(self._encode(x)), dim=-1)
 
 
 # =====================================================================
@@ -271,9 +272,10 @@ def train_model(net, X_trn, y_trn, X_val, y_val,
     else:
         scheduler = None
 
-    # SWA setup
+    # SWA setup — start at 55% so it actually triggers before early stopping
     swa_model = None
-    swa_start_epoch = int(max_epochs * 0.75)
+    swa_start_epoch = int(max_epochs * 0.55)
+    effective_patience = patience if not use_swa else max_epochs  # no early stop for SWA
     if use_swa:
         swa_model = AveragedModel(net)
         swa_scheduler = SWALR(optimizer, swa_lr=lr * 0.1, anneal_epochs=5)
@@ -334,7 +336,7 @@ def train_model(net, X_trn, y_trn, X_val, y_val,
                           for k, v in net.state_dict().items()}
         else:
             no_improve += 1
-            if no_improve >= patience:
+            if no_improve >= effective_patience:
                 break
 
         if max_steps and global_step >= max_steps:
@@ -344,16 +346,11 @@ def train_model(net, X_trn, y_trn, X_val, y_val,
     if best_state is not None:
         net.load_state_dict(best_state)
 
-    # SWA: update batch norm and return SWA model
+    # Return SWA model if it was active, otherwise best early-stop checkpoint
     final_model = net
     if use_swa and swa_model is not None and n_epochs_done > swa_start_epoch:
-        # Update BN stats with a pass through training data
-        swa_dl = DataLoader(TensorDataset(X_t), batch_size=batch_size, shuffle=False)
-        with torch.no_grad():
-            for (xb,) in swa_dl:
-                xb = xb.to(device, non_blocking=True)
-                swa_model(xb)
         final_model = swa_model
+        # No BN update needed — we use LayerNorm everywhere
 
     return n_epochs_done, best_val, final_model
 
@@ -607,8 +604,7 @@ def main():
     np.random.seed(SEED)
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(SEED)
-        torch.backends.cudnn.deterministic = True
-        torch.backends.cudnn.benchmark = False
+        # Skip cudnn deterministic flags — we use Linear+LayerNorm, not conv layers
         torch.backends.cuda.matmul.allow_tf32 = True
         try:
             torch.set_float32_matmul_precision("high")
@@ -655,7 +651,6 @@ def main():
     # ---- Feature groups (topK on TRAIN ONLY) ----
     feat_groups = partition_features(core_cols, full_feature_cols)
     feat_groups["top500_full"] = top_k_by_variance(X_all[trn_idx], 500)
-    feat_groups["top300_full"] = top_k_by_variance(X_all[trn_idx], 300)
 
     print("Feature groups: " + ", ".join(f"{k}={len(v)}" for k, v in feat_groups.items()))
 
@@ -698,17 +693,21 @@ def main():
             X_trn_s, X_val_s, X_test_s, n_feat = scaled_cache[screen_feat]
             screen_results = []
 
-            # Get unique arch configs (dedup by arch params)
+            # Consistent arch key for screening — includes all training knobs
+            def _arch_key(c):
+                return (c["arch"], c["activation"], c["n_layers"],
+                        c["d_model"], c.get("expansion", 0),
+                        c.get("mixup_alpha", 0.0), c.get("use_swa", False),
+                        c.get("input_dropout", 0.0))
+
             seen_archs = set()
             screen_configs = []
             for cfg in configs:
                 if cfg["feature_set"] != screen_feat:
                     continue
-                arch_key = (cfg["arch"], cfg["activation"], cfg["n_layers"],
-                            cfg["d_model"], cfg.get("mixup_alpha", 0),
-                            cfg.get("use_swa", False))
-                if arch_key not in seen_archs:
-                    seen_archs.add(arch_key)
+                ak = _arch_key(cfg)
+                if ak not in seen_archs:
+                    seen_archs.add(ak)
                     screen_configs.append(cfg)
 
             for cfg in screen_configs:
@@ -728,10 +727,10 @@ def main():
                 )
                 elapsed = time.time() - t0
 
+                ak = _arch_key(cfg)
                 screen_results.append({
                     "name": name, "val_loss": val_loss,
-                    "arch_key": (cfg["arch"], cfg["activation"], cfg["n_layers"],
-                                 cfg["d_model"]),
+                    "arch_key": ak,
                     "n_params": n_params, "elapsed": elapsed,
                 })
                 print(f"  SCREEN {name:55s} val_loss={val_loss:.5f}  {elapsed:.0f}s")
@@ -764,11 +763,13 @@ def main():
             print(f"[{cfg['run_id']:3d}] SKIP {name} (unknown feature set)")
             continue
 
-        # Check screening filter
+        # Check screening filter (same key as screening stage)
         if screening_survivors:
-            arch_key = (cfg["arch"], cfg["activation"], cfg["n_layers"],
-                        cfg["d_model"])
-            if arch_key not in screening_survivors:
+            ak = (cfg["arch"], cfg["activation"], cfg["n_layers"],
+                  cfg["d_model"], cfg.get("expansion", 0),
+                  cfg.get("mixup_alpha", 0.0), cfg.get("use_swa", False),
+                  cfg.get("input_dropout", 0.0))
+            if ak not in screening_survivors:
                 continue
 
         X_trn_s, X_val_s, X_test_s, n_features = scaled_cache[feat_set]
