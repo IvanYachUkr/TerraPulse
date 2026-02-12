@@ -8,6 +8,11 @@ export default function Header({ sidebarOpen, onToggleSidebar, showComparison, o
             >
                 {sidebarOpen ? '\u2190' : '\u2192'}
             </button>
+            <img
+                src="/logo.png"
+                alt="TerraPulse"
+                className="header-logo-img"
+            />
             <span className="header-logo">TerraPulse</span>
             <span className="header-subtitle">Urban Land Cover Dashboard &mdash; Nuremberg</span>
             <div className="header-spacer" />

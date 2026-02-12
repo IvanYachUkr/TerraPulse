@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/TerraPulse_logo.png" alt="TerraPulse" width="280" />
+</p>
+
 # Mapping Urban Change in Nuremberg with Machine Learning
 
 **Machine Learning WT 25/26** — Grabocka, Asano, Frey — UTN

@@ -99,6 +99,14 @@ body {
   gap: 16px;
 }
 
+.header-logo-img {
+  height: 36px;
+  width: 36px;
+  object-fit: contain;
+  border-radius: 6px;
+  filter: drop-shadow(0 0 6px rgba(59, 130, 246, 0.3));
+}
+
 .header-logo {
   font-size: 20px;
   font-weight: 700;
