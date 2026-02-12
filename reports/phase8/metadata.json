@@ -1,0 +1,20 @@
+{
+  "feature_set": "core",
+  "n_features": 2109,
+  "n_cells": 29946,
+  "n_folds": 5,
+  "buffer_tiles": 1,
+  "ilr_basis": "helmert",
+  "models": [
+    "ridge",
+    "elasticnet",
+    "extratrees",
+    "rf",
+    "catboost",
+    "mlp"
+  ],
+  "skip_hpo": true,
+  "n_optuna_trials": 50,
+  "created_utc": "2026-02-12T08:59:34.453702+00:00",
+  "elapsed_seconds": 28490.6
+}

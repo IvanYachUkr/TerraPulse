@@ -49,3 +49,5 @@ desktop.ini
 _pdf_extracted.txt
 cache/
 *.log
+
+catboost_info/
