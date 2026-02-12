@@ -1,8 +1,15 @@
 """
 Phase 8: Split conformal prediction intervals.
 
-Provides distribution-free prediction intervals for each land-cover
-class proportion at a specified coverage level.
+Provides distribution-free **marginal** prediction intervals for each
+land-cover class proportion at a specified coverage level.
+
+IMPORTANT:
+- These are per-class *marginal* intervals (each class covered independently).
+- They do NOT enforce sum-to-one across classes (not a simplex constraint).
+- Joint coverage (all classes simultaneously) will be lower than marginal.
+- A more principled compositional alternative would be conformal balls in
+  ILR space, but marginal intervals are simpler to interpret.
 """
 
 import numpy as np
@@ -88,7 +95,9 @@ def conformal_coverage_report(y_test, lower, upper, class_names=None):
         }
 
     report["aggregate"] = {
-        "coverage_pct": float(covered.all(axis=1).mean()) * 100,  # joint
+        # Joint coverage: fraction of samples where ALL classes are covered
+        "joint_coverage_pct": float(covered.all(axis=1).mean()) * 100,
+        # Marginal coverage: average per-class coverage (what conformal guarantees)
         "marginal_coverage_pct": float(covered.mean()) * 100,
         "mean_width_pp": float(widths.mean()) * 100,
     }

@@ -221,6 +221,20 @@ def build_model(model_name, **hparams):
             weight_decay=hparams.get("weight_decay", 1e-4),
         )
 
+    elif model_name == "histgbr":
+        from src.models.hist_gbr import HistGBRModel
+        return HistGBRModel(
+            max_iter=hparams.get("max_iter", 500),
+            max_depth=hparams.get("max_depth", 6),
+            learning_rate=hparams.get("learning_rate", 0.1),
+            min_samples_leaf=hparams.get("min_samples_leaf", 20),
+            l2_regularization=hparams.get("l2_regularization", 0.0),
+        )
+
+    elif model_name == "dummy":
+        from src.models.baseline import DummyBaseline
+        return DummyBaseline()
+
     else:
         raise ValueError(f"Unknown model: {model_name}")
 
@@ -229,7 +243,8 @@ def build_model(model_name, **hparams):
 MLP_MODELS = {"mlp", "dirichlet_mlp"}
 
 # All available model names
-ALL_MODELS = ["ridge", "elasticnet", "extratrees", "rf", "catboost", "mlp"]
+ALL_MODELS = ["dummy", "ridge", "elasticnet", "extratrees", "rf",
+              "catboost", "histgbr", "mlp"]
 
 
 # =====================================================================
@@ -408,8 +423,13 @@ def tune_model(model_name, X, z, y, fold_assignments, tile_groups,
     elif model_name == "catboost":
         return tune_catboost(X, z, y, fold_assignments, tile_groups,
                              n_tile_cols, n_tile_rows, n_optuna_trials, buffer_tiles)
+    elif model_name == "histgbr":
+        # HistGBR has built-in early stopping; light tune
+        return {}
     elif model_name in MLP_MODELS:
         # MLP uses manual defaults + early stopping; no Optuna for now
+        return {}
+    elif model_name == "dummy":
         return {}
     else:
         return {}
@@ -601,7 +621,15 @@ def compute_coefficient_stability(model_name, hparams, X, z, y,
     """
     Fit model on each fold, collect coefficients, compute stability.
 
-    Returns DataFrame with feature, mean_coef, std_coef, sign_consistency.
+    Coefficient interpretation:
+    Coefficients live in ILR space (5 coordinates for 6 classes).
+    For global feature importance: report L2 norm across ILR dims.
+    For per-class effects: coefs @ basis maps ILR coefs to CLR-like
+    log-contrast effects (conceptually, "impact on log-ratio of each
+    class relative to geometric mean").
+
+    Returns DataFrame with feature, mean_coef_norm, std_coef_norm,
+    sign_consistency (of dominant ILR coordinate).
     """
     from src.models.linear import RidgeModel
 

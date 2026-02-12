@@ -260,8 +260,11 @@ class _DirichletMLPNet(nn.Module):
     MLP that predicts Dirichlet concentration parameters.
 
     Output: α = softplus(logits) + 1 (ensures α > 1 for unimodal Dirichlet).
-    Mean prediction: α_i / sum(α)
-    Uncertainty: 1 / (sum(α) + 1) — precision-based
+
+    Uncertainty from the Dirichlet posterior:
+        mean:      μ_i = α_i / α0           where α0 = Σα
+        variance:  Var[p_i] = α_i(α0 - α_i) / (α0²(α0 + 1))
+        precision: α0 (higher = more confident)
     """
 
     def __init__(self, input_dim, n_classes, hidden_dim=256,
@@ -284,14 +287,30 @@ class _DirichletMLPNet(nn.Module):
         """
         Returns
         -------
-        mean : (N, C) — expected proportions α_i / Σα
-        uncertainty : (N,) — 1 / (Σα + 1), lower = more certain
+        mean : (N, C) — expected proportions μ_i = α_i / α0
+        precision_inv : (N,) — 1/(α0+1), scalar uncertainty (lower = more certain)
         """
         alpha = self.forward(x)
         alpha_sum = alpha.sum(dim=-1, keepdim=True)
         mean = alpha / alpha_sum
-        uncertainty = 1.0 / (alpha_sum.squeeze(-1) + 1.0)
-        return mean, uncertainty
+        precision_inv = 1.0 / (alpha_sum.squeeze(-1) + 1.0)
+        return mean, precision_inv
+
+    def full_uncertainty(self, x):
+        """
+        Full Dirichlet uncertainty decomposition.
+
+        Returns
+        -------
+        mean : (N, C) — μ_i = α_i / α0
+        variance : (N, C) — Var[p_i] = α_i(α0 - α_i) / (α0²(α0 + 1))
+        alpha0 : (N,) — concentration/precision (higher = more confident)
+        """
+        alpha = self.forward(x)
+        alpha0 = alpha.sum(dim=-1, keepdim=True)  # (N, 1)
+        mean = alpha / alpha0
+        variance = (alpha * (alpha0 - alpha)) / (alpha0 ** 2 * (alpha0 + 1))
+        return mean, variance, alpha0.squeeze(-1)
 
 
 class DirichletMLP:
@@ -444,13 +463,30 @@ class DirichletMLP:
         return mean.cpu().numpy()
 
     def predict_uncertainty(self, X):
-        """Uncertainty per sample: 1 / (Σα + 1)."""
+        """Scalar uncertainty per sample: 1 / (alpha0 + 1)."""
         self.net.eval()
         X_scaled = self.scaler.transform(X)
         X_t = torch.tensor(X_scaled, dtype=torch.float32).to(self.device)
         with torch.no_grad():
             _, unc = self.net.mean_and_uncertainty(X_t)
         return unc.cpu().numpy()
+
+    def predict_full_uncertainty(self, X):
+        """
+        Full Dirichlet uncertainty.
+
+        Returns
+        -------
+        mean : (N, C) — expected proportions
+        variance : (N, C) — per-class Dirichlet variance
+        alpha0 : (N,) — precision (concentration sum)
+        """
+        self.net.eval()
+        X_scaled = self.scaler.transform(X)
+        X_t = torch.tensor(X_scaled, dtype=torch.float32).to(self.device)
+        with torch.no_grad():
+            mean, var, alpha0 = self.net.full_uncertainty(X_t)
+        return mean.cpu().numpy(), var.cpu().numpy(), alpha0.cpu().numpy()
 
     def predict_ilr(self, X):
         """Interface compat — returns proportions."""
