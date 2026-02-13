@@ -90,6 +90,14 @@
   - **186 cols × 161 rows = 29,946 cells**
   - `cell_id` row-major, contiguous 0..N-1
   - Output: `data/processed/v2/grid.gpkg`
+  - **Grid size justification (retrospective analysis):**
+    - Connected-component analysis of pixel-level change (2020→2021) in the AOI:
+      76% of changed regions are ≤4 pixels, median = 2 px (200 m²)
+    - At 100m (100 px/cell), these tiny artifacts → 1–4% proportion noise, naturally smoothed out
+    - Real change (≥50 px regions, ~1.5% of regions) still produces 15–25% proportion shifts per cell
+    - Smaller cells (e.g. 50m = 25 px) would amplify label artifacts to ~16% per cell
+    - Larger cells (e.g. 200m) would halve sample count to ~7,500 — too few for spatial CV
+    - **100m is the sweet spot: noise-smoothing + sufficient samples + spatial granularity**
 - [x] Aggregate label proportions per cell:
   - `data/processed/v2/labels_2020.parquet`
   - `data/processed/v2/labels_2021.parquet`
@@ -244,6 +252,17 @@
 - [/] Hyperparameter tuning (time-boxed) ⚠️
 - [ ] Compare models (performance vs interpretability)
 
+### Model comparison (all evaluated with spatial CV + buffer)
+
+| Model | R² (uniform) | MAE (pp) | Notes |
+|-------|-------------|----------|-------|
+| Ridge | 0.527 | 5.21 | Interpretable baseline |
+| ElasticNet | 0.434 | 5.43 | Sparse, but worse than Ridge |
+| ExtraTrees | 0.675 | 3.34 | Best tree model (2109 feat) |
+| RF | 0.684 | 3.23 | Competitive tree model |
+| CatBoost | 0.671 | 4.00 | Gradient boosted, lag on MAE |
+| **MLP (Phase 8 best)** | **0.752** | **2.92** | Plain MLP, single fold |
+
 ### Tree results (28 configs, complete — `trees_reduced_features.csv`)
 - Best: **ExtraTrees R²=0.692**, MAE=3.13pp (`all_core`, 2109 features)
 - RF: R²=0.684 | CatBoost: R²=0.671 (but best Aitchison=4.19)
@@ -255,7 +274,7 @@
 - MLP–Tree gap: **+0.17 R²** — MLPs learn cross-spectral interactions trees cannot
 - ⚠️ V2 had BatchNorm confound on ReLU — fixed in V4
 
-### MLP V4 search sweep (complete — 1552/1584 configs, 3 NaN errors)
+### MLP V4 search sweep (complete — 1549/1584 configs, fold-0 only)
 - Script: `scripts/run_mlp_overnight_v4.py --stage search` (fold-0, 120 epochs)
 - Best overall: **`residual_gelu_L6_d512_bn` R²=0.8634**, MAE=2.64pp
 - Feature set ablation (best R² per set):
@@ -274,9 +293,29 @@
 - Auto-CV launcher: `scripts/launch_cv_after_search.py` polls search → selects
   top 20 global + top 10 per feature set → launches CV (300 epochs × 5 folds)
 
-### MLP V4 CV stage (in progress — auto-launched)
-- [ ] CV complete (top 20 global + top 10 per category ≈ ~73 configs × 5 folds)
-- [ ] Final model selection from CV results
+### MLP V4 CV (complete — 83 configs × 5 folds = 415 runs)
+- [x] CV complete
+- Top 5 configs (5-fold mean ± std):
+  | Rank | Config | R² mean | R² std | MAE | Epochs |
+  |------|--------|---------|--------|-----|--------|
+  | 1 | `bands_indices_glcm_lbp_plain_mish_L5_d512_bn` | **0.775** | 0.074 | 2.49 | 300 (cap!) |
+  | 2 | `bands_indices_residual_silu_L10_d256_nonorm` | **0.772** | 0.050 | 2.52 | 297 (cap!) |
+  | 3 | `full_no_deltas_plain_gelu_L5_d512_bn` | **0.771** | 0.035 | 2.65 | 280 |
+  | 4 | `bands_indices_plain_silu_L5_d512_bn` | **0.771** | 0.054 | 2.45 | 300 (cap!) |
+  | 5 | `bands_indices_texture_plain_silu_L5_d256_bn` | 0.767 | 0.033 | 2.62 | 295 |
+- Key observations:
+  - Many top configs hit the **300-epoch cap** — potentially undertrained
+  - `bands_indices` (798 feat) and `bands_indices_glcm_lbp` (924 feat) dominate
+  - Plain architectures (mish, silu) + BN competitive with residual deep networks
+  - Fold-0 R²=0.86 drops to CV mean 0.77 → **~0.09 fold variance** indicates spatial heterogeneity
+- [/] Final model selection from CV results
+
+### MLP V5 deep training (in progress)
+- Script: `scripts/run_mlp_v5_deep_train.py`
+- Goal: let models train to convergence (2000 epoch cap, 5000-step patience)
+- 60 configs × 5 folds = 300 runs (selected from V4 winners + new architectures)
+- Tiers: proven winners, deep (12-16 blocks), GeGLU recovery, wide (d1024)
+- [ ] V5 results pending
 
 ---
 
@@ -295,8 +334,12 @@
 
 - [ ] Feature importance + SHAP (for flexible model)
 - [ ] One helpful explanation + one misleading explanation ⚠️
-- [ ] Uncertainty proxy:
-  - ensemble variance / quantile models / bootstrap
+- [/] Uncertainty proxy:
+  - [x] Conformal prediction intervals computed (6 models × 6 classes)
+  - Ridge: 78–83% coverage, wide intervals (5–29pp)
+  - MLP: 71–80% coverage, tighter intervals (0.03–14pp)
+  - Tree models: 65–80% coverage, moderate intervals
+  - ⚠️ Coverage below nominal 90% → conservative interpretation needed
 
 ---
 
