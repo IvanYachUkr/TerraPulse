@@ -94,17 +94,8 @@ def generate_v5_configs():
         configs.append(_cfg(rid, fs, "residual", "gelu", 16, 256, "batchnorm", lr=5e-4)); rid += 1
         configs.append(_cfg(rid, fs, "residual", "silu", 16, 256, "none", lr=5e-4)); rid += 1
 
-        # ── Tier 3: GeGLU recovery (NO batchnorm to prevent NaN) ──
-        # GeGLU plain
-        configs.append(_cfg(rid, fs, "plain", "geglu", 5, 256, "none")); rid += 1
-        configs.append(_cfg(rid, fs, "plain", "geglu", 5, 512, "none")); rid += 1
-        # GeGLU residual
-        configs.append(_cfg(rid, fs, "residual", "geglu", 6, 256, "none")); rid += 1
-        configs.append(_cfg(rid, fs, "residual", "geglu", 6, 512, "none")); rid += 1
-        configs.append(_cfg(rid, fs, "residual", "geglu", 4, 256, "none")); rid += 1
-        # GeGLU deep
-        configs.append(_cfg(rid, fs, "residual", "geglu", 10, 256, "none")); rid += 1
-        # GeGLU with layernorm (should be safe, not batchnorm)
+        # ── Tier 3: GeGLU with layernorm (only stable variant) ──
+        # Plain/residual GeGLU without normalization diverges (R²=-5 to -16)
         configs.append(_cfg(rid, fs, "residual", "geglu", 6, 256, "layernorm")); rid += 1
 
         # ── Tier 4: Wider models (d1024, never tested) ──

@@ -271,7 +271,7 @@
 
 ### MLP V2 sweep (superseded by V4)
 - Best: **relu L5 h256 R²=0.858**, MAE=2.55pp (`bands_indices`, 798 feats)
-- MLP–Tree gap: **+0.17 R²** — MLPs learn cross-spectral interactions trees cannot
+- MLP–Tree gap: **+0.17 R²** on fold-0 (0.86 vs 0.69), **+0.09 R²** on CV means — MLPs learn cross-spectral interactions trees cannot
 - ⚠️ V2 had BatchNorm confound on ReLU — fixed in V4
 
 ### MLP V4 search sweep (complete — 1549/1584 configs, fold-0 only)
@@ -310,12 +310,42 @@
   - Fold-0 R²=0.86 drops to CV mean 0.77 → **~0.09 fold variance** indicates spatial heterogeneity
 - [/] Final model selection from CV results
 
-### MLP V5 deep training (in progress)
+### MLP V5 deep training (complete — 233 runs, 5.7h)
 - Script: `scripts/run_mlp_v5_deep_train.py`
-- Goal: let models train to convergence (2000 epoch cap, 5000-step patience)
-- 60 configs × 5 folds = 300 runs (selected from V4 winners + new architectures)
-- Tiers: proven winners, deep (12-16 blocks), GeGLU recovery, wide (d1024)
-- [ ] V5 results pending
+- Results: `reports/phase8/tables/mlp_v5_deep.csv`, `mlp_v5_deep_summary.csv`
+- 233 runs across 5 folds, 3 feature sets, 2000-epoch cap (all early-stopped, none hit cap)
+- **Best 5-fold CV models (R² mean ± std):**
+  1. `glcm_lbp_plain_silu_L5_d1024_bn` — **R²=0.787±0.041**, MAE=2.51pp
+  2. `bands_indices_plain_mish_L5_d512_bn` — R²=0.769±0.065, MAE=2.49pp
+  3. `glcm_lbp_residual_gelu_L12_d256_bn` — R²=0.768±0.036, MAE=2.57pp
+  4. `bands_indices_residual_silu_L10_d256_nonorm` — R²=0.768±0.054, MAE=2.51pp
+  5. `full_no_deltas_plain_mish_L5_d512_bn` — R²=0.762±0.040, MAE=2.67pp
+- **Key findings:**
+  - `bands_indices_glcm_lbp` (924 feat) beats `bands_indices` (798 feat) — GLCM+LBP texture helps
+  - `full_no_deltas` (1428 feat) is worst — Gabor/HOG/morph/semivariogram add noise
+  - Shallow plain (L5) dominates; deep residual (L12-16) competitive but not better
+  - SiLU is the best activation; Mish close second; GeGLU catastrophically unstable
+  - Texture features reduce fold-to-fold variance (±0.041 vs ±0.065)
+  - Fold R² ranges: F0=0.86 (urban), F1=0.77 (mixed), F2=0.77 (forest), F3=0.73 (suburban), F4=0.83 (dense forest)
+- [x] V5 results complete
+
+### Future: V6 deep+wide architecture sweep
+- Test unexplored architecture region: L12-16 × d512-1024
+- V5 shows shallow wide (L5×d1024) is the overall winner architecture
+- Incorporate new spectral indices (EVI2, MNDWI, GNDVI, NDTI, IRECI, CRI1)
+- Feature ablation study complete — RedEdge+VegIdx+TC (348 feat) achieves 98.6% of full bands+indices with half the features
+
+### Future: V6/V7 advanced spectral indices
+- Add to `spectral_indices()` in `extract_features.py`, then re-extract:
+  - **MNDWI** = (Green − SWIR1)/(Green + SWIR1) — better water in urban areas
+  - **EVI2** = 2.5×(NIR − Red)/(NIR + 2.4×Red + 1) — less saturated than NDVI
+  - **NDTI** = (SWIR1 − SWIR2)/(SWIR1 + SWIR2) — cropland vs bare soil
+  - **IRECI** = (B07 − B04)/(B05/B06) — Sentinel-2-specific red-edge chlorophyll
+  - **GNDVI** = (NIR − Green)/(NIR + Green) — chlorophyll-sensitive
+  - **CRI1** = (1/Green) − (1/RE1) — carotenoid content
+- Note: NDMI ≈ −NDBI (redundant), SAVI ≈ NDVI — consider dropping duplicates
+- Also note: texture features confirmed to underperform at 10×10 patch size
+- Test new `bands_indices_v2` feature set vs current `bands_indices`
 
 ---
 
