@@ -250,22 +250,33 @@
 - Feature sets: `all_core` barely beats `bands_and_indices` (798 feats)
 - Trees plateau at ~0.69 regardless of ensemble size or feature set
 
-### MLP V2 sweep (in progress — 41/156 configs)
-- Best so far: **relu L5 h256 R²=0.858**, MAE=2.55pp (`bands_indices`, 798 feats)
+### MLP V2 sweep (superseded by V4)
+- Best: **relu L5 h256 R²=0.858**, MAE=2.55pp (`bands_indices`, 798 feats)
 - MLP–Tree gap: **+0.17 R²** — MLPs learn cross-spectral interactions trees cannot
-- ⚠️ V2 has BatchNorm confound on ReLU (fixed in V3)
+- ⚠️ V2 had BatchNorm confound on ReLU — fixed in V4
 
-### MLP V3 sweep (ready to launch — 168 configs)
-- All GPT fixes: LayerNorm everywhere, topK on train only, scale-once speedup
-- State-of-the-art: ResMLPBlock (4-12 layers), cosine+warmup, MixUp, SWA
-- ILR-MLP variant added to `mlp_torch.py` (Aitchison-aware loss)
-- Will run on GPU (RTX 4070) parallel with V2 on CPU
+### MLP V4 search sweep (complete — 1552/1584 configs, 3 NaN errors)
+- Script: `scripts/run_mlp_overnight_v4.py --stage search` (fold-0, 120 epochs)
+- Best overall: **`residual_gelu_L6_d512_bn` R²=0.8634**, MAE=2.64pp
+- Feature set ablation (best R² per set):
+  | Rank | Feature Set | Features | Best R² |
+  |------|---|---|---|
+  | 1 | `bands_indices` | 798 | **0.8634** |
+  | 2 | `bands_indices_glcm_lbp` | ~900 | 0.8598 |
+  | 3 | `bands_indices_texture` | ~1100 | 0.8432 |
+  | 4 | `full_no_deltas` | ~1400 | 0.8313 |
+  | 5 | `bands_indices_hog` | ~850 | 0.8309 |
+  | 6 | `all_full` | 3535 | 0.7952 |
+  | 7 | `top500_full` | 500 | 0.6841 |
+  | 8 | `texture_all` | ~300 | 0.6340 |
+- Key finding: **more features = worse performance** — textures add noise at 100m resolution
+- Architecture insights: residual + GELU + BatchNorm + lower LR (0.0005) wins
+- Auto-CV launcher: `scripts/launch_cv_after_search.py` polls search → selects
+  top 20 global + top 10 per feature set → launches CV (300 epochs × 5 folds)
 
-> [!IMPORTANT]
-> **Before submission — still needed for trees:**
-> - Rerun trees with `min_samples_leaf=50,200` and `max_depth=12,16` (GPT suggestion)
-> - Ensures "trees can't close the gap" claim is airtight (not just under-tuned)
-> - Also fix `topK_by_variance` leak in V2 for final rerun if reporting V2 numbers
+### MLP V4 CV stage (in progress — auto-launched)
+- [ ] CV complete (top 20 global + top 10 per category ≈ ~73 configs × 5 folds)
+- [ ] Final model selection from CV results
 
 ---
 

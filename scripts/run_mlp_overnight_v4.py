@@ -643,6 +643,8 @@ def main():
                         help="search=fold0 only, cv=top-N x 5 folds, full=everything")
     parser.add_argument("--top-n", type=int, default=30,
                         help="For --stage cv: how many top configs to CV")
+    parser.add_argument("--cv-config-json", type=str, default=None,
+                        help="JSON file with pre-selected config names for CV")
     parser.add_argument("--folds", type=int, nargs="+", default=None,
                         help="Override which folds to run")
     parser.add_argument("--batch-size", type=int, default=2048)
@@ -718,36 +720,42 @@ def main():
         print(f"Search stage: skipped SWA configs ({n_before} -> {len(configs)})")
 
     elif args.stage == "cv":
-        search_csv = SEARCH_CSV  # separate file written by search stage
-        if os.path.exists(search_csv):
-            search_df = pd.read_csv(search_csv)
-            search_df = search_df.dropna(subset=["r2_uniform"])
-            # Only use fold-0 results to pick winners
-            if "fold" in search_df.columns:
-                search_df = search_df[search_df["fold"] == 0]
-
-            # Parse arch keys and rank by best R2 per arch
-            def _arch_key_from_name(name):
-                for fs in FS_BY_LEN:
-                    prefix = fs + "_"
-                    if name.startswith(prefix):
-                        return name[len(prefix):]
-                return None
-
-            search_df["arch_key"] = search_df["name"].map(_arch_key_from_name)
-            search_df = search_df.dropna(subset=["arch_key"])
-
-            best_by_key = (search_df.groupby("arch_key")["r2_uniform"]
-                           .max()
-                           .sort_values(ascending=False))
-            top_keys = set(best_by_key.head(args.top_n).index)
-
-            configs = [c for c in configs
-                       if _arch_key_from_name(make_name(c)) in top_keys]
-            print(f"Stage CV: top {len(top_keys)} arch keys (fold-0 ranking) "
-                  f"-> {len(configs)} configs")
+        if args.cv_config_json and os.path.exists(args.cv_config_json):
+            # Use pre-selected config names from JSON (e.g. from auto-launcher)
+            import json as _json
+            with open(args.cv_config_json) as f:
+                sel = _json.load(f)
+            selected_names = set(sel["configs"])
+            configs = [c for c in configs if make_name(c) in selected_names]
+            print(f"Stage CV: loaded {len(selected_names)} config names from "
+                  f"{args.cv_config_json} -> {len(configs)} configs matched")
         else:
-            print(f"WARNING: {search_csv} not found, running all configs")
+            # Fallback: top-N by arch key from search CSV
+            search_csv = SEARCH_CSV
+            if os.path.exists(search_csv):
+                search_df = pd.read_csv(search_csv)
+                search_df = search_df.dropna(subset=["r2_uniform"])
+                if "fold" in search_df.columns:
+                    search_df = search_df[search_df["fold"] == 0]
+
+                def _arch_key_from_name(name):
+                    for fs in FS_BY_LEN:
+                        prefix = fs + "_"
+                        if name.startswith(prefix):
+                            return name[len(prefix):]
+                    return None
+
+                search_df["arch_key"] = search_df["name"].map(_arch_key_from_name)
+                search_df = search_df.dropna(subset=["arch_key"])
+                best_by_key = (search_df.groupby("arch_key")["r2_uniform"]
+                               .max().sort_values(ascending=False))
+                top_keys = set(best_by_key.head(args.top_n).index)
+                configs = [c for c in configs
+                           if _arch_key_from_name(make_name(c)) in top_keys]
+                print(f"Stage CV: top {len(top_keys)} arch keys (fold-0 ranking) "
+                      f"-> {len(configs)} configs")
+            else:
+                print(f"WARNING: {search_csv} not found, running all configs")
 
     total_configs = len(configs)
     total_runs = total_configs * len(folds_to_run)
