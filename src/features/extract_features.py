@@ -224,13 +224,15 @@ def band_statistics(patch: np.ndarray) -> dict:
 
 
 def spectral_indices(patch: np.ndarray) -> dict:
-    """Indices: NDVI, NDWI, NDBI, NDMI, NBR, SAVI, BSI, NDRE1, NDRE2."""
+    """Indices: NDVI, NDWI, NDBI, NDMI, NBR, SAVI, BSI, NDRE1, NDRE2,
+    EVI2, MNDWI, GNDVI, NDTI, IRECI, CRI1."""
     blue = patch[BAND_INDEX["B02"]]
     green = patch[BAND_INDEX["B03"]]
     red = patch[BAND_INDEX["B04"]]
     nir = patch[BAND_INDEX["B08"]]
     re1 = patch[BAND_INDEX["B05"]]
     re2 = patch[BAND_INDEX["B06"]]
+    re3 = patch[BAND_INDEX["B07"]]
     swir1 = patch[BAND_INDEX["B11"]]
     swir2 = patch[BAND_INDEX["B12"]]
 
@@ -240,6 +242,7 @@ def spectral_indices(patch: np.ndarray) -> dict:
         out[m] = (a[m] - b[m]) / (a[m] + b[m] + EPS)
         return out
 
+    # ── Original indices ──
     ndvi = safe_ratio(nir, red)
     ndwi = safe_ratio(green, nir)
     ndbi = safe_ratio(swir1, nir)
@@ -258,10 +261,40 @@ def spectral_indices(patch: np.ndarray) -> dict:
         (swir1[m2] + red[m2]) + (nir[m2] + blue[m2]) + EPS
     )
 
+    # ── New indices (v2) ──
+    # EVI2: Enhanced Vegetation Index (2-band), less saturated than NDVI
+    evi2 = np.full_like(ndvi, np.nan, dtype=np.float32)
+    m_evi = np.isfinite(nir) & np.isfinite(red)
+    evi2[m_evi] = 2.5 * (nir[m_evi] - red[m_evi]) / (
+        nir[m_evi] + 2.4 * red[m_evi] + 1.0 + EPS
+    )
+
+    # MNDWI: Modified NDWI — better for water in urban environments
+    mndwi = safe_ratio(green, swir1)
+
+    # GNDVI: Green NDVI — more sensitive to chlorophyll concentration
+    gndvi = safe_ratio(nir, green)
+
+    # NDTI: Normalized Difference Tillage Index — cropland vs bare soil
+    ndti = safe_ratio(swir1, swir2)
+
+    # IRECI: Inverted Red-Edge Chlorophyll Index (Sentinel-2 specific)
+    ireci = np.full_like(ndvi, np.nan, dtype=np.float32)
+    m_ir = np.isfinite(re3) & np.isfinite(red) & np.isfinite(re1) & np.isfinite(re2)
+    denom_ir = re1[m_ir] / (re2[m_ir] + EPS)
+    ireci[m_ir] = (re3[m_ir] - red[m_ir]) / (denom_ir + EPS)
+
+    # CRI1: Carotenoid Reflectance Index — vegetation stress detection
+    cri1 = np.full_like(ndvi, np.nan, dtype=np.float32)
+    m_cr = np.isfinite(green) & np.isfinite(re1) & (green > EPS) & (re1 > EPS)
+    cri1[m_cr] = (1.0 / green[m_cr]) - (1.0 / re1[m_cr])
+
     feats = {}
     for name, arr in [
         ("NDVI", ndvi), ("NDWI", ndwi), ("NDBI", ndbi), ("NDMI", ndmi),
         ("NBR", nbr), ("SAVI", savi), ("BSI", bsi), ("NDRE1", ndre1), ("NDRE2", ndre2),
+        ("EVI2", evi2), ("MNDWI", mndwi), ("GNDVI", gndvi),
+        ("NDTI", ndti), ("IRECI", ireci), ("CRI1", cri1),
     ]:
         st = _finite_stats(arr)
         feats[f"{name}_mean"] = st["mean"]
