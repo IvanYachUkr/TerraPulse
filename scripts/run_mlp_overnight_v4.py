@@ -224,6 +224,73 @@ class ResMLP(nn.Module):
             return self.forward(x).exp()
 
 
+class DirichletPlainMLP(nn.Module):
+    """PlainMLP backbone with Dirichlet output head.
+
+    Output: alpha = softplus(logits) + 1  (ensures alpha > 1, unimodal).
+    predict() returns Dirichlet mean = alpha / sum(alpha).
+    """
+    def __init__(self, in_features, n_classes, hidden=256, n_layers=3,
+                 dropout=0.15, activation="gelu", input_dropout=0.0,
+                 norm_type="layernorm"):
+        super().__init__()
+        self.input_drop = nn.Dropout(input_dropout) if input_dropout > 0 else nn.Identity()
+        block_cls = GeGLUBlock if activation == "geglu" else PlainBlock
+        layers = [block_cls(in_features, hidden, dropout, activation, norm_type)]
+        for _ in range(n_layers - 1):
+            layers.append(block_cls(hidden, hidden, dropout, activation, norm_type))
+        self.backbone = nn.Sequential(*layers)
+        self.head = nn.Linear(hidden, n_classes)
+        self.is_dirichlet = True
+
+    def forward(self, x):
+        """Returns alpha concentrations (> 1)."""
+        logits = self.head(self.backbone(self.input_drop(x)))
+        return F.softplus(logits) + 1.0
+
+    def predict(self, x):
+        """Returns Dirichlet mean proportions."""
+        self.eval()
+        with torch.no_grad():
+            alpha = self.forward(x)
+            return alpha / alpha.sum(dim=-1, keepdim=True)
+
+
+class DirichletResMLP(nn.Module):
+    """ResMLP backbone with Dirichlet output head."""
+    def __init__(self, in_features, n_classes, d_model=256, n_blocks=6,
+                 expansion=2, dropout=0.15, activation="gelu",
+                 input_dropout=0.0, norm_type="layernorm"):
+        super().__init__()
+        self.input_drop = nn.Dropout(input_dropout) if input_dropout > 0 else nn.Identity()
+        self.stem = nn.Linear(in_features, d_model)
+        if activation == "geglu":
+            block_cls = ResGeGLUBlock
+        else:
+            block_cls = ResMLPBlock
+        self.blocks = nn.ModuleList([
+            block_cls(d_model, d_model * expansion, dropout, activation, norm_type)
+            for _ in range(n_blocks)
+        ])
+        self.final_norm = _make_norm(norm_type, d_model)
+        self.head = nn.Linear(d_model, n_classes)
+        self.is_dirichlet = True
+
+    def forward(self, x):
+        x = self.input_drop(x)
+        x = self.stem(x)
+        for block in self.blocks:
+            x = block(x)
+        x = self.final_norm(x)
+        return F.softplus(self.head(x)) + 1.0
+
+    def predict(self, x):
+        self.eval()
+        with torch.no_grad():
+            alpha = self.forward(x)
+            return alpha / alpha.sum(dim=-1, keepdim=True)
+
+
 # =====================================================================
 # Training utilities (fixed: ceil steps, step-based patience, BN refresh)
 # =====================================================================
@@ -258,6 +325,30 @@ def normalize_targets(y):
 
 def soft_cross_entropy(log_pred, target):
     return -(target * log_pred).sum(dim=-1).mean()
+
+
+def dirichlet_nll(alpha, target):
+    """Negative log-likelihood of Dirichlet distribution.
+
+    Args:
+        alpha: concentration parameters (batch, n_classes), must be > 0
+        target: observed proportions (batch, n_classes), must sum to 1
+
+    Loss = -log Dir(target | alpha)
+         = -log Gamma(sum(alpha)) + sum(log Gamma(alpha_k))
+           - sum((alpha_k - 1) * log(target_k))
+    """
+    alpha_sum = alpha.sum(dim=-1)
+    # Clamp target to avoid log(0)
+    log_target = torch.log(target.clamp(min=1e-7))
+    nll = (torch.lgamma(alpha_sum)
+           - torch.lgamma(alpha).sum(dim=-1)
+           - ((alpha - 1.0) * log_target).sum(dim=-1))
+    # Note: sign is flipped because lgamma(sum) - sum(lgamma) is the
+    # normalizer, but we want negative log-likelihood
+    return (-torch.lgamma(alpha_sum)
+            + torch.lgamma(alpha).sum(dim=-1)
+            + ((alpha - 1.0) * log_target).sum(dim=-1)).mean()
 
 
 def refresh_bn_stats(model, X, batch_size=2048):
@@ -339,6 +430,9 @@ def train_model(net, X_trn, y_trn, X_val, y_val, *,
 
     # Detect BN for batch-size-1 guard
     has_bn = any(isinstance(m, nn.BatchNorm1d) for m in net.modules())
+    # Detect Dirichlet head for correct loss function
+    is_dir = getattr(net, "is_dirichlet", False)
+    loss_fn = dirichlet_nll if is_dir else soft_cross_entropy
 
     for epoch in range(max_epochs):
         net.train()
@@ -355,7 +449,7 @@ def train_model(net, X_trn, y_trn, X_val, y_val, *,
             optimizer.zero_grad(set_to_none=True)
             with torch.amp.autocast("cuda", enabled=use_amp, dtype=torch.float16):
                 logp = net(xb)
-                loss = soft_cross_entropy(logp, yb)
+                loss = loss_fn(logp, yb)
             scaler.scale(loss).backward()
             scaler.step(optimizer)
             scaler.update()
@@ -369,7 +463,7 @@ def train_model(net, X_trn, y_trn, X_val, y_val, *,
 
         net.eval()
         with torch.no_grad():
-            val_loss = soft_cross_entropy(net(X_val), y_val).item()
+            val_loss = loss_fn(net(X_val), y_val).item()
 
         n_epochs_done = epoch + 1
         if val_loss < best_val:
@@ -395,7 +489,7 @@ def train_model(net, X_trn, y_trn, X_val, y_val, *,
         final_model.eval()
         with torch.no_grad():
             log_val = final_model(X_val)
-            best_val = soft_cross_entropy(log_val, y_val).item()
+            best_val = loss_fn(log_val, y_val).item()
 
     return n_epochs_done, best_val, final_model
 
@@ -613,8 +707,10 @@ def make_name(cfg):
 
 def build_model(cfg, n_features, device):
     norm_type = cfg.get("norm_type", "layernorm")
+    head_type = cfg.get("head_type", "softmax")  # "softmax" or "dirichlet"
     if cfg["arch"] == "plain":
-        net = PlainMLP(
+        cls = DirichletPlainMLP if head_type == "dirichlet" else PlainMLP
+        net = cls(
             n_features, N_CLASSES,
             hidden=cfg["d_model"], n_layers=cfg["n_layers"],
             dropout=cfg["dropout"], activation=cfg["activation"],
@@ -622,7 +718,8 @@ def build_model(cfg, n_features, device):
             norm_type=norm_type,
         )
     else:
-        net = ResMLP(
+        cls = DirichletResMLP if head_type == "dirichlet" else ResMLP
+        net = cls(
             n_features, N_CLASSES,
             d_model=cfg["d_model"], n_blocks=cfg["n_layers"],
             expansion=cfg.get("expansion", 2),

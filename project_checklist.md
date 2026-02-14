@@ -329,6 +329,30 @@
   - Fold R² ranges: F0=0.86 (urban), F1=0.77 (mixed), F2=0.77 (forest), F3=0.73 (suburban), F4=0.83 (dense forest)
 - [x] V5 results complete
 
+### MLP V10: Definitive feature+architecture+head sweep (running)
+- Script: `scripts/run_mlp_v10_definitive.py`
+- 3 feature sets × 3 architectures (SiLU) × ILR + 6 GeGLU runs = 15 configs × 5 folds = 75 runs
+- Feature sets: bi_LBP (864f), bi_MP_Gabor (996f), bi_LBP_MP_Gabor (1060f)
+- Key V10 findings (fold 0):
+  - SiLU architectures dominate GeGLU, especially for Dirichlet head
+  - bi_MP_Gabor L5 d1024 bn: strong all-rounder
+  - Texture features (LBP, MP+Gabor) DO help at 10×10 — previous "underperform" assessment was wrong
+
+### MLP V11: New Gabor v2 + Morph DMP + Dirichlet (queued, auto-starts after V10)
+- Script: `scripts/run_mlp_v11_new_texture.py`
+- 7 configs × 5 folds = 35 runs (~2h):
+  | # | Features | Architecture | Head |
+  |---|---|---|---|
+  | 1 | bi_Gab2_DMP (~1566f) | L5 d1024 bn | ILR |
+  | 2 | bi_Gab2_DMP | L5 d1024 bn | Dirichlet |
+  | 3 | bi_LBP_Gab2_DMP (~1632f) | L5 d1024 bn | ILR |
+  | 4 | bi_Gab2_DMP | L5 d1536 bn | ILR |
+  | 5 | bi_Gab2_DMP | L7 d1024 bn | ILR |
+  | 6 | bi_Gab2_DMP | L5 d1536 bn | Dirichlet |
+  | 7 | bi_LBP_Gab2_DMP | L5 d1536 bn | ILR |
+- New texture features: complex Gabor magnitude+phase (384f) + Morph DMP peak/valley (384f)
+- Supplemental parquet: `features_texture_v2.parquet` (extracted via `extract_texture_v2.py`)
+
 ### Future: V6 deep+wide architecture sweep
 - Test unexplored architecture region: L12-16 × d512-1024
 - V5 shows shallow wide (L5×d1024) is the overall winner architecture
@@ -344,7 +368,6 @@
   - **GNDVI** = (NIR − Green)/(NIR + Green) — chlorophyll-sensitive
   - **CRI1** = (1/Green) − (1/RE1) — carotenoid content
 - Note: NDMI ≈ −NDBI (redundant), SAVI ≈ NDVI — consider dropping duplicates
-- Also note: texture features confirmed to underperform at 10×10 patch size
 - Test new `bands_indices_v2` feature set vs current `bands_indices`
 
 ---
