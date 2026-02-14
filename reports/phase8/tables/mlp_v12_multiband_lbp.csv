@@ -1,0 +1,3 @@
+name,fold,feature_set,n_features,arch,r2_uniform,mae_mean_pp,best_val_loss,n_epochs,elapsed_s,n_train,n_test
+bi_mLBP_only_plain_silu_L5_d1024_bn,0,bi_mLBP_only,1278,plain_L5_d1024,0.8643295168876648,2.6605986058712006,0.40971341729164124,672,80.81881976127625,16530,6100
+bi_mLBP_only_plain_silu_L5_d1536_bn,0,bi_mLBP_only,1278,plain_L5_d1536,0.7928388118743896,2.600748836994171,0.40589213371276855,1185,135.2205457687378,16530,6100

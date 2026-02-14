@@ -35,7 +35,6 @@ from run_mlp_overnight_v4 import (
     PROJECT_ROOT, CLASS_NAMES, N_FOLDS, CONTROL_COLS, SEED,
     build_model, _cfg,
     train_model, normalize_targets, _predict_batched,
-    partition_features,
 )
 from src.config import PROCESSED_V2_DIR
 from src.models.evaluation import evaluate_model
@@ -43,7 +42,6 @@ from src.splitting import get_fold_indices
 
 OUT_DIR = os.path.join(PROJECT_ROOT, "reports", "phase8", "tables")
 V12_CSV = os.path.join(OUT_DIR, "mlp_v12_multiband_lbp.csv")
-LBP_MB_PATH = os.path.join(PROCESSED_V2_DIR, "features_lbp_multiband.parquet")
 
 
 # =====================================================================
@@ -51,64 +49,57 @@ LBP_MB_PATH = os.path.join(PROCESSED_V2_DIR, "features_lbp_multiband.parquet")
 # =====================================================================
 
 def build_v12_data(device):
-    """Load base features + old LBP + new multi-band LBP.
+    """Load features from Rust-extracted features_v3.parquet.
+
+    The Rust output already contains bands, indices, TC, spatial, and
+    multi-band LBP (NIR, NDVI, EVI2, SWIR1, NDTI) — everything V12 needs.
 
     Returns: X_all (numpy), feature_sets dict, all_cols list
     """
-    print("Loading base features...", flush=True)
-    feat_df = pd.read_parquet(
-        os.path.join(PROCESSED_V2_DIR, "features_merged_full.parquet"))
+    feat_path = os.path.join(PROCESSED_V2_DIR, "features_v3.parquet")
+    print(f"Loading Rust features: {feat_path}", flush=True)
+    feat_df = pd.read_parquet(feat_path)
 
     from pandas.api.types import is_numeric_dtype
-    old_feature_cols = [c for c in feat_df.columns
+    all_feature_cols = [c for c in feat_df.columns
                         if c not in CONTROL_COLS and is_numeric_dtype(feat_df[c])]
 
-    groups = partition_features(old_feature_cols)
-    base_cols = [old_feature_cols[i] for i in groups["bands_indices"]]
-    lbp_old_cols = [c for c in old_feature_cols if c.startswith("LBP_")]
+    # Partition by name patterns
+    lbp_nir_cols = [c for c in all_feature_cols if c.startswith("LBP_NIR_")]
+    lbp_multi_cols = [c for c in all_feature_cols
+                      if c.startswith("LBP_") and not c.startswith("LBP_NIR_")]
+    base_cols = [c for c in all_feature_cols
+                 if not c.startswith("LBP_")]
 
-    print(f"  Base (bands+indices): {len(base_cols)} cols", flush=True)
-    print(f"  Old LBP (NIR only):  {len(lbp_old_cols)} cols", flush=True)
+    print(f"  Base (bands+indices+TC+spatial): {len(base_cols)} cols", flush=True)
+    print(f"  LBP NIR:                         {len(lbp_nir_cols)} cols", flush=True)
+    print(f"  LBP Multi (NDVI,EVI2,SWIR1,NDTI):{len(lbp_multi_cols)} cols", flush=True)
 
-    # Load multi-band LBP
-    print("Loading multi-band LBP features...", flush=True)
-    lbp_df = pd.read_parquet(LBP_MB_PATH)
-    lbp_new_cols = [c for c in lbp_df.columns if c != "cell_id"]
-    print(f"  New multi-band LBP:  {len(lbp_new_cols)} cols", flush=True)
-
-    # Merge
-    merged = feat_df[["cell_id"] + base_cols + lbp_old_cols].merge(
-        lbp_df, on="cell_id", how="inner")
-    assert len(merged) == len(feat_df), \
-        f"Merge lost rows: {len(merged)} vs {len(feat_df)}"
-
-    all_feature_cols = base_cols + lbp_old_cols + lbp_new_cols
-    X_all = merged[all_feature_cols].values.astype(np.float32)
+    # Order: base, LBP_NIR, LBP_multi
+    ordered_cols = base_cols + lbp_nir_cols + lbp_multi_cols
+    X_all = feat_df[ordered_cols].values.astype(np.float32)
     np.nan_to_num(X_all, copy=False)
+    del feat_df
 
-    del feat_df, lbp_df, merged
-
-    # Feature set index maps
     n_base = len(base_cols)
-    n_lbp_old = len(lbp_old_cols)
-    n_lbp_new = len(lbp_new_cols)
+    n_nir = len(lbp_nir_cols)
+    n_multi = len(lbp_multi_cols)
 
     base_idx = list(range(n_base))
-    lbp_old_idx = list(range(n_base, n_base + n_lbp_old))
-    lbp_new_idx = list(range(n_base + n_lbp_old,
-                             n_base + n_lbp_old + n_lbp_new))
+    nir_idx = list(range(n_base, n_base + n_nir))
+    multi_idx = list(range(n_base + n_nir, n_base + n_nir + n_multi))
 
     feature_sets = {
-        # Multi-band LBP alone (no old NIR LBP) — tests new features in isolation
-        "bi_mLBP_only": sorted(set(base_idx) | set(lbp_new_idx)),
-        # Old LBP + new multi-band — tests whether they complement each other
-        "bi_LBP_mLBP":  sorted(set(base_idx) | set(lbp_old_idx) | set(lbp_new_idx)),
+        # Multi-band LBP only (no old NIR LBP)
+        "bi_mLBP_only": sorted(set(base_idx) | set(multi_idx)),
+        # NIR LBP + multi-band LBP (full LBP complement)
+        "bi_LBP_mLBP":  sorted(set(base_idx) | set(nir_idx) | set(multi_idx)),
     }
 
     for name, idx in feature_sets.items():
         print(f"  Feature set '{name}': {len(idx)} features", flush=True)
 
-    return X_all, feature_sets, all_feature_cols
+    return X_all, feature_sets, ordered_cols
 
 
 # =====================================================================
@@ -159,13 +150,7 @@ def main():
 
     folds_to_run = args.folds if args.folds else list(range(N_FOLDS))
 
-    # Wait for multi-band LBP extraction
-    if not args.no_wait:
-        while not os.path.exists(LBP_MB_PATH):
-            print(f"Waiting for {LBP_MB_PATH}...", flush=True)
-            time.sleep(30)
-        time.sleep(5)
-        print(f"Multi-band LBP parquet found.", flush=True)
+
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     torch.manual_seed(SEED)

@@ -642,10 +642,133 @@ fn feature_names() -> Vec<String> {
     names
 }
 
+/// Generate column names with season suffixes: ["B02_mean_2020_spring", ...].
+#[pyfunction]
+fn feature_names_suffixed(suffixes: Vec<String>) -> Vec<String> {
+    let base = feature_names();
+    let mut out = Vec::with_capacity(base.len() * suffixes.len());
+    for suf in &suffixes {
+        for name in &base {
+            out.push(format!("{name}_{suf}"));
+        }
+    }
+    out
+}
+
+/// Process all seasons in one Rust call.
+///
+/// spectral_list: Python list of (10, H, W) f32 arrays (pre-normalised)
+/// Returns: flat (n_cells * n_seasons * 224) f32 array, row-major
+///          i.e. cell_0_season_0_feat_0 .. cell_0_season_0_feat_223,
+///               cell_0_season_1_feat_0 .. etc.
+///
+/// Memory layout: results[cell_idx * n_seasons * N_FEAT + season_idx * N_FEAT + feat_idx]
+#[pyfunction]
+fn extract_all_seasons<'py>(
+    py: Python<'py>,
+    spectral_list: Vec<PyReadonlyArray3<'py, f32>>,
+    n_rows: usize,
+    n_cols: usize,
+) -> PyResult<Bound<'py, PyArray1<f32>>> {
+    let n_seasons = spectral_list.len();
+    let n_cells = n_rows * n_cols;
+    let total_feats = n_cells * n_seasons * N_FEAT;
+
+    // Pre-extract all season data into contiguous Vecs
+    let mut season_data: Vec<Vec<f32>> = Vec::with_capacity(n_seasons);
+    let mut h = 0usize;
+    let mut w = 0usize;
+
+    for (si, spec_arr) in spectral_list.iter().enumerate() {
+        let view = spec_arr.as_array();
+        if si == 0 {
+            h = view.shape()[1];
+            w = view.shape()[2];
+            assert_eq!(view.shape()[0], N_BANDS);
+            assert_eq!(h, n_rows * GP);
+            assert_eq!(w, n_cols * GP);
+        }
+        let data: Vec<f32> = match view.as_slice() {
+            Some(s) => s.to_vec(),
+            None => view.iter().copied().collect(),
+        };
+        season_data.push(data);
+    }
+
+    let lbp_lut = build_lbp_lut();
+
+    // Process each season: pre-compute raster images, then per-cell extraction
+    // Store per-season results: Vec<Vec<[f32; N_FEAT]>>
+    let season_results: Vec<Vec<[f32; N_FEAT]>> = season_data
+        .iter()
+        .map(|spec_slice| {
+            let band_slice = |b: usize| -> &[f32] { &spec_slice[b * h * w..(b + 1) * h * w] };
+
+            // Phase 1: full-raster pre-computation
+            let nir_clean = clean_band(band_slice(B08), h, w);
+            let sobel = compute_sobel_mag(&nir_clean, h, w);
+            let laplacian = compute_laplacian(&nir_clean, h, w);
+
+            let red_clean = clean_band(band_slice(B04), h, w);
+            let swir1_clean = clean_band(band_slice(B11), h, w);
+            let swir2_clean = clean_band(band_slice(B12), h, w);
+
+            let ndvi_img: Vec<f32> = (0..h * w).map(|i| {
+                let v = (nir_clean[i] - red_clean[i]) / (nir_clean[i] + red_clean[i] + EPS);
+                ((v + 1.0) / 2.0).clamp(0.0, 1.0)
+            }).collect();
+            let evi2_img: Vec<f32> = (0..h * w).map(|i| {
+                let e = 2.5 * (nir_clean[i] - red_clean[i])
+                    / (nir_clean[i] + 2.4 * red_clean[i] + 1.0 + EPS);
+                ((e + 0.5) / 1.5).clamp(0.0, 1.0)
+            }).collect();
+            let ndti_img: Vec<f32> = (0..h * w).map(|i| {
+                let n = (swir1_clean[i] - swir2_clean[i])
+                    / (swir1_clean[i] + swir2_clean[i] + EPS);
+                ((n + 1.0) / 2.0).clamp(0.0, 1.0)
+            }).collect();
+
+            let lbp_nir = compute_lbp_raster(&nir_clean, h, w, &lbp_lut);
+            let lbp_ndvi = compute_lbp_raster(&ndvi_img, h, w, &lbp_lut);
+            let lbp_evi2 = compute_lbp_raster(&evi2_img, h, w, &lbp_lut);
+            let lbp_swir1 = compute_lbp_raster(&swir1_clean, h, w, &lbp_lut);
+            let lbp_ndti = compute_lbp_raster(&ndti_img, h, w, &lbp_lut);
+
+            // Phase 2: per-cell extraction (rayon parallel)
+            (0..n_cells)
+                .into_par_iter()
+                .map(|ci| {
+                    extract_cell_features(
+                        spec_slice, h, w, ci / n_cols, ci % n_cols,
+                        &sobel, &laplacian, &nir_clean,
+                        &lbp_nir, &lbp_ndvi, &lbp_evi2, &lbp_swir1, &lbp_ndti,
+                    )
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect();
+
+    // Flatten: [cell_0_all_seasons, cell_1_all_seasons, ...]
+    // Layout: cell-major, then season-major within each cell
+    let mut flat = vec![0.0f32; total_feats];
+    for ci in 0..n_cells {
+        let cell_base = ci * n_seasons * N_FEAT;
+        for si in 0..n_seasons {
+            let dst = cell_base + si * N_FEAT;
+            flat[dst..dst + N_FEAT].copy_from_slice(&season_results[si][ci]);
+        }
+    }
+
+    Ok(ndarray::Array1::from_vec(flat).into_pyarray(py).into())
+}
+
 #[pymodule]
 fn terrapulse_features(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(extract_season, m)?)?;
+    m.add_function(wrap_pyfunction!(extract_all_seasons, m)?)?;
     m.add_function(wrap_pyfunction!(n_features_per_cell, m)?)?;
     m.add_function(wrap_pyfunction!(feature_names, m)?)?;
+    m.add_function(wrap_pyfunction!(feature_names_suffixed, m)?)?;
     Ok(())
 }
+
