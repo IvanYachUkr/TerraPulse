@@ -45,6 +45,10 @@ env/
 Thumbs.db
 desktop.ini
 
+# === Rust ===
+rust_features/target/
+*.pyd
+
 # === Misc ===
 _pdf_extracted.txt
 cache/

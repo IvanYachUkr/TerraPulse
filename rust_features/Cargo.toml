@@ -1,0 +1,14 @@
+[package]
+name = "terrapulse_features"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "terrapulse_features"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.24", features = ["extension-module"] }
+numpy = "0.24"
+ndarray = { version = "0.16", features = ["rayon"] }
+rayon = "1.10"

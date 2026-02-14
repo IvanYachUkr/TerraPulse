@@ -436,3 +436,28 @@
 - [ ] End-to-end reproducible run (fresh environment) ⚠️
 - [ ] Clean README: install, data fetch, pipeline steps, dashboard launch ⚠️
 - [ ] Final deliverables check (report PDF, code, product, video, ChatGPT log) ⚠️
+
+---
+
+## Future: Rust Performance Rewrite 🏆
+
+> For interactive "select any territory → predict" product. Not needed for course submission.
+
+- [ ] Rust feature extraction module (via PyO3 or standalone binary)
+  - Raster I/O: `gdal` crate (C-speed reads, no Python overhead)
+  - Numerical: `ndarray` + BLAS (NumPy-equivalent)
+  - Parallelism: `rayon` for data-parallel cell processing across all CPU cores
+  - Gabor/Morph/LBP: port ~500 lines of Python to compiled Rust
+  - Expected speedup: 20-50× over Python (CPU), 100×+ with GPU path
+- [ ] ONNX model export + Rust inference via `ort` crate
+  - Export trained PyTorch model → ONNX
+  - Inference in Rust: no Python runtime needed at serving time
+- [ ] Docker deployment
+  - Multi-stage build: `rust:latest` → `debian:slim` (~30 MB final image)
+  - Or fully static musl binary → `FROM scratch` (~10 MB image)
+  - GDAL + PROJ packaged in build stage
+- [ ] Alternative: PyTorch GPU batch extraction (simpler, stays in Python)
+  - Process entire raster as one tensor, no per-cell loop
+  - `F.conv2d` for Gabor, `F.max_pool2d` for morphology
+  - Good enough for demo, ~2-5s per territory on GPU
+

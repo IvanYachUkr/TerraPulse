@@ -1,22 +1,21 @@
 #!/usr/bin/env python3
 """
-MLP V11: New texture features (Gabor v2 + Morph DMP) + SiLU Dirichlet.
+MLP V12: Multi-band LBP features — test whether LBP on multiple
+spectral bands/indices outperforms NIR-only LBP.
 
-Waits for V10 to finish and texture_v2 extraction to complete before starting.
+Feature sets:
+  - bi_LBP_multi  (bands+indices + old NIR LBP + new multi-band LBP)
+  - bi_mLBP_only  (bands+indices + new multi-band LBP, NO old LBP)
 
-Tests 7 configs × 5 folds = 35 runs:
-  Feature sets:
-    - bi_Gab2_DMP          (bands+indices + new Gabor v2 + Morph DMP)
-    - bi_LBP_Gab2_DMP      (above + LBP)
-  Architectures:
-    - plain silu L5 d1024 bn    (V10 champion, baseline)
-    - plain silu L5 d1536 bn    (wider for more features)
-    - plain silu L7 d1024 bn    (deeper)
-  Heads:
-    - ILR (softmax + soft_cross_entropy)
-    - Dirichlet (softplus+1, NLL)
+Architectures:  plain silu L5, batchnorm, d1024 / d1536
 
-Output: reports/phase8/tables/mlp_v11_new_texture.csv
+Total: 4 configs × 5 folds = 20 runs
+
+Requires:
+  - features_merged_full.parquet (existing)
+  - features_lbp_multiband.parquet (from extract_lbp_multiband.py)
+
+Output: reports/phase8/tables/mlp_v12_multiband_lbp.csv
 """
 
 import argparse
@@ -36,60 +35,25 @@ from run_mlp_overnight_v4 import (
     PROJECT_ROOT, CLASS_NAMES, N_FOLDS, CONTROL_COLS, SEED,
     build_model, _cfg,
     train_model, normalize_targets, _predict_batched,
-    partition_features, dirichlet_nll,
+    partition_features,
 )
 from src.config import PROCESSED_V2_DIR
 from src.models.evaluation import evaluate_model
 from src.splitting import get_fold_indices
 
 OUT_DIR = os.path.join(PROJECT_ROOT, "reports", "phase8", "tables")
-V11_CSV = os.path.join(OUT_DIR, "mlp_v11_new_texture.csv")
-V10_CSV = os.path.join(OUT_DIR, "mlp_v10_definitive.csv")
-TEXTURE_V2_PATH = os.path.join(PROCESSED_V2_DIR, "features_texture_v2.parquet")
+V12_CSV = os.path.join(OUT_DIR, "mlp_v12_multiband_lbp.csv")
+LBP_MB_PATH = os.path.join(PROCESSED_V2_DIR, "features_lbp_multiband.parquet")
 
 
 # =====================================================================
-# Wait for dependencies
+# Data loading
 # =====================================================================
 
-def wait_for_v10(poll_seconds=60):
-    """Wait for V10 to finish (all 75 runs in CSV)."""
-    if not os.path.exists(V10_CSV):
-        print("V10 CSV not found, waiting...", flush=True)
-    while True:
-        if os.path.exists(V10_CSV):
-            try:
-                df = pd.read_csv(V10_CSV)
-                n = len(df)
-                if n >= 75:
-                    print(f"V10 complete ({n} runs). Proceeding.", flush=True)
-                    return
-                else:
-                    print(f"V10: {n}/75 runs done. Waiting {poll_seconds}s...",
-                          flush=True)
-            except Exception:
-                pass
-        time.sleep(poll_seconds)
+def build_v12_data(device):
+    """Load base features + old LBP + new multi-band LBP.
 
-
-def wait_for_texture_v2(poll_seconds=30):
-    """Wait for texture v2 parquet to exist."""
-    while not os.path.exists(TEXTURE_V2_PATH):
-        print(f"Waiting for {TEXTURE_V2_PATH}...", flush=True)
-        time.sleep(poll_seconds)
-    # Wait a bit more to ensure file is fully written
-    time.sleep(5)
-    print(f"Texture v2 parquet found: {TEXTURE_V2_PATH}", flush=True)
-
-
-# =====================================================================
-# Feature sets: base + LBP from merged, new Gabor/Morph from texture_v2
-# =====================================================================
-
-def build_v11_data(device):
-    """Load and merge features from merged_full + texture_v2.
-
-    Returns: X_all (numpy), feature_sets dict, full_cols list
+    Returns: X_all (numpy), feature_sets dict, all_cols list
     """
     print("Loading base features...", flush=True)
     feat_df = pd.read_parquet(
@@ -99,45 +63,46 @@ def build_v11_data(device):
     old_feature_cols = [c for c in feat_df.columns
                         if c not in CONTROL_COLS and is_numeric_dtype(feat_df[c])]
 
-    # Identify base (bands+indices) and LBP column indices
     groups = partition_features(old_feature_cols)
     base_cols = [old_feature_cols[i] for i in groups["bands_indices"]]
-    lbp_cols = [c for c in old_feature_cols if c.startswith("LBP_")]
+    lbp_old_cols = [c for c in old_feature_cols if c.startswith("LBP_")]
 
     print(f"  Base (bands+indices): {len(base_cols)} cols", flush=True)
-    print(f"  LBP: {len(lbp_cols)} cols", flush=True)
+    print(f"  Old LBP (NIR only):  {len(lbp_old_cols)} cols", flush=True)
 
-    # Load texture v2
-    print("Loading texture v2 features...", flush=True)
-    tex_df = pd.read_parquet(TEXTURE_V2_PATH)
-    tex_cols = [c for c in tex_df.columns if c != "cell_id"]
-    print(f"  Texture v2: {len(tex_cols)} cols", flush=True)
+    # Load multi-band LBP
+    print("Loading multi-band LBP features...", flush=True)
+    lbp_df = pd.read_parquet(LBP_MB_PATH)
+    lbp_new_cols = [c for c in lbp_df.columns if c != "cell_id"]
+    print(f"  New multi-band LBP:  {len(lbp_new_cols)} cols", flush=True)
 
-    # Merge on cell_id
-    merged = feat_df[["cell_id"] + base_cols + lbp_cols].merge(
-        tex_df, on="cell_id", how="inner")
+    # Merge
+    merged = feat_df[["cell_id"] + base_cols + lbp_old_cols].merge(
+        lbp_df, on="cell_id", how="inner")
     assert len(merged) == len(feat_df), \
         f"Merge lost rows: {len(merged)} vs {len(feat_df)}"
 
-    # Build combined feature columns
-    all_feature_cols = base_cols + lbp_cols + tex_cols
+    all_feature_cols = base_cols + lbp_old_cols + lbp_new_cols
     X_all = merged[all_feature_cols].values.astype(np.float32)
     np.nan_to_num(X_all, copy=False)
 
-    del feat_df, tex_df, merged
+    del feat_df, lbp_df, merged
 
-    # Build feature set index maps
+    # Feature set index maps
     n_base = len(base_cols)
-    n_lbp = len(lbp_cols)
-    n_tex = len(tex_cols)
+    n_lbp_old = len(lbp_old_cols)
+    n_lbp_new = len(lbp_new_cols)
 
     base_idx = list(range(n_base))
-    lbp_idx = list(range(n_base, n_base + n_lbp))
-    tex_idx = list(range(n_base + n_lbp, n_base + n_lbp + n_tex))
+    lbp_old_idx = list(range(n_base, n_base + n_lbp_old))
+    lbp_new_idx = list(range(n_base + n_lbp_old,
+                             n_base + n_lbp_old + n_lbp_new))
 
     feature_sets = {
-        "bi_Gab2_DMP": sorted(set(base_idx) | set(tex_idx)),
-        "bi_LBP_Gab2_DMP": sorted(set(base_idx) | set(lbp_idx) | set(tex_idx)),
+        # Multi-band LBP alone (no old NIR LBP) — tests new features in isolation
+        "bi_mLBP_only": sorted(set(base_idx) | set(lbp_new_idx)),
+        # Old LBP + new multi-band — tests whether they complement each other
+        "bi_LBP_mLBP":  sorted(set(base_idx) | set(lbp_old_idx) | set(lbp_new_idx)),
     }
 
     for name, idx in feature_sets.items():
@@ -147,48 +112,32 @@ def build_v11_data(device):
 
 
 # =====================================================================
-# V11 configs: 7 total
+# V12 configs
 # =====================================================================
 
-def build_v11_configs():
-    """Build V11 configs (v2: no Dirichlet, more width)."""
+def build_v12_configs():
+    """Build V12 configs: 4 total (2 feature sets × 2 widths)."""
     configs = []
 
-    # ── bi_Gab2_DMP ──
+    # ── bi_mLBP_only: new multi-band LBP, no old NIR LBP ──
 
-    # 1. Baseline: same arch as V10 champion
-    c1 = _cfg(0, "bi_Gab2_DMP", "plain", "silu", 5, 1024, "batchnorm")
-    configs.append(("bi_Gab2_DMP_plain_silu_L5_d1024_bn", c1, "bi_Gab2_DMP"))
+    # 1. Baseline: V10 champion arch
+    c1 = _cfg(0, "bi_mLBP_only", "plain", "silu", 5, 1024, "batchnorm")
+    configs.append(("bi_mLBP_only_plain_silu_L5_d1024_bn", c1, "bi_mLBP_only"))
 
-    # 2. Wider: d1536 (fold-0: 0.850, best so far)
-    c2 = _cfg(0, "bi_Gab2_DMP", "plain", "silu", 5, 1536, "batchnorm")
-    configs.append(("bi_Gab2_DMP_plain_silu_L5_d1536_bn", c2, "bi_Gab2_DMP"))
+    # 2. Wider
+    c2 = _cfg(0, "bi_mLBP_only", "plain", "silu", 5, 1536, "batchnorm")
+    configs.append(("bi_mLBP_only_plain_silu_L5_d1536_bn", c2, "bi_mLBP_only"))
 
-    # 3. Even wider: d2048 — push capacity ceiling
-    c3 = _cfg(0, "bi_Gab2_DMP", "plain", "silu", 5, 2048, "batchnorm")
-    configs.append(("bi_Gab2_DMP_plain_silu_L5_d2048_bn", c3, "bi_Gab2_DMP"))
+    # ── bi_LBP_mLBP: old NIR LBP + new multi-band ──
 
-    # 4. Deeper (keep for comparison, fold-0: 0.802)
-    c4 = _cfg(0, "bi_Gab2_DMP", "plain", "silu", 7, 1024, "batchnorm")
-    configs.append(("bi_Gab2_DMP_plain_silu_L7_d1024_bn", c4, "bi_Gab2_DMP"))
+    # 3. Baseline
+    c3 = _cfg(0, "bi_LBP_mLBP", "plain", "silu", 5, 1024, "batchnorm")
+    configs.append(("bi_LBP_mLBP_plain_silu_L5_d1024_bn", c3, "bi_LBP_mLBP"))
 
-    # 5. Wide + slightly deeper: L7 d1536
-    c5 = _cfg(0, "bi_Gab2_DMP", "plain", "silu", 7, 1536, "batchnorm")
-    configs.append(("bi_Gab2_DMP_plain_silu_L7_d1536_bn", c5, "bi_Gab2_DMP"))
-
-    # ── bi_LBP_Gab2_DMP ──
-
-    # 6. LBP + new textures: baseline
-    c6 = _cfg(0, "bi_LBP_Gab2_DMP", "plain", "silu", 5, 1024, "batchnorm")
-    configs.append(("bi_LBP_Gab2_DMP_plain_silu_L5_d1024_bn", c6, "bi_LBP_Gab2_DMP"))
-
-    # 7. LBP + new textures: wider
-    c7 = _cfg(0, "bi_LBP_Gab2_DMP", "plain", "silu", 5, 1536, "batchnorm")
-    configs.append(("bi_LBP_Gab2_DMP_plain_silu_L5_d1536_bn", c7, "bi_LBP_Gab2_DMP"))
-
-    # 8. LBP + new textures: widest
-    c8 = _cfg(0, "bi_LBP_Gab2_DMP", "plain", "silu", 5, 2048, "batchnorm")
-    configs.append(("bi_LBP_Gab2_DMP_plain_silu_L5_d2048_bn", c8, "bi_LBP_Gab2_DMP"))
+    # 4. Wider
+    c4 = _cfg(0, "bi_LBP_mLBP", "plain", "silu", 5, 1536, "batchnorm")
+    configs.append(("bi_LBP_mLBP_plain_silu_L5_d1536_bn", c4, "bi_LBP_mLBP"))
 
     return configs
 
@@ -198,22 +147,25 @@ def build_v11_configs():
 # =====================================================================
 
 def main():
-    parser = argparse.ArgumentParser(description="V11: New texture + Dirichlet sweep")
+    parser = argparse.ArgumentParser(description="V12: Multi-band LBP sweep")
     parser.add_argument("--max-epochs", type=int, default=2000)
     parser.add_argument("--patience-steps", type=int, default=5000)
     parser.add_argument("--min-steps", type=int, default=2000)
     parser.add_argument("--batch-size", type=int, default=2048)
     parser.add_argument("--folds", type=int, nargs="+", default=None)
     parser.add_argument("--no-wait", action="store_true",
-                        help="Skip waiting for V10/texture extraction")
+                        help="Skip waiting for LBP extraction")
     args = parser.parse_args()
 
     folds_to_run = args.folds if args.folds else list(range(N_FOLDS))
 
-    # Wait for dependencies
+    # Wait for multi-band LBP extraction
     if not args.no_wait:
-        wait_for_texture_v2(poll_seconds=30)
-        wait_for_v10(poll_seconds=60)
+        while not os.path.exists(LBP_MB_PATH):
+            print(f"Waiting for {LBP_MB_PATH}...", flush=True)
+            time.sleep(30)
+        time.sleep(5)
+        print(f"Multi-band LBP parquet found.", flush=True)
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     torch.manual_seed(SEED)
@@ -227,7 +179,7 @@ def main():
             pass
 
     # Load data
-    X_all, feature_sets, full_cols = build_v11_data(device)
+    X_all, feature_sets, full_cols = build_v12_data(device)
 
     labels_df = pd.read_parquet(os.path.join(PROCESSED_V2_DIR, "labels_2021.parquet"))
     split_df = pd.read_parquet(os.path.join(PROCESSED_V2_DIR, "split_spatial.parquet"))
@@ -239,11 +191,11 @@ def main():
         meta = _json.load(f)
 
     # Build configs
-    configs = build_v11_configs()
+    configs = build_v12_configs()
     total_runs = len(configs) * len(folds_to_run)
 
     print(f"\n{'='*70}", flush=True)
-    print(f"MLP V11 — New Texture + Dirichlet Sweep", flush=True)
+    print(f"MLP V12 — Multi-Band LBP Sweep", flush=True)
     print(f"{'='*70}", flush=True)
     print(f"  Configs:  {len(configs)}", flush=True)
     print(f"  Folds:    {folds_to_run}", flush=True)
@@ -251,22 +203,20 @@ def main():
     print(f"  Device:   {device}", flush=True)
     for name, cfg, fs_name in configs:
         n_feat = len(feature_sets[fs_name])
-        head = cfg.get("head_type", "softmax")
-        print(f"    {name:55s}  {n_feat:5d}f  {head}", flush=True)
+        print(f"    {name:50s}  {n_feat:5d}f", flush=True)
     print(f"{'='*70}\n", flush=True)
 
     # Resume
     results = []
     done_keys = set()
-    if os.path.exists(V11_CSV):
-        df_old = pd.read_csv(V11_CSV)
+    if os.path.exists(V12_CSV):
+        df_old = pd.read_csv(V12_CSV)
         results = df_old.to_dict("records")
         done_keys = set(zip(df_old["name"], df_old["fold"].astype(int)))
         print(f"Resuming: {len(results)} runs already done", flush=True)
 
     os.makedirs(OUT_DIR, exist_ok=True)
     times = []
-    n_skipped = 0
     run_idx = 0
 
     for fold_id in folds_to_run:
@@ -294,12 +244,10 @@ def main():
         for name, cfg, fs_name in configs:
             run_idx += 1
             if (name, fold_id) in done_keys:
-                n_skipped += 1
                 continue
 
             fs_idx = feature_sets[fs_name]
             n_features = len(fs_idx)
-            is_dir = cfg.get("head_type", "softmax") == "dirichlet"
 
             X_fs = X_all[:, fs_idx]
             scaler = StandardScaler()
@@ -337,14 +285,12 @@ def main():
             times.append(elapsed)
             runs_left = total_runs - run_idx
             eta_h = (np.mean(times) * runs_left) / 3600
-            head_str = "DIR" if is_dir else "ILR"
 
             rec = {
                 "name": name,
                 "fold": fold_id,
                 "feature_set": fs_name,
                 "n_features": n_features,
-                "head_type": "dirichlet" if is_dir else "softmax",
                 "arch": f"{cfg['arch']}_L{cfg['n_layers']}_d{cfg['d_model']}",
                 "r2_uniform": r2,
                 "mae_mean_pp": mae,
@@ -354,7 +300,6 @@ def main():
                 "n_train": len(trn_idx),
                 "n_test": len(test_idx),
             }
-            # Per-class R²
             for cn in CLASS_NAMES:
                 if f"r2_{cn}" in metrics:
                     rec[f"r2_{cn}"] = metrics[f"r2_{cn}"]
@@ -363,11 +308,11 @@ def main():
             done_keys.add((name, fold_id))
 
             # Save after each run
-            pd.DataFrame(results).to_csv(V11_CSV, index=False)
+            pd.DataFrame(results).to_csv(V12_CSV, index=False)
 
-            print(f"  [{run_idx:3d}/{total_runs}] F{fold_id} {name:55s} "
+            print(f"  [{run_idx:3d}/{total_runs}] F{fold_id} {name:50s} "
                   f"R2={r2:.4f}  MAE={mae:.2f}pp  "
-                  f"ep={n_epochs}  {elapsed:.0f}s  {head_str}  "
+                  f"ep={n_epochs}  {elapsed:.0f}s  "
                   f"ETA={eta_h:.1f}h", flush=True)
 
             # Free GPU
@@ -377,7 +322,7 @@ def main():
 
     # Summary
     print(f"\n{'='*70}", flush=True)
-    print(f"V11 COMPLETE — {len(results)} runs", flush=True)
+    print(f"V12 COMPLETE — {len(results)} runs", flush=True)
     print(f"{'='*70}", flush=True)
 
     df = pd.DataFrame(results)
@@ -389,10 +334,10 @@ def main():
                         mae_std=("mae_mean_pp", "std"),
                         n_folds=("fold", "count"))
                    .sort_values("r2_mean", ascending=False))
-        summary_csv = V11_CSV.replace(".csv", "_summary.csv")
+        summary_csv = V12_CSV.replace(".csv", "_summary.csv")
         summary.to_csv(summary_csv)
         print(summary.to_string())
-        print(f"\nSaved: {V11_CSV}")
+        print(f"\nSaved: {V12_CSV}")
         print(f"Saved: {summary_csv}")
 
 
