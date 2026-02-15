@@ -1,0 +1,14 @@
+{
+  "type": "helpful",
+  "explanation": "NDVI_mean features have positive SHAP for high tree_cover predictions",
+  "rationale": "High NDVI physically indicates dense vegetation - the model learned a real physical relationship",
+  "sample_tree_cover": 0.6299999952316284,
+  "ndvi_features_shap": {
+    "NDVI_mean_2020_spring": -0.0007681831735356172,
+    "NDVI_mean_2020_summer": -0.0008120776875333908,
+    "NDVI_mean_2020_autumn": 0.0004819364807329006,
+    "NDVI_mean_2021_spring": -0.0008001400624891437,
+    "NDVI_mean_2021_summer": -0.0015764040567092382,
+    "NDVI_mean_2021_autumn": -0.0011414619939210833
+  }
+}

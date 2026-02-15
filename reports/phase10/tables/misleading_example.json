@@ -1,0 +1,62 @@
+{
+  "type": "misleading",
+  "explanation": "B02_mean and B02_median are near-perfectly correlated (r>0.99) but SHAP assigns wildly different importance to each",
+  "pitfall": "SHAP splits credit arbitrarily among collinear features - a naive user would wrongly conclude one is important and the other is not",
+  "recommendation": "Group correlated features before interpreting SHAP, or use permutation importance on groups",
+  "pairs": [
+    {
+      "season": "2020_spring",
+      "mean_feature": "B02_mean_2020_spring",
+      "median_feature": "B02_median_2020_spring",
+      "pearson_r": 0.9781890511512756,
+      "shap_mean": 0.0009487502969522179,
+      "shap_median": 0.001054890297292241,
+      "shap_ratio": 0.899382902077619
+    },
+    {
+      "season": "2020_summer",
+      "mean_feature": "B02_mean_2020_summer",
+      "median_feature": "B02_median_2020_summer",
+      "pearson_r": 0.9803357124328613,
+      "shap_mean": 0.0013181997406499972,
+      "shap_median": 0.003435403198971559,
+      "shap_ratio": 0.3837103432414049
+    },
+    {
+      "season": "2020_autumn",
+      "mean_feature": "B02_mean_2020_autumn",
+      "median_feature": "B02_median_2020_autumn",
+      "pearson_r": 0.9793248772621155,
+      "shap_mean": 0.001671865557893653,
+      "shap_median": 0.0019169451512626372,
+      "shap_ratio": 0.8721509620619259
+    },
+    {
+      "season": "2021_spring",
+      "mean_feature": "B02_mean_2021_spring",
+      "median_feature": "B02_median_2021_spring",
+      "pearson_r": 0.9842867851257324,
+      "shap_mean": 0.0008183947874070711,
+      "shap_median": 0.002081220845601894,
+      "shap_ratio": 0.3932282290639797
+    },
+    {
+      "season": "2021_summer",
+      "mean_feature": "B02_mean_2021_summer",
+      "median_feature": "B02_median_2021_summer",
+      "pearson_r": 0.9794531464576721,
+      "shap_mean": 0.0012714944161065418,
+      "shap_median": 0.0010179635695030326,
+      "shap_ratio": 1.2490568957465564
+    },
+    {
+      "season": "2021_autumn",
+      "mean_feature": "B02_mean_2021_autumn",
+      "median_feature": "B02_median_2021_autumn",
+      "pearson_r": 0.9790541529655457,
+      "shap_mean": 0.0007319078845397199,
+      "shap_median": 0.002817651603870054,
+      "shap_ratio": 0.25975812039162044
+    }
+  ]
+}
