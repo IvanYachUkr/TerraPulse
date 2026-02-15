@@ -4,6 +4,7 @@ import Sidebar from './components/Sidebar.jsx';
 import MapView from './components/MapView.jsx';
 import CellInspector from './components/CellInspector.jsx';
 import ModelComparison from './components/ModelComparison.jsx';
+import EvaluationPanel from './components/EvaluationPanel.jsx';
 import { useApi } from './hooks/useApi.js';
 
 const CLASSES = ['tree_cover', 'grassland', 'cropland', 'built_up', 'bare_sparse', 'water'];
@@ -41,6 +42,7 @@ export default function App() {
     const [sidebarOpen, setSidebarOpen] = useState(true);
     const [searchCellId, setSearchCellId] = useState(null);
     const [showComparison, setShowComparison] = useState(false);
+    const [showEvaluation, setShowEvaluation] = useState(false);
 
     // Data fetching
     const { data: grid, loading: gridLoading } = useApi('/api/grid');
@@ -51,6 +53,9 @@ export default function App() {
     const { data: predictions } = useApi(`/api/predictions/${selectedModel}`);
     const { data: conformal } = useApi('/api/conformal');
     const { data: splitData } = useApi('/api/split');
+    const { data: evaluationData } = useApi('/api/evaluation');
+    const { data: stressTestsData } = useApi('/api/stress-tests');
+    const { data: failureData } = useApi('/api/failure-analysis');
     const { data: cellDetail } = useApi(
         selectedCell != null ? `/api/cell/${selectedCell}` : null
     );
@@ -84,6 +89,8 @@ export default function App() {
                 onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
                 showComparison={showComparison}
                 onToggleComparison={() => setShowComparison(!showComparison)}
+                showEvaluation={showEvaluation}
+                onToggleEvaluation={() => setShowEvaluation(!showEvaluation)}
             />
             <div className="app-layout">
                 {sidebarOpen && (
@@ -136,8 +143,16 @@ export default function App() {
                                 &times;
                             </button>
                         </div>
-                        <ModelComparison models={models} />
+                        <ModelComparison models={models} evaluation={evaluationData} />
                     </div>
+                )}
+                {showEvaluation && (
+                    <EvaluationPanel
+                        evaluation={evaluationData}
+                        stressTests={stressTestsData}
+                        failureAnalysis={failureData}
+                        onClose={() => setShowEvaluation(false)}
+                    />
                 )}
                 <CellInspector
                     cellDetail={cellDetail}

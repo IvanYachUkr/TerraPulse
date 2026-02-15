@@ -22,7 +22,7 @@ from fastapi.responses import JSONResponse
 # ---------------------------------------------------------------------------
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 
-MODELS = ["ridge", "elasticnet", "extratrees", "rf", "catboost", "mlp"]
+MODELS = ["mlp", "tree", "ridge"]
 CLASSES = ["tree_cover", "grassland", "cropland", "built_up", "bare_sparse", "water"]
 
 # ---------------------------------------------------------------------------
@@ -72,6 +72,21 @@ def get_split():
     return _load_json("split.json")
 
 
+@lru_cache(maxsize=None)
+def get_evaluation():
+    return _load_json("evaluation.json")
+
+
+@lru_cache(maxsize=None)
+def get_stress_tests():
+    return _load_json("stress_tests.json")
+
+
+@lru_cache(maxsize=None)
+def get_failure_analysis():
+    return _load_json("failure_analysis.json")
+
+
 # ---------------------------------------------------------------------------
 # App
 # ---------------------------------------------------------------------------
@@ -116,7 +131,7 @@ def change():
 
 @app.get("/api/predictions/{model}")
 def predictions(model: str):
-    """Predicted proportions for holdout cells (fold 0) from a given model."""
+    """OOF predicted proportions for all cells from a given final model."""
     if model not in MODELS:
         raise HTTPException(
             status_code=404,
@@ -142,6 +157,24 @@ def conformal():
 def split():
     """Per-cell spatial CV fold and tile group assignments."""
     return get_split()
+
+
+@app.get("/api/evaluation")
+def evaluation():
+    """Phase 9 evaluation: per-class metrics, aggregate metrics, change detection."""
+    return get_evaluation()
+
+
+@app.get("/api/stress-tests")
+def stress_tests():
+    """Phase 9 stress tests: noise injection, season dropout, feature ablation."""
+    return get_stress_tests()
+
+
+@app.get("/api/failure-analysis")
+def failure_analysis():
+    """Phase 9 failure analysis: error breakdown by dominant land-cover class."""
+    return get_failure_analysis()
 
 
 @app.get("/api/cell/{cell_id}")

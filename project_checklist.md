@@ -491,12 +491,33 @@ Script: `scripts/run_evaluation_phase9.py` — 14 figures + 7 CSV tables (65s ru
 
 ---
 
-## Phase 11 — Interactive Dashboard / Product ⚠️
+## Phase 11 — Interactive Dashboard / Product ✅
 
-- [ ] Streamlit + Folium (recommended)
-- [ ] Time selection, class selection, Δ visualization
-- [ ] Uncertainty overlay + disclaimer panel ⚠️
-- [ ] Click cell → show features + prediction + explanation 🏆
+Built as React + Vite frontend with FastAPI backend (not Streamlit — better interactivity and map performance).
+
+### Architecture
+- **Frontend**: React 19 + Vite, MapLibre GL + deck.gl (WebGL map), Chart.js
+- **Backend**: FastAPI serving precomputed JSON data, sub-ms response times
+- **Data pipeline**: `scripts/precompute_dashboard_data.py` → `src/dashboard/data/*.json`
+
+### Completed features
+- [x] Interactive map of all 29,946 grid cells (100m, Nuremberg AOI)
+- [x] View modes: Labels (2020/2021), Predicted, Change (Δ), Folds (spatial CV)
+- [x] 3 final models selectable: **MLP** (R²=0.787), **LightGBM** (R²=0.736), **Ridge** (R²=0.423)
+- [x] Full OOF predictions for all cells (not holdout-only)
+- [x] Class selector with per-class coloring (tree cover, grassland, cropland, built-up, bare/sparse, water)
+- [x] Cell inspector: click any cell → labels (both years), predictions (all models), change, fold info
+- [x] Model comparison panel: R², MAE, Aitchison distance bar charts
+- [x] Evaluation panel (Phase 9): per-class R², stress tests, change detection, failure analysis
+- [x] Cell search by ID
+- [x] Conformal prediction coverage data served via API
+- [x] Dark theme, responsive layout
+
+### Outstanding
+- [ ] **Predictions for years 2023, 2024, 2025** — requires downloading Sentinel-2 imagery for those years, running feature extraction, and generating predictions with the trained models. The model architecture and weights are ready; only the input data pipeline needs extending.
+- [ ] Uncertainty overlay on map (conformal intervals are computed but not yet visualized spatially)
+- [ ] Disclaimer panel for limitations
+
 
 ---
 

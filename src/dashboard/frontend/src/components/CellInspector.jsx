@@ -14,12 +14,9 @@ const MODEL_DISPLAY = {
 
 // Distinct palette for each model (not tied to class colors)
 const MODEL_COLORS = {
-    ridge: { bg: 'rgba(59,130,246,0.5)', border: 'rgb(59,130,246)' },
-    elasticnet: { bg: 'rgba(139,92,246,0.5)', border: 'rgb(139,92,246)' },
-    extratrees: { bg: 'rgba(16,185,129,0.5)', border: 'rgb(16,185,129)' },
-    rf: { bg: 'rgba(245,158,11,0.5)', border: 'rgb(245,158,11)' },
-    catboost: { bg: 'rgba(239,68,68,0.5)', border: 'rgb(239,68,68)' },
     mlp: { bg: 'rgba(236,72,153,0.5)', border: 'rgb(236,72,153)' },
+    tree: { bg: 'rgba(16,185,129,0.5)', border: 'rgb(16,185,129)' },
+    ridge: { bg: 'rgba(59,130,246,0.5)', border: 'rgb(59,130,246)' },
 };
 
 export default function CellInspector({

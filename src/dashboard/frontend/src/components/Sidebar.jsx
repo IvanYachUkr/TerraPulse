@@ -6,12 +6,9 @@ const VIEW_MODES = [
 ];
 
 const MODEL_DISPLAY = {
-    ridge: 'Ridge',
-    elasticnet: 'ElasticNet',
-    extratrees: 'ExtraTrees',
-    rf: 'Random Forest',
-    catboost: 'CatBoost',
     mlp: 'MLP',
+    tree: 'LightGBM',
+    ridge: 'Ridge',
 };
 
 const FOLD_LABELS = [
@@ -41,7 +38,7 @@ export default function Sidebar({
     searchCellId,
     onSearchCellId,
 }) {
-    const showModels = viewMode === 'predictions' || viewMode === 'labels';
+    const showModels = viewMode === 'predictions';
     const showYears = viewMode === 'labels';
     const showClasses = viewMode !== 'folds';
 

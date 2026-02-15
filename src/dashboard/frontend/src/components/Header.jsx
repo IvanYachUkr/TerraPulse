@@ -1,4 +1,4 @@
-export default function Header({ sidebarOpen, onToggleSidebar, showComparison, onToggleComparison }) {
+export default function Header({ sidebarOpen, onToggleSidebar, showComparison, onToggleComparison, showEvaluation, onToggleEvaluation }) {
     return (
         <header className="header">
             <button
@@ -16,6 +16,13 @@ export default function Header({ sidebarOpen, onToggleSidebar, showComparison, o
             <span className="header-logo">TerraPulse</span>
             <span className="header-subtitle">Urban Land Cover Dashboard &mdash; Nuremberg</span>
             <div className="header-spacer" />
+            <button
+                className={`header-btn ${showEvaluation ? 'active' : ''}`}
+                onClick={onToggleEvaluation}
+                title="Evaluation metrics"
+            >
+                &#128202; Eval
+            </button>
             <button
                 className={`header-btn ${showComparison ? 'active' : ''}`}
                 onClick={onToggleComparison}

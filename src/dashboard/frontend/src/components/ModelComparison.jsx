@@ -13,19 +13,18 @@ const MODEL_DISPLAY = {
 };
 
 const MODEL_COLORS_BAR = {
-    ridge: { bg: 'rgba(59,130,246,0.6)', border: 'rgb(59,130,246)' },
-    elasticnet: { bg: 'rgba(139,92,246,0.6)', border: 'rgb(139,92,246)' },
-    extratrees: { bg: 'rgba(16,185,129,0.6)', border: 'rgb(16,185,129)' },
-    rf: { bg: 'rgba(245,158,11,0.6)', border: 'rgb(245,158,11)' },
-    catboost: { bg: 'rgba(239,68,68,0.6)', border: 'rgb(239,68,68)' },
     mlp: { bg: 'rgba(236,72,153,0.6)', border: 'rgb(236,72,153)' },
+    tree: { bg: 'rgba(16,185,129,0.6)', border: 'rgb(16,185,129)' },
+    ridge: { bg: 'rgba(59,130,246,0.6)', border: 'rgb(59,130,246)' },
 };
 
-export default function ModelComparison({ models }) {
+export default function ModelComparison({ models, evaluation }) {
     const r2Ref = useRef(null);
     const maeRef = useRef(null);
+    const aitchRef = useRef(null);
     const r2ChartRef = useRef(null);
     const maeChartRef = useRef(null);
+    const aitchChartRef = useRef(null);
 
     useEffect(() => {
         if (!models || !r2Ref.current || !maeRef.current) return;
@@ -100,11 +99,42 @@ export default function ModelComparison({ models }) {
             },
         });
 
+        // Aitchison distance chart (from evaluation data)
+        if (aitchChartRef.current) aitchChartRef.current.destroy();
+        if (evaluation?.aggregate && aitchRef.current) {
+            const aitchSorted = [...evaluation.aggregate].sort((a, b) => a.aitchison_mean - b.aitchison_mean);
+            aitchChartRef.current = new Chart(aitchRef.current, {
+                type: 'bar',
+                data: {
+                    labels: aitchSorted.map((m) => m.model),
+                    datasets: [{
+                        label: 'Aitchison Distance',
+                        data: aitchSorted.map((m) => m.aitchison_mean),
+                        backgroundColor: aitchSorted.map((m) =>
+                            m.model === 'MLP' ? 'rgba(236,72,153,0.6)' : 'rgba(59,130,246,0.6)'
+                        ),
+                        borderColor: aitchSorted.map((m) =>
+                            m.model === 'MLP' ? 'rgb(236,72,153)' : 'rgb(59,130,246)'
+                        ),
+                        borderWidth: 1,
+                    }],
+                },
+                options: {
+                    ...chartOpts,
+                    scales: {
+                        ...chartOpts.scales,
+                        x: { ...chartOpts.scales.x, min: 0, title: { display: true, text: 'Aitchison Distance (lower = better)', color: '#64748b', font: { size: 10 } } },
+                    },
+                },
+            });
+        }
+
         return () => {
             if (r2ChartRef.current) { r2ChartRef.current.destroy(); r2ChartRef.current = null; }
             if (maeChartRef.current) { maeChartRef.current.destroy(); maeChartRef.current = null; }
+            if (aitchChartRef.current) { aitchChartRef.current.destroy(); aitchChartRef.current = null; }
         };
-    }, [models]);
+    }, [models, evaluation]);
 
     if (!models) return null;
 
@@ -122,6 +152,14 @@ export default function ModelComparison({ models }) {
                     <canvas ref={maeRef} />
                 </div>
             </div>
+            {evaluation?.aggregate && (
+                <div className="card" style={{ marginTop: 12 }}>
+                    <div className="card-title">Aitchison Distance</div>
+                    <div style={{ height: 100, position: 'relative' }}>
+                        <canvas ref={aitchRef} />
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
