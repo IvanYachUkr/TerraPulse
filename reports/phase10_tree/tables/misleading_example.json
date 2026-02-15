@@ -1,0 +1,7 @@
+{
+  "type": "misleading",
+  "model": "LightGBM",
+  "explanation": "B02_mean and B02_median are near-perfectly correlated (r>0.99) but TreeSHAP assigns different importance to each",
+  "note": "TreeSHAP is exact for trees, but correlated features still cause arbitrary credit splitting in the tree structure",
+  "pairs": []
+}

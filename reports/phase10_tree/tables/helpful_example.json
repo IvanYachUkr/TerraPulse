@@ -1,0 +1,15 @@
+{
+  "type": "helpful",
+  "model": "LightGBM",
+  "explanation": "NDVI_mean features have positive TreeSHAP for high tree_cover predictions",
+  "rationale": "High NDVI physically indicates dense vegetation - the model learned a real physical relationship",
+  "sample_tree_cover": 1.0,
+  "ndvi_features_shap": {
+    "NDVI_mean_2020_spring": 0.00018048266051671485,
+    "NDVI_mean_2020_summer": -0.00023415531792232228,
+    "NDVI_mean_2020_autumn": -6.854393292662483e-05,
+    "NDVI_mean_2021_spring": 0.00020096928150256023,
+    "NDVI_mean_2021_summer": 0.00010683784639500335,
+    "NDVI_mean_2021_autumn": 1.946828143338669e-05
+  }
+}
