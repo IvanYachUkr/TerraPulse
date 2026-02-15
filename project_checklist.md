@@ -246,140 +246,235 @@
 > At least 2 models: one interpretable + one flexible.
 
 - [x] Target: predict 2021 proportions from merged 2020+2021 seasonal features
-- [x] Model 1 (interpretable) ⚠️ — Ridge baseline
-  - Ridge CV R²≈0.43 (region growing + buffer) — anchors "no leakage" claim
-- [/] Model 2 (flexible) ⚠️ — Trees + MLPs
-- [/] Hyperparameter tuning (time-boxed) ⚠️
-- [ ] Compare models (performance vs interpretability)
+- [x] Model 1 (interpretable) ⚠️ — Ridge regression
+  - RidgeCV R²=0.423 ± 0.197 (region growing + buffer, bi_LBP features, 864f)
+  - Performs poorly as expected — linear model cannot capture the complex nonlinear
+    interactions between spectral bands, indices, and texture features that dominate
+    land-cover prediction
+  - Saved: `models/final_ridge/` (weights, scalers, OOF predictions, coefficients)
+- [x] Model 2 (flexible) ⚠️ — MLP (champion) + LightGBM (best tree)
+- [x] Hyperparameter tuning (time-boxed) ⚠️
+  - 798 MLP runs across 14 experiment versions (V5–V17)
+  - 480 LightGBM sweep runs (32 configs × 3 feature sets × 5 folds)
+  - 28 sklearn tree configs (ExtraTrees, RF, CatBoost × 4 feature sets)
+  - 565 HGBR-based feature ablation runs (5 ablation studies)
+- [x] Compare models (performance vs interpretability)
 
-### Model comparison (all evaluated with spatial CV + buffer)
+### Final model comparison (all on spatial CV with region growing + 1-tile buffer)
 
-| Model | R² (uniform) | MAE (pp) | Notes |
-|-------|-------------|----------|-------|
-| Ridge | 0.527 | 5.21 | Interpretable baseline |
-| ElasticNet | 0.434 | 5.43 | Sparse, but worse than Ridge |
-| ExtraTrees | 0.675 | 3.34 | Best tree model (2109 feat) |
-| RF | 0.684 | 3.23 | Competitive tree model |
-| CatBoost | 0.671 | 4.00 | Gradient boosted, lag on MAE |
-| **MLP (Phase 8 best)** | **0.752** | **2.92** | Plain MLP, single fold |
+| Model | R² (5-fold) | MAE (pp) | Features | Role |
+|-------|------------|----------|----------|------|
+| **MLP** (champion) | **0.787 ± 0.038** | **2.50** | 864 (bi_LBP) | Flexible — final model |
+| **LightGBM** (best tree) | **0.749 ± 0.047** | **2.94** | 438 (VegIdx+RedEdge+TC+NDTI+IRECI+CRI1) | Flexible — tree baseline |
+| ExtraTrees | 0.692 | 3.13 | 2109 (all_core), fold-0 only | Explored, superseded by LightGBM |
+| RF | 0.684 | 3.23 | 2109 (all_core), fold-0 only | Explored, superseded by LightGBM |
+| CatBoost | 0.671 | 4.00 | 2109 (all_core), fold-0 only | Too slow, superseded by LightGBM |
+| **Ridge** | **0.423 ± 0.197** | **5.63** | 864 (bi_LBP) | Interpretable baseline |
 
-### Tree results (28 configs, complete — `trees_reduced_features.csv`)
-- Best: **ExtraTrees R²=0.692**, MAE=3.13pp (`all_core`, 2109 features)
-- RF: R²=0.684 | CatBoost: R²=0.671 (but best Aitchison=4.19)
-- Feature sets: `all_core` barely beats `bands_and_indices` (798 feats)
-- Trees plateau at ~0.69 regardless of ensemble size or feature set
+Saved models: `models/final_mlp/` (5 fold weights + scalers + OOF), `models/final_ridge/` (5 fold models + coefficients + OOF)
 
-### MLP V2 sweep (superseded by V4)
-- Best: **relu L5 h256 R²=0.858**, MAE=2.55pp (`bands_indices`, 798 feats)
-- MLP–Tree gap: **+0.17 R²** on fold-0 (0.86 vs 0.69), **+0.09 R²** on CV means — MLPs learn cross-spectral interactions trees cannot
-- ⚠️ V2 had BatchNorm confound on ReLU — fixed in V4
+---
 
-### MLP V4 search sweep (complete — 1549/1584 configs, fold-0 only)
-- Script: `scripts/run_mlp_overnight_v4.py --stage search` (fold-0, 120 epochs)
-- Best overall: **`residual_gelu_L6_d512_bn` R²=0.8634**, MAE=2.64pp
-- Feature set ablation (best R² per set):
-  | Rank | Feature Set | Features | Best R² |
-  |------|---|---|---|
-  | 1 | `bands_indices` | 798 | **0.8634** |
-  | 2 | `bands_indices_glcm_lbp` | ~900 | 0.8598 |
-  | 3 | `bands_indices_texture` | ~1100 | 0.8432 |
-  | 4 | `full_no_deltas` | ~1400 | 0.8313 |
-  | 5 | `bands_indices_hog` | ~850 | 0.8309 |
-  | 6 | `all_full` | 3535 | 0.7952 |
-  | 7 | `top500_full` | 500 | 0.6841 |
-  | 8 | `texture_all` | ~300 | 0.6340 |
-- Key finding: **more features = worse performance** — textures add noise at 100m resolution
-- Architecture insights: residual + GELU + BatchNorm + lower LR (0.0005) wins
-- Auto-CV launcher: `scripts/launch_cv_after_search.py` polls search → selects
-  top 20 global + top 10 per feature set → launches CV (300 epochs × 5 folds)
+### Feature analysis with HistGradientBoostingRegressor (HGBR)
 
-### MLP V4 CV (complete — 83 configs × 5 folds = 415 runs)
-- [x] CV complete
-- Top 5 configs (5-fold mean ± std):
-  | Rank | Config | R² mean | R² std | MAE | Epochs |
-  |------|--------|---------|--------|-----|--------|
-  | 1 | `bands_indices_glcm_lbp_plain_mish_L5_d512_bn` | **0.775** | 0.074 | 2.49 | 300 (cap!) |
-  | 2 | `bands_indices_residual_silu_L10_d256_nonorm` | **0.772** | 0.050 | 2.52 | 297 (cap!) |
-  | 3 | `full_no_deltas_plain_gelu_L5_d512_bn` | **0.771** | 0.035 | 2.65 | 280 |
-  | 4 | `bands_indices_plain_silu_L5_d512_bn` | **0.771** | 0.054 | 2.45 | 300 (cap!) |
-  | 5 | `bands_indices_texture_plain_silu_L5_d256_bn` | 0.767 | 0.033 | 2.62 | 295 |
-- Key observations:
-  - Many top configs hit the **300-epoch cap** — potentially undertrained
-  - `bands_indices` (798 feat) and `bands_indices_glcm_lbp` (924 feat) dominate
-  - Plain architectures (mish, silu) + BN competitive with residual deep networks
-  - Fold-0 R²=0.86 drops to CV mean 0.77 → **~0.09 fold variance** indicates spatial heterogeneity
-- [/] Final model selection from CV results
+Extensive feature ablation was conducted using sklearn's `HistGradientBoostingRegressor`
+as a fast proxy model to understand the impact of individual feature groups and their
+combinations. This analysis informed feature set selection for both trees and MLPs.
 
-### MLP V5 deep training (complete — 233 runs, 5.7h)
-- Script: `scripts/run_mlp_v5_deep_train.py`
-- Results: `reports/phase8/tables/mlp_v5_deep.csv`, `mlp_v5_deep_summary.csv`
-- 233 runs across 5 folds, 3 feature sets, 2000-epoch cap (all early-stopped, none hit cap)
-- **Best 5-fold CV models (R² mean ± std):**
-  1. `glcm_lbp_plain_silu_L5_d1024_bn` — **R²=0.787±0.041**, MAE=2.51pp
-  2. `bands_indices_plain_mish_L5_d512_bn` — R²=0.769±0.065, MAE=2.49pp
-  3. `glcm_lbp_residual_gelu_L12_d256_bn` — R²=0.768±0.036, MAE=2.57pp
-  4. `bands_indices_residual_silu_L10_d256_nonorm` — R²=0.768±0.054, MAE=2.51pp
-  5. `full_no_deltas_plain_mish_L5_d512_bn` — R²=0.762±0.040, MAE=2.67pp
-- **Key findings:**
-  - `bands_indices_glcm_lbp` (924 feat) beats `bands_indices` (798 feat) — GLCM+LBP texture helps
-  - `full_no_deltas` (1428 feat) is worst — Gabor/HOG/morph/semivariogram add noise
-  - Shallow plain (L5) dominates; deep residual (L12-16) competitive but not better
-  - SiLU is the best activation; Mish close second; GeGLU catastrophically unstable
-  - Texture features reduce fold-to-fold variance (±0.041 vs ±0.065)
-  - Fold R² ranges: F0=0.86 (urban), F1=0.77 (mixed), F2=0.77 (forest), F3=0.73 (suburban), F4=0.83 (dense forest)
-- [x] V5 results complete
+**Ablation studies conducted** (565 total runs across 5 scripts):
+- `ablation_spectral_all_folds.py` — 95 runs: spectral bands vs indices vs combined
+- `ablation_texture_all_folds.py` — 25 runs: GLCM, LBP, Gabor, HOG, morphological
+- `ablation_new_indices.py` — 315 runs: novel spectral indices (NDTI, IRECI, CRI1, EVI2, GNDVI, MNDWI)
+- `ablation_fusion_novel.py` — 80 runs: fusion of base groups with novel indices
+- `ablation_best5_mixes.py` — 50 runs: optimal combinations of top-5 feature groups
 
-### MLP V10: Definitive feature+architecture+head sweep (running)
-- Script: `scripts/run_mlp_v10_definitive.py`
-- 3 feature sets × 3 architectures (SiLU) × ILR + 6 GeGLU runs = 15 configs × 5 folds = 75 runs
-- Feature sets: bi_LBP (864f), bi_MP_Gabor (996f), bi_LBP_MP_Gabor (1060f)
-- Key V10 findings (fold 0):
-  - SiLU architectures dominate GeGLU, especially for Dirichlet head
-  - bi_MP_Gabor L5 d1024 bn: strong all-rounder
-  - Texture features (LBP, MP+Gabor) DO help at 10×10 — previous "underperform" assessment was wrong
+**Key finding**: RedEdge + VegIdx + TC (348 features) achieves 98.6% of full bands+indices
+performance with half the features. Adding novel indices (NDTI, IRECI, CRI1) brought the
+best HGBR performance to the 438-feature set ultimately used for LightGBM.
 
-### MLP V11: New Gabor v2 + Morph DMP + Dirichlet (queued, auto-starts after V10)
-- Script: `scripts/run_mlp_v11_new_texture.py`
-- 7 configs × 5 folds = 35 runs (~2h):
-  | # | Features | Architecture | Head |
-  |---|---|---|---|
-  | 1 | bi_Gab2_DMP (~1566f) | L5 d1024 bn | ILR |
-  | 2 | bi_Gab2_DMP | L5 d1024 bn | Dirichlet |
-  | 3 | bi_LBP_Gab2_DMP (~1632f) | L5 d1024 bn | ILR |
-  | 4 | bi_Gab2_DMP | L5 d1536 bn | ILR |
-  | 5 | bi_Gab2_DMP | L7 d1024 bn | ILR |
-  | 6 | bi_Gab2_DMP | L5 d1536 bn | Dirichlet |
-  | 7 | bi_LBP_Gab2_DMP | L5 d1536 bn | ILR |
-- New texture features: complex Gabor magnitude+phase (384f) + Morph DMP peak/valley (384f)
-- Supplemental parquet: `features_texture_v2.parquet` (extracted via `extract_texture_v2.py`)
+**HGBR vs LightGBM**: sklearn's HistGradientBoostingRegressor performed substantially worse
+than LightGBM on the same feature sets — this is why scikit-learn trees were not used for
+the final tree model. LightGBM's more sophisticated leaf-wise growth and native categorical
+support gave it a clear edge.
 
-### Future: V6 deep+wide architecture sweep
-- Test unexplored architecture region: L12-16 × d512-1024
-- V5 shows shallow wide (L5×d1024) is the overall winner architecture
-- Incorporate new spectral indices (EVI2, MNDWI, GNDVI, NDTI, IRECI, CRI1)
-- Feature ablation study complete — RedEdge+VegIdx+TC (348 feat) achieves 98.6% of full bands+indices with half the features
+---
 
-### Future: V6/V7 advanced spectral indices
-- Add to `spectral_indices()` in `extract_features.py`, then re-extract:
-  - **MNDWI** = (Green − SWIR1)/(Green + SWIR1) — better water in urban areas
-  - **EVI2** = 2.5×(NIR − Red)/(NIR + 2.4×Red + 1) — less saturated than NDVI
-  - **NDTI** = (SWIR1 − SWIR2)/(SWIR1 + SWIR2) — cropland vs bare soil
-  - **IRECI** = (B07 − B04)/(B05/B06) — Sentinel-2-specific red-edge chlorophyll
-  - **GNDVI** = (NIR − Green)/(NIR + Green) — chlorophyll-sensitive
-  - **CRI1** = (1/Green) − (1/RE1) — carotenoid content
-- Note: NDMI ≈ −NDBI (redundant), SAVI ≈ NDVI — consider dropping duplicates
-- Test new `bands_indices_v2` feature set vs current `bands_indices`
+### Tree modeling: sklearn trees → LightGBM
+
+**Sklearn trees (28 configs, fold-0 only → `trees_reduced_features.csv`)**
+- Tested: ExtraTrees (500/1000 estimators), RF (500), CatBoost (1000/deeper)
+- Feature sets: `all_core` (2109f), `bands_and_indices` (798f), `bands_only` (480f), `indices_only` (318f)
+- Trees plateau at R²≈0.67–0.69 regardless of ensemble size, feature set, or model type
+- `all_core` (2109f) barely beats `bands_and_indices` (798f): 0.692 vs 0.686
+- Adding more features does not help — trees cannot exploit texture information
+  that MLPs use effectively; texture features that boost MLP performance often
+  *degrade* tree performance by adding noise to the split search
+- **CatBoost was unacceptably slow**: 442s (1000 trees) to 2328s (deeper config)
+  vs ExtraTrees 21–239s for similar or better R². CatBoost was dropped.
+
+**V8 trees on glcm_lbp features (7 configs × 5 folds → `mlp_v8_trees_summary.csv`)**
+- Best: ExtraTrees R²=0.660, RF R²=0.643, CatBoost R²=0.642
+- Confirmed: texture features (GLCM+LBP) hurt tree performance vs spectral-only
+
+**LightGBM sweep (32 configs × 3 feature sets × 5 folds = 480 runs → `lgbm_sweep.csv`)**
+- Feature sets: VegIdx+RedEdge+TC (348f), +NDTI+CRI1 (408f), +IRECI (438f)
+- Hyperparameters swept: n_estimators (200–2000), max_depth (4–unlimited),
+  learning_rate (0.01–0.2), num_leaves (15–255), min_child_samples (5–100),
+  reg_lambda (0–10), subsample (0.6–1.0), colsample_bytree (0.5–1.0)
+- **Best: `strong_wide` config (R²=0.749, MAE=2.94)** — n_estimators=1000,
+  max_depth=6, lr=0.03, num_leaves=255, reg_lambda=3.0, subsample=0.8, colsample=0.7
+- Adding IRECI+CRI1 spectral indices improved R² from 0.717 (base, 348f) to 0.749 (438f)
+- LightGBM achieves very high results for a tree model (R²=0.749), closing the
+  gap with MLPs significantly compared to sklearn trees (0.69)
+
+---
+
+### MLP architecture and feature set exploration
+
+**Total: 798 runs across 14 experiment versions (V5–V17)**
+
+**Architectures tested:**
+- **Types**: Plain (feedforward) vs Residual (skip connections)
+  - Plain: 183 runs, best R²=0.864 — winner overall
+  - Residual: 45 runs, best R²=0.834
+- **Activations**: SiLU, Mish, GELU, GeGLU, ReLU
+  - SiLU: best overall (R²=0.864), most stable
+  - Mish: close second, slightly worse stability
+  - GELU: competitive in residual networks
+  - GeGLU: catastrophically unstable, dropped
+- **Depths**: L3, L5, L7, L10, L12, L16, L20
+  - Shallow L5 dominates; deep L12-L16 competitive but not better
+  - Very deep L20 shows no benefit, just slower training
+- **Hidden dims**: d256, d512, d1024, d1536, d2048
+  - d1024 is the sweet spot (best R²=0.864)
+  - d256 too small, d2048 adds no benefit with more compute
+- **Normalization**: BatchNorm vs no-norm vs LayerNorm
+  - BatchNorm always wins
+- **Heads**: ILR+softmax (compositional) vs Dirichlet
+  - ILR+softmax is the standard, Dirichlet explored but not better
+
+**Feature sets tested for MLP:**
+
+| Feature Set | # Features | Best R² (5-fold) | Notes |
+|---|---|---|---|
+| **bi_LBP** | 864 | **0.787** | **Champion** — bands+indices+LBP |
+| bi_LBP_all5 | 1128 | 0.768 | + multi-band LBP, diminishing returns |
+| bi_LBP_NIR | 864 | 0.768 | LBP on NIR only |
+| bands_indices_glcm_lbp | 924 | 0.787 | ≈ bi_LBP (V5 naming) |
+| bi_Gab2_DMP | 1566 | 0.758 | Complex Gabor + morph DMP |
+| bi_LBP_mLBP | 1344 | 0.761 | + multi-band LBP (different subset) |
+| bi_LBP_Gab2_DMP | 1632 | 0.745 | Kitchen sink — too many features |
+| bands_indices | 798 | 0.769 | Spectral only, no texture |
+| full_no_deltas | 1428 | 0.762 | All features except deltas |
+| all_full | 3535 | 0.795 | Everything (fold-0 only) |
+| bi_mLBP_only | 1278 | 0.623 | Multi-band LBP without base bands |
+
+**Key MLP findings:**
+- Texture features (LBP) **do help** MLPs: +0.018 R² (0.769 → 0.787)
+- But adding too many texture types (Gabor, HOG, morph, semivariogram) hurts — noise
+- Shallow-wide (L5 × d1024) with BatchNorm and SiLU is the winning architecture
+- MLP–Tree gap: **+0.038 R²** (0.787 vs 0.749) over the best LightGBM — MLPs
+  learn cross-spectral interactions that trees cannot model
+
+---
+
+### Training progression (MLP experiments V5–V17)
+
+| Version | Focus | Configs | Runs | Key Finding |
+|---|---|---|---|---|
+| V4 search | Architecture sweep (fold-0) | 1549 | 1549 | residual+GELU+BN best on fold-0 |
+| V4 CV | Top configs (5-fold) | 83 | 415 | 300-epoch cap → undertrained |
+| V5 | Deep training (2000 ep) | 20 | 233 | glcm_lbp L5 d1024 BN = **0.787** |
+| V5_arch | Architecture variants | 16 | 80 | Confirms plain > residual |
+| V6 | More architectures | 10 | 50 | SiLU dominates |
+| V7 | Architecture refinement | 10 | 50 | L5 optimal depth |
+| V9 | Texture ablation | ~16 | 82 | LBP+GLCM best texture combo |
+| V10 | Definitive sweep | 15 | 75 | bi_LBP confirmed champion |
+| V11 | Gabor v2 + morph DMP | 7 | 42 | Complex textures no benefit |
+| V12 | Multi-band LBP | 4 | 20 | Marginal improvement |
+| V12b | Arch sweep on multi-LBP | 6 | 30 | d1024 optimal width |
+| V13 | Clean multi-band LBP | 22 | 110 | Could not beat V10/V5 |
+| V14 | V10 reproduce check | 1 | 5 | Confirmed (env issue found) |
+| V15 | Per-patch LBP (Rust) | 2 | 10 | Boundary mode bug found |
+| V16 | Rust reproduce | 1 | 5 | After Rust LBP fix |
+| V17 | Multi-seed replication | 1×6 seeds | 6 | Seed 42 = best, R²=0.787 |
+
+### Consolidated result tables
+- [all_mlp_results.csv](reports/phase8/tables/all_mlp_results.csv) — 798 per-fold MLP runs
+- [all_mlp_summary.csv](reports/phase8/tables/all_mlp_summary.csv) — 53 unique MLP configs
+- [all_tree_results.csv](reports/phase8/tables/all_tree_results.csv) — 543 per-fold tree runs
+- [all_tree_summary.csv](reports/phase8/tables/all_tree_summary.csv) — 125 unique tree configs
+
+### Future: Rust-based feature extraction + inference 🏆
+- [ ] Port LBP extraction to Rust (PyO3) for real-time inference
+- [ ] ONNX model export for Rust-side inference (no Python at serving time)
+- [ ] Docker deployment (multi-stage build → slim image)
 
 ---
 
 ## Phase 9 — Evaluation Beyond Accuracy ⚠️
 
-- [ ] Standard metrics (per class)
-- [ ] Change-specific metrics ⚠️
+- [x] Standard metrics (per class)
+- [x] Change-specific metrics ⚠️
   - false-change rate, stability in unchanged areas, Δ-magnitude calibration
-- [ ] Stress tests (at least one) ⚠️
-  - noise injection, missing features, seasonal shift, spatial shift
-- [ ] Failure analysis maps (where model is wrong + why) ⚠️
+- [x] Stress tests (3 tests) ⚠️
+  - Gaussian noise injection, season dropout, feature-group ablation
+- [x] Failure analysis maps (where model is wrong + why) ⚠️
+
+Script: `scripts/run_evaluation_phase9.py` — 14 figures + 7 CSV tables (65s runtime)
+
+### A) Per-class metrics (MLP vs Ridge)
+
+| Class | R² MLP | R² Ridge | MAE MLP (pp) | MAE Ridge (pp) |
+|---|---|---|---|---|
+| Tree Cover | 0.963 | 0.922 | — | — |
+| Grassland | 0.844 | 0.691 | — | — |
+| Cropland | 0.916 | 0.589 | — | — |
+| Built-up | 0.961 | 0.881 | — | — |
+| Bare/Sparse | 0.406 | 0.053 | — | — |
+| Water | 0.910 | 0.769 | — | — |
+
+- R² uniform: MLP=0.833, Ridge=0.651
+- Aitchison: MLP=7.81, Ridge=11.20
+- KL divergence: MLP=0.080, Ridge=0.275
+- MLP dominates on every class; biggest gap on cropland (+0.33) and bare/sparse (+0.35)
+
+### B) Change-specific metrics
+
+- **False-change rate** (τ=5%): MLP=24%, Ridge=87%
+- **Missed-change rate** (τ=5%): MLP=6.5%, Ridge=1.4%
+- **Stability MAE** in unchanged cells: MLP=0.83pp, Ridge=4.19pp
+- **Delta correlations** (Pearson): bare_sparse=0.96 (high), water=0.25 (worst)
+- Ridge over-predicts change everywhere (87% false-change) because it can't model stable areas
+
+### C) Stress tests
+
+**Noise injection**: model robust to σ≤0.25 (R² drops 0.004), degrades at σ=0.5 (−0.02), collapses at σ=2.0 (R²=−0.06)
+
+**Season dropout** (zeroing all features from one season):
+| Season | R² | Delta |
+|---|---|---|
+| 2020_spring | −9.09 | −9.92 (most critical!) |
+| 2021_summer | −1.81 | −2.64 |
+| 2020_autumn | −0.65 | −1.49 |
+| 2020_summer | −0.56 | −1.40 |
+| 2021_spring | 0.00 | −0.83 |
+| 2021_autumn | 0.35 | −0.48 (least critical) |
+
+**Feature ablation** (zeroing feature groups):
+- Drop Bands (480f): R²=−1.44 (−2.27) — catastrophic, bands are essential
+- Drop LBP (66f): R²=0.47 (−0.36) — LBP provides +0.36 R² (biggest impact per-feature)
+- Drop Indices (192f): R²=0.61 (−0.23) — indices complement bands
+
+### D) Failure analysis
+
+**Error by dominant class** (MLP MAE in pp):
+- Tree Cover: 1.57pp (lowest — dominant class, most data)
+- Built-up: 2.51pp (well predicted despite heterogeneity)
+- Cropland: 4.66pp | Grassland: 4.89pp (confused with each other)
+- Water: 5.12pp | Bare/Sparse: 13.81pp (rarest class, highest error)
+
+**Fold variation**: R² ranges 0.753–0.844 across 5 folds; MAE 1.18–3.61pp
 
 ---
 

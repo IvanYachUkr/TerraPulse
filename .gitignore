@@ -29,6 +29,7 @@ research/
 venv/
 env/
 *.env
+*.agent
 
 # === IDE ===
 .vscode/
