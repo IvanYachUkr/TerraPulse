@@ -3,7 +3,7 @@
 Phase 9 — Evaluation Beyond Accuracy.
 
 Sections:
-  A — Standard per-class metrics (MLP vs Ridge)
+  A — Standard per-class metrics (MLP vs LightGBM vs Ridge)
   B — Change-specific metrics (false change, stability, calibration)
   C — Stress tests (noise injection, season dropout, feature-group ablation)
   D — Spatial failure analysis maps
@@ -43,6 +43,7 @@ from src.splitting import get_fold_indices
 TABLE_DIR = os.path.join(PROJECT_ROOT, "reports", "phase9", "tables")
 FIG_DIR   = os.path.join(PROJECT_ROOT, "reports", "phase9", "figures")
 MLP_DIR   = os.path.join(PROJECT_ROOT, "models", "final_mlp")
+TREE_DIR  = os.path.join(PROJECT_ROOT, "models", "final_tree")
 RIDGE_DIR = os.path.join(PROJECT_ROOT, "models", "final_ridge")
 os.makedirs(TABLE_DIR, exist_ok=True)
 os.makedirs(FIG_DIR, exist_ok=True)
@@ -65,7 +66,7 @@ plt.rcParams.update({
     "axes.labelsize": 10,
 })
 
-MODEL_COLORS = {"MLP": "#2563eb", "Ridge": "#dc2626"}
+MODEL_COLORS = {"MLP": "#2563eb", "LightGBM": "#16a34a", "Ridge": "#dc2626"}
 CLASS_COLORS = ["#228B22", "#90EE90", "#DAA520", "#DC143C", "#DEB887", "#4169E1"]
 
 
@@ -82,6 +83,7 @@ def load_data():
     grid = gpd.read_file(os.path.join(PROCESSED_V2_DIR, "grid.gpkg"))
 
     mlp_oof = pd.read_parquet(os.path.join(MLP_DIR, "oof_predictions.parquet"))
+    tree_oof = pd.read_parquet(os.path.join(TREE_DIR, "oof_predictions.parquet"))
     ridge_oof = pd.read_parquet(os.path.join(RIDGE_DIR, "oof_predictions.parquet"))
 
     # Align by cell_id
@@ -89,6 +91,7 @@ def load_data():
     y_2020 = labels_2020[CLASS_NAMES].values.astype(np.float64)
 
     y_pred_mlp = mlp_oof[[c + "_pred" for c in CLASS_NAMES]].values.astype(np.float64)
+    y_pred_tree = tree_oof[[c + "_pred" for c in CLASS_NAMES]].values.astype(np.float64)
     y_pred_ridge = ridge_oof[[c + "_pred" for c in CLASS_NAMES]].values.astype(np.float64)
 
     cell_ids = labels_2021["cell_id"].values
@@ -96,7 +99,8 @@ def load_data():
 
     return {
         "y_true": y_true, "y_2020": y_2020,
-        "y_pred_mlp": y_pred_mlp, "y_pred_ridge": y_pred_ridge,
+        "y_pred_mlp": y_pred_mlp, "y_pred_tree": y_pred_tree,
+        "y_pred_ridge": y_pred_ridge,
         "labels_change": labels_change, "cell_ids": cell_ids,
         "folds": folds, "split": split, "grid": grid,
     }
@@ -125,6 +129,7 @@ def section_a(data):
     y_true = data["y_true"]
     models = {
         "MLP": data["y_pred_mlp"],
+        "LightGBM": data["y_pred_tree"],
         "Ridge": data["y_pred_ridge"],
     }
 
@@ -168,9 +173,10 @@ def section_a(data):
     print("\n  Per-class R2:")
     for c in CLASS_NAMES:
         mlp_r2 = detail_df[(detail_df.model == "MLP") & (detail_df["class"] == c)]["r2"].values[0]
+        tree_r2 = detail_df[(detail_df.model == "LightGBM") & (detail_df["class"] == c)]["r2"].values[0]
         ridge_r2 = detail_df[(detail_df.model == "Ridge") & (detail_df["class"] == c)]["r2"].values[0]
-        print("    {:15s}  MLP={:+.4f}  Ridge={:+.4f}  gap={:+.4f}".format(
-            c, mlp_r2, ridge_r2, mlp_r2 - ridge_r2))
+        print("    {:15s}  MLP={:+.4f}  LGBM={:+.4f}  Ridge={:+.4f}".format(
+            c, mlp_r2, tree_r2, ridge_r2))
 
     for _, row in summary_df.iterrows():
         print("\n  {}: R2={:.4f} MAE={:.2f}pp Aitchison={:.3f} KL={:.4f}".format(
@@ -189,16 +195,18 @@ def _fig_a1_per_class_r2(detail_df):
     """Bar chart: per-class R2 for MLP vs Ridge."""
     fig, ax = plt.subplots(figsize=(10, 5))
     x = np.arange(N_CLASSES)
-    width = 0.35
+    model_list = list(MODEL_COLORS.keys())
+    n_models = len(model_list)
+    width = 0.8 / n_models
 
-    for i, model in enumerate(["MLP", "Ridge"]):
+    for i, model in enumerate(model_list):
         vals = [detail_df[(detail_df.model == model) & (detail_df["class"] == c)]["r2"].values[0]
                 for c in CLASS_NAMES]
         ax.bar(x + i * width, vals, width, label=model, color=MODEL_COLORS[model], alpha=0.85)
 
     ax.set_ylabel("R2")
-    ax.set_title("Per-Class R2: MLP vs Ridge")
-    ax.set_xticks(x + width / 2)
+    ax.set_title("Per-Class R2: MLP vs LightGBM vs Ridge")
+    ax.set_xticks(x + width * (n_models - 1) / 2)
     ax.set_xticklabels(CLASS_LABELS, rotation=20, ha="right")
     ax.legend()
     ax.axhline(0, color="gray", ls="--", lw=0.5)
@@ -230,8 +238,8 @@ def _fig_a2_error_violins(y_true, models):
             pc.set_alpha(0.6)
         parts["cmedians"].set_color("black")
 
-        ax.set_xticks([1, 2])
-        ax.set_xticklabels(labels)
+        ax.set_xticks(list(range(1, len(labels) + 1)))
+        ax.set_xticklabels(labels, fontsize=8)
         ax.set_title(cl)
         ax.set_ylabel("Absolute Error (pp)" if ci % 3 == 0 else "")
 
@@ -307,6 +315,7 @@ def section_b(data):
 
     models = {
         "MLP": data["y_pred_mlp"],
+        "LightGBM": data["y_pred_tree"],
         "Ridge": data["y_pred_ridge"],
     }
 
@@ -365,7 +374,7 @@ def section_b(data):
     print("  Saved change_metrics.csv")
 
     # Print summary at key threshold
-    for model_name in ["MLP", "Ridge"]:
+    for model_name in ["MLP", "LightGBM", "Ridge"]:
         sub = change_df[(change_df.model == model_name) & (change_df.threshold == 0.05)]
         if len(sub):
             r = sub.iloc[0]
@@ -394,7 +403,7 @@ def _fig_b5_change_tradeoff(change_df):
     """False-change vs missed-change tradeoff curve."""
     fig, ax = plt.subplots(figsize=(8, 6))
 
-    for model_name in ["MLP", "Ridge"]:
+    for model_name in ["MLP", "LightGBM", "Ridge"]:
         sub = change_df[change_df.model == model_name].sort_values("threshold")
         ax.plot(sub.false_change_rate_pct, sub.missed_change_rate_pct,
                 "o-", label=model_name, color=MODEL_COLORS[model_name], markersize=6)
@@ -468,7 +477,8 @@ def _fig_b7_delta_correlation(data, models):
 
     fig, ax = plt.subplots(figsize=(10, 5))
     x = np.arange(N_CLASSES)
-    width = 0.35
+    n_models = len(models)
+    width = 0.8 / n_models
 
     for i, (model_name, y_pred) in enumerate(models.items()):
         delta_pred = y_pred - y_2020
@@ -481,7 +491,7 @@ def _fig_b7_delta_correlation(data, models):
 
     ax.set_ylabel("Pearson Correlation")
     ax.set_title("Per-Class Change (Delta) Correlation")
-    ax.set_xticks(x + width / 2)
+    ax.set_xticks(x + width * (n_models - 1) / 2)
     ax.set_xticklabels(CLASS_LABELS, rotation=20, ha="right")
     ax.legend()
     ax.axhline(0, color="gray", ls="--", lw=0.5)
