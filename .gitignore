@@ -67,3 +67,10 @@ scripts/_extract_v4_raster.py
 
 # Phase 10 SHAP cache (large)
 _shap_cache.pkl
+
+# === Temp debug/verification scripts ===
+scripts/_tmp_*.py
+
+# === Model weights (large binary files) ===
+models/final_mlp_rust/
+models/final_mlp_pyv3/
