@@ -55,3 +55,11 @@ cache/
 *.log
 
 catboost_info/
+
+# === Ad-hoc debug/verification scripts ===
+scripts/_compare_*.py
+scripts/_debug_*.py
+scripts/_verify_*.py
+scripts/_lbp_compare.py
+scripts/_root_cause.py
+scripts/_extract_v4_raster.py
