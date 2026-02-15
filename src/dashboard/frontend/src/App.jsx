@@ -56,6 +56,7 @@ export default function App() {
     const { data: evaluationData } = useApi('/api/evaluation');
     const { data: stressTestsData } = useApi('/api/stress-tests');
     const { data: failureData } = useApi('/api/failure-analysis');
+    const { data: explainData } = useApi('/api/explainability');
     const { data: cellDetail } = useApi(
         selectedCell != null ? `/api/cell/${selectedCell}` : null
     );
@@ -151,6 +152,7 @@ export default function App() {
                         evaluation={evaluationData}
                         stressTests={stressTestsData}
                         failureAnalysis={failureData}
+                        explainability={explainData}
                         onClose={() => setShowEvaluation(false)}
                     />
                 )}

@@ -32,6 +32,7 @@ const TABS = [
     { key: 'stress', label: 'Stress Tests' },
     { key: 'change', label: 'Change Det.' },
     { key: 'failure', label: 'Failure' },
+    { key: 'explain', label: 'Explain' },
 ];
 
 const DARK_CHART_OPTS = {
@@ -262,8 +263,136 @@ function ChangeDetectionChart({ evaluation }) {
     return <canvas ref={canvasRef} />;
 }
 
+// ── Permutation Importance chart ──
+function PermutationChart({ explainability }) {
+    const canvasRef = useRef(null);
+    const chartRef = useRef(null);
+
+    const mlpPerm = explainability?.models?.mlp?.permutation?.slice(0, 15) || [];
+    const treePerm = explainability?.models?.tree?.permutation?.slice(0, 15) || [];
+
+    const allFeatures = [...new Set([...mlpPerm.map(f => f.feature), ...treePerm.map(f => f.feature)])];
+    const topFeatures = allFeatures.slice(0, 15);
+    const labels = topFeatures.map(f => f.replace(/_/g, ' ').substring(0, 28));
+
+    const config = topFeatures.length ? {
+        type: 'bar',
+        data: {
+            labels,
+            datasets: [
+                {
+                    label: 'MLP',
+                    data: topFeatures.map(f => { const it = mlpPerm.find(p => p.feature === f); return it ? it.importance : 0; }),
+                    backgroundColor: MODEL_COLORS.MLP.bg, borderColor: MODEL_COLORS.MLP.border, borderWidth: 1,
+                },
+                {
+                    label: 'LightGBM',
+                    data: topFeatures.map(f => { const it = treePerm.find(p => p.feature === f); return it ? it.importance : 0; }),
+                    backgroundColor: MODEL_COLORS.LightGBM.bg, borderColor: MODEL_COLORS.LightGBM.border, borderWidth: 1,
+                },
+            ],
+        },
+        options: {
+            ...DARK_CHART_OPTS, indexAxis: 'y',
+            scales: {
+                x: { ...DARK_CHART_OPTS.scales.x, title: { display: true, text: 'R² decrease', color: '#64748b', font: { size: 10 } } },
+                y: { ...DARK_CHART_OPTS.scales.y, ticks: { color: '#f0f4f8', font: { size: 9 } } },
+            },
+        },
+    } : null;
+
+    useChart(canvasRef, chartRef, config);
+    return <canvas ref={canvasRef} />;
+}
+
+// ── SHAP per-class importance chart ──
+function ShapChart({ explainability }) {
+    const canvasRef = useRef(null);
+    const chartRef = useRef(null);
+    const [shapModel, setShapModel] = useState('mlp');
+
+    const classKeys = ['tree_cover', 'grassland', 'cropland', 'built_up', 'bare_sparse', 'water'];
+    const classColorsList = [
+        { bg: '#2d6a4faa', border: '#2d6a4f' },
+        { bg: '#95d5b2aa', border: '#95d5b2' },
+        { bg: '#f4a261aa', border: '#f4a261' },
+        { bg: '#e76f51aa', border: '#e76f51' },
+        { bg: '#d4a373aa', border: '#d4a373' },
+        { bg: '#0096c7aa', border: '#0096c7' },
+    ];
+
+    const shapData = explainability?.models?.[shapModel]?.shap?.slice(0, 12) || [];
+    const labels = shapData.map(f => f.feature.replace(/_/g, ' ').substring(0, 28));
+
+    const config = shapData.length ? {
+        type: 'bar',
+        data: {
+            labels,
+            datasets: classKeys.map((cls, i) => ({
+                label: CLASS_LABELS[cls],
+                data: shapData.map(f => f[cls] || 0),
+                backgroundColor: classColorsList[i].bg,
+                borderColor: classColorsList[i].border,
+                borderWidth: 1,
+            })),
+        },
+        options: {
+            ...DARK_CHART_OPTS, indexAxis: 'y',
+            scales: {
+                x: { ...DARK_CHART_OPTS.scales.x, stacked: true, title: { display: true, text: 'Mean |SHAP|', color: '#64748b', font: { size: 10 } } },
+                y: { ...DARK_CHART_OPTS.scales.y, stacked: true, ticks: { color: '#f0f4f8', font: { size: 9 } } },
+            },
+            plugins: { ...DARK_CHART_OPTS.plugins, legend: { ...DARK_CHART_OPTS.plugins.legend, labels: { ...DARK_CHART_OPTS.plugins.legend.labels, boxWidth: 8 } } },
+        },
+    } : null;
+
+    useChart(canvasRef, chartRef, config);
+
+    return (
+        <>
+            <div className="toggle-group" style={{ marginBottom: 6 }}>
+                <button className={`toggle-btn ${shapModel === 'mlp' ? 'active' : ''}`} onClick={() => setShapModel('mlp')}>MLP</button>
+                <button className={`toggle-btn ${shapModel === 'tree' ? 'active' : ''}`} onClick={() => setShapModel('tree')}>LightGBM</button>
+            </div>
+            <canvas ref={canvasRef} />
+        </>
+    );
+}
+
+// ── Explanation cards ──
+function ExplanationCards({ explainability }) {
+    const mlp = explainability?.models?.mlp || {};
+    const tree = explainability?.models?.tree || {};
+
+    return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {mlp.helpful && (
+                <div style={{ padding: '8px 10px', borderRadius: 6, background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.3)' }}>
+                    <div style={{ color: '#10b981', fontWeight: 600, fontSize: 11, marginBottom: 4 }}>✓ Helpful — MLP</div>
+                    <div style={{ color: '#e2e8f0', fontSize: 11 }}>{mlp.helpful.explanation}</div>
+                    <div style={{ color: '#94a3b8', fontSize: 10, marginTop: 2 }}>{mlp.helpful.rationale}</div>
+                </div>
+            )}
+            {mlp.misleading && (
+                <div style={{ padding: '8px 10px', borderRadius: 6, background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.3)' }}>
+                    <div style={{ color: '#f59e0b', fontWeight: 600, fontSize: 11, marginBottom: 4 }}>⚠ Misleading — MLP</div>
+                    <div style={{ color: '#e2e8f0', fontSize: 11 }}>{mlp.misleading.explanation}</div>
+                    <div style={{ color: '#94a3b8', fontSize: 10, marginTop: 2 }}>{mlp.misleading.pitfall || mlp.misleading.note}</div>
+                </div>
+            )}
+            {tree.helpful && (
+                <div style={{ padding: '8px 10px', borderRadius: 6, background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.3)' }}>
+                    <div style={{ color: '#10b981', fontWeight: 600, fontSize: 11, marginBottom: 4 }}>✓ Helpful — LightGBM</div>
+                    <div style={{ color: '#e2e8f0', fontSize: 11 }}>{tree.helpful.explanation}</div>
+                    <div style={{ color: '#94a3b8', fontSize: 10, marginTop: 2 }}>{tree.helpful.rationale}</div>
+                </div>
+            )}
+        </div>
+    );
+}
+
 // ── Main component ──
-export default function EvaluationPanel({ evaluation, stressTests, failureAnalysis, onClose }) {
+export default function EvaluationPanel({ evaluation, stressTests, failureAnalysis, explainability, onClose }) {
     const [activeTab, setActiveTab] = useState('metrics');
 
     return (
@@ -377,6 +506,29 @@ export default function EvaluationPanel({ evaluation, stressTests, failureAnalys
                             </div>
                         </div>
                     )}
+                </>
+            )}
+
+            {activeTab === 'explain' && (
+                <>
+                    <div className="card">
+                        <div className="card-title">Permutation Importance (Top 15)</div>
+                        <div style={{ height: 320, position: 'relative' }}>
+                            <PermutationChart explainability={explainability} />
+                        </div>
+                    </div>
+
+                    <div className="card">
+                        <div className="card-title">SHAP per Class (Top 12)</div>
+                        <div style={{ minHeight: 280, position: 'relative' }}>
+                            <ShapChart explainability={explainability} />
+                        </div>
+                    </div>
+
+                    <div className="card">
+                        <div className="card-title">Explanations</div>
+                        <ExplanationCards explainability={explainability} />
+                    </div>
                 </>
             )}
         </div>

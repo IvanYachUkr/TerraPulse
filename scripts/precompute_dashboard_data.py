@@ -368,26 +368,129 @@ def main():
     print("[4/10] Predictions ...")
     export_predictions(OUT_DIR)
 
-    print("[5/10] Model benchmark ...")
+# ── Phase 10: Explainability ──────────────────────────────────────────────
+def export_explainability(out_dir, top_n=20):
+    """Bundle feature importance + SHAP + explanations into one JSON."""
+    PHASE10 = os.path.join(PROJECT_ROOT, "reports", "phase10")
+    PHASE10_TREE = os.path.join(PROJECT_ROOT, "reports", "phase10_tree")
+    result = {"models": {}}
+
+    # ── MLP ──
+    mlp = {}
+    perm_path = os.path.join(PHASE10, "tables", "permutation_importance.csv")
+    if os.path.exists(perm_path):
+        df = pd.read_csv(perm_path).head(top_n)
+        mlp["permutation"] = [
+            {"feature": r.feature, "importance": round(r.importance_mean, 5),
+             "std": round(r.importance_std, 5)}
+            for _, r in df.iterrows()
+        ]
+    shap_path = os.path.join(PHASE10, "tables", "shap_global_importance.csv")
+    if os.path.exists(shap_path):
+        df = pd.read_csv(shap_path).head(top_n)
+        mlp["shap"] = [
+            {"feature": r.feature, "mean_abs": round(r.mean_abs_shap, 5),
+             **{c: round(getattr(r, f"shap_{c}"), 5) for c in CLASSES}}
+            for _, r in df.iterrows()
+        ]
+    help_path = os.path.join(PHASE10, "tables", "helpful_example.json")
+    if os.path.exists(help_path):
+        with open(help_path) as f:
+            mlp["helpful"] = json.load(f)
+    mis_path = os.path.join(PHASE10, "tables", "misleading_example.json")
+    if os.path.exists(mis_path):
+        with open(mis_path) as f:
+            mlp["misleading"] = json.load(f)
+    result["models"]["mlp"] = mlp
+
+    # ── LightGBM ──
+    tree = {}
+    perm_path = os.path.join(PHASE10_TREE, "tables", "permutation_importance.csv")
+    if os.path.exists(perm_path):
+        df = pd.read_csv(perm_path).head(top_n)
+        tree["permutation"] = [
+            {"feature": r.feature, "importance": round(r.importance_mean, 5),
+             "std": round(r.importance_std, 5)}
+            for _, r in df.iterrows()
+        ]
+    native_path = os.path.join(PHASE10_TREE, "tables", "native_importance.csv")
+    if os.path.exists(native_path):
+        df = pd.read_csv(native_path).head(top_n)
+        tree["native_gain"] = [
+            {"feature": r.feature,
+             "gain": round(r.gain_normalized, 5),
+             "splits": round(r.split_normalized, 5)}
+            for _, r in df.iterrows()
+        ]
+    shap_path = os.path.join(PHASE10_TREE, "tables", "treeshap_global_importance.csv")
+    if os.path.exists(shap_path):
+        df = pd.read_csv(shap_path).head(top_n)
+        tree["shap"] = [
+            {"feature": r.feature, "mean_abs": round(r.mean_abs_shap, 5),
+             **{c: round(getattr(r, f"shap_{c}"), 5) for c in CLASSES}}
+            for _, r in df.iterrows()
+        ]
+    help_path = os.path.join(PHASE10_TREE, "tables", "helpful_example.json")
+    if os.path.exists(help_path):
+        with open(help_path) as f:
+            tree["helpful"] = json.load(f)
+    mis_path = os.path.join(PHASE10_TREE, "tables", "misleading_example.json")
+    if os.path.exists(mis_path):
+        with open(mis_path) as f:
+            tree["misleading"] = json.load(f)
+    result["models"]["tree"] = tree
+
+    path = os.path.join(out_dir, "explainability.json")
+    with open(path, "w") as f:
+        json.dump(result, f, indent=2)
+    n_mlp = len(mlp.get("permutation", []))
+    n_tree = len(tree.get("permutation", []))
+    print(f"  [ok] explainability.json -- MLP {n_mlp}f, LightGBM {n_tree}f (top {top_n})")
+
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+def main():
+    os.makedirs(OUT_DIR, exist_ok=True)
+    print(f"Precomputing dashboard data → {OUT_DIR}\n")
+
+    print("[1/10] Grid geometry ...")
+    export_grid(OUT_DIR)
+
+    print("[2/10] Labels ...")
+    export_labels(OUT_DIR)
+
+    print("[3/10] Change map ...")
+    export_change(OUT_DIR)
+
+    print("[4/10] Predictions ...")
+    export_predictions(OUT_DIR)
+
+    print("[5/11] Model benchmark ...")
     export_benchmark(OUT_DIR)
 
-    print("[6/10] Conformal coverage ...")
+    print("[6/11] Conformal coverage ...")
     export_conformal(OUT_DIR)
 
-    print("[7/10] Split info ...")
+    print("[7/11] Split info ...")
     export_split(OUT_DIR)
 
-    print("[8/10] Evaluation metrics (Phase 9) ...")
+    print("[8/11] Evaluation metrics (Phase 9) ...")
     export_evaluation(OUT_DIR)
 
-    print("[9/10] Stress tests (Phase 9) ...")
+    print("[9/11] Stress tests (Phase 9) ...")
     export_stress_tests(OUT_DIR)
 
-    print("[10/10] Failure analysis (Phase 9) ...")
+    print("[10/11] Failure analysis (Phase 9) ...")
     export_failure_analysis(OUT_DIR)
+
+    print("[11/11] Explainability (Phase 10) ...")
+    export_explainability(OUT_DIR)
 
     print(f"\n[OK] Done -- {len(os.listdir(OUT_DIR))} files written to {OUT_DIR}")
 
 
 if __name__ == "__main__":
     main()
+

@@ -177,6 +177,17 @@ def failure_analysis():
     return get_failure_analysis()
 
 
+@lru_cache(maxsize=None)
+def get_explainability():
+    return _load_json("explainability.json")
+
+
+@app.get("/api/explainability")
+def explainability():
+    """Phase 10 explainability: feature importance, SHAP, explanations."""
+    return get_explainability()
+
+
 @app.get("/api/cell/{cell_id}")
 def cell_detail(cell_id: int):
     """
