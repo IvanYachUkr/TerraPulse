@@ -265,13 +265,13 @@
 | Model | R² (5-fold) | MAE (pp) | Features | Role |
 |-------|------------|----------|----------|------|
 | **MLP** (champion) | **0.787 ± 0.038** | **2.50** | 864 (bi_LBP) | Flexible — final model |
-| **LightGBM** (best tree) | **0.749 ± 0.047** | **2.94** | 438 (VegIdx+RedEdge+TC+NDTI+IRECI+CRI1) | Flexible — tree baseline |
+| **LightGBM** (best tree) | **0.736 ± 0.044** | **2.99** | 438 (VegIdx+RedEdge+TC+NDTI+IRECI+CRI1) | Flexible — tree baseline |
 | ExtraTrees | 0.692 | 3.13 | 2109 (all_core), fold-0 only | Explored, superseded by LightGBM |
 | RF | 0.684 | 3.23 | 2109 (all_core), fold-0 only | Explored, superseded by LightGBM |
 | CatBoost | 0.671 | 4.00 | 2109 (all_core), fold-0 only | Too slow, superseded by LightGBM |
 | **Ridge** | **0.423 ± 0.197** | **5.63** | 864 (bi_LBP) | Interpretable baseline |
 
-Saved models: `models/final_mlp/` (5 fold weights + scalers + OOF), `models/final_ridge/` (5 fold models + coefficients + OOF)
+Saved models: `models/final_mlp/` (5 fold weights + scalers + OOF), `models/final_tree/` (5 fold LightGBM + OOF), `models/final_ridge/` (5 fold models + coefficients + OOF)
 
 ---
 
