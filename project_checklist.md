@@ -478,16 +478,77 @@ Script: `scripts/run_evaluation_phase9.py` — 14 figures + 7 CSV tables (65s ru
 
 ---
 
-## Phase 10 — Explainability + Uncertainty ⚠️
+## Phase 10 — Explainability + Uncertainty ✅
 
-- [ ] Feature importance + SHAP (for flexible model)
-- [ ] One helpful explanation + one misleading explanation ⚠️
-- [/] Uncertainty proxy:
-  - [x] Conformal prediction intervals computed (6 models × 6 classes)
-  - Ridge: 78–83% coverage, wide intervals (5–29pp)
-  - MLP: 71–80% coverage, tighter intervals (0.03–14pp)
-  - Tree models: 65–80% coverage, moderate intervals
-  - ⚠️ Coverage below nominal 90% → conservative interpretation needed
+Scripts: `scripts/run_explainability_phase10.py` (MLP), `scripts/run_explainability_phase10_tree.py` (LightGBM)
+
+- [x] Feature importance + SHAP (for both MLP and LightGBM)
+- [x] One helpful explanation + one misleading explanation
+- [x] Uncertainty proxy (conformal prediction intervals)
+
+### MLP Explainability (`reports/phase10/` — 9 figures, 5 tables)
+
+**Permutation importance** (R2 decrease when feature shuffled):
+- Top features are **raw spectral bands**: B02_q25_2021_autumn (0.016), B02_q25_2021_summer (0.015), B03_min_2021_spring (0.014)
+- 7 of top-10 are B02/B03 (blue/green) band statistics
+- Interpretation: the MLP internally **learns to compute vegetation indices** from raw bands — it doesn't need pre-computed NDVI/NDRE to perform well
+
+**GradientSHAP** (per-sample feature attribution, 2000 test samples, 500 background):
+- Top features are **derived indices**: NDRE2_q25_2020_spring (0.0025), TC_wet_std_2020_spring (0.0024), NDVI_q75_2020_autumn (0.0024)
+- SHAP highlights Red Edge (NDRE2) and Tasseled Cap (TC_wet) as most impactful per individual prediction
+- Unlike permutation importance, SHAP values are more evenly distributed (top feature = 0.0025 vs 0.016 for permutation)
+
+**Helpful explanation**: NDVI_mean features → tree_cover prediction. For a high-tree sample (63% tree cover), NDVI features have consistent SHAP direction, confirming the model learned the real physical relationship between vegetation index and canopy density.
+
+**Misleading explanation**: B02_mean vs B02_median — near-perfectly correlated (r > 0.97 in all seasons) but SHAP assigns wildly different importance (ratio ranges 0.3x–1.2x). This is the classical SHAP credit-splitting artifact among collinear features. A naive interpretation would wrongly conclude one statistic matters and the other doesn't.
+
+### LightGBM Explainability (`reports/phase10_tree/` — 8 figures, 5 tables)
+
+**Native gain importance** (total reduction in loss from splits):
+- **CRI1_q75_2021_autumn**: 24.3% of total gain — single most important feature by far
+- **NDRE2_q25_2021_summer**: 16.1%
+- **CRI1_q75_2020_autumn**: 10.2%
+- Just 3 features account for **50.5% of all gain** — the tree is highly concentrated
+
+**Permutation importance** (tells a different story):
+- **TC_wet_mean_2020_autumn** (0.046) dominates — highest single-feature R2 drop
+- NDTI_q25_2020_spring (0.033), TC_bright_mean_2021_spring (0.032)
+- CRI1 has huge gain but moderate permutation importance → other features compensate when CRI1 is shuffled
+- TC_wet has moderate gain but highest permutation importance → truly irreplaceable
+
+**TreeSHAP** (exact Shapley values, not approximate):
+- Confirms gain ranking: NDRE2_q25 (0.027), CRI1_q75 (0.022), CRI1_q75_2020 (0.011), TC_wet (0.010)
+- Beeswarm plots show clear nonlinear patterns for tree_cover and bare_sparse
+
+**Helpful explanation**: NDVI_mean → tree_cover (same physical relationship as MLP, smaller SHAP magnitudes)
+**Misleading explanation**: B02 collinearity issue is **avoided by design** in LightGBM's curated feature set (438 features, no redundant band statistics)
+
+### MLP vs LightGBM: Key Comparison
+
+| Aspect | MLP (864 features) | LightGBM (438 features) |
+|--------|--------------------|-----------------------|
+| Permutation top | Raw bands (B02, B03, B05) | Derived indices (TC_wet, NDTI, CRI1) |
+| SHAP top | NDRE2, TC_wet, NDVI | NDRE2, CRI1, TC_wet |
+| Feature concentration | Even (top = 1.6% R2 drop) | Concentrated (top = 4.6% R2 drop) |
+| Collinearity issue | Yes (B02 mean/median, r>0.97) | Avoided (curated feature set) |
+| SHAP method | GradientExplainer (approximate) | TreeExplainer (exact) |
+
+**Key insight**: The MLP learns to **compute index-like relationships** from raw bands internally. LightGBM cannot do this (no multiplicative feature interactions in axis-aligned splits) and needs pre-computed indices. This explains why LightGBM's curated feature set outperforms giving it raw bands.
+
+### Uncertainty: Conformal Prediction Intervals
+
+All models use split-conformal calibration at 90% nominal coverage on fold-0 holdout:
+
+| Model | Coverage range | Interval width range (pp) |
+|-------|---------------|--------------------------|
+| Ridge | 71–83% | 0.002–29pp |
+| ElasticNet | 71–84% | 0.005–30pp |
+| MLP | 71–80% | 0.03–14pp |
+| CatBoost | 68–80% | 0.0003–21pp |
+| Random Forest | 69–80% | 0.0003–16pp |
+| ExtraTrees | 65–75% | 0.0003–13pp |
+
+⚠️ All models fall below the 90% nominal coverage — conformal intervals are too narrow, likely due to distribution shift between calibration and test splits (spatial CV). Conservative interpretation recommended.
 
 ---
 

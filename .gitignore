@@ -64,3 +64,6 @@ scripts/_verify_*.py
 scripts/_lbp_compare.py
 scripts/_root_cause.py
 scripts/_extract_v4_raster.py
+
+# Phase 10 SHAP cache (large)
+_shap_cache.pkl
