@@ -572,114 +572,185 @@ def run_mlp_inference(mlp_info, X_features, split_df, meta_split):
     return oof
 
 
+def load_tree_for_inference():
+    """Load LightGBM models and feature info for re-inference."""
+    with open(os.path.join(TREE_DIR, "meta.json")) as f:
+        meta = json.load(f)
+    feature_cols = meta["feature_cols"]
+
+    fold_models = []
+    for fold_id in range(N_FOLDS):
+        with open(os.path.join(TREE_DIR, "fold_{}.pkl".format(fold_id)), "rb") as f:
+            model = pickle.load(f)
+        fold_models.append(model)
+
+    return {
+        "models": fold_models,
+        "feature_cols": feature_cols,
+    }
+
+
+def run_tree_inference(tree_info, X_features, split_df, meta_split):
+    """Run LightGBM inference on given features, return OOF predictions."""
+    folds_arr = split_df["fold_region_growing"].values
+    tiles = split_df["tile_group"].values
+
+    oof = np.full((len(X_features), N_CLASSES), np.nan, dtype=np.float32)
+
+    for fold_id in range(N_FOLDS):
+        _, test_idx = get_fold_indices(
+            tiles, folds_arr, fold_id, meta_split["tile_cols"], meta_split["tile_rows"],
+            buffer_tiles=1,
+        )
+
+        model = tree_info["models"][fold_id]
+        preds = np.clip(model.predict(X_features[test_idx]), 0, 100)
+        oof[test_idx] = preds
+
+    return oof
+
+
 def section_c(data):
     """Stress tests: noise injection, season dropout, feature-group ablation."""
     print("\n" + "=" * 70)
-    print("SECTION C: Stress Tests")
+    print("SECTION C: Stress Tests (MLP + LightGBM)")
     print("=" * 70)
 
-    # Load features and MLP models
-    print("  Loading features and MLP models...")
+    # ── Load features and both models ──
+    print("  Loading features and models...")
     feat_df = pd.read_parquet(os.path.join(PROCESSED_V2_DIR, "features_merged_full.parquet"))
-    mlp_info = load_mlp_for_inference()
-    feature_cols = mlp_info["feature_cols"]
 
-    X_full = feat_df[feature_cols].values.astype(np.float32)
-    np.nan_to_num(X_full, copy=False)
+    # Also load V2 features for LightGBM novel indices
+    import pyarrow.parquet as pq
+    v2_pq = os.path.join(PROCESSED_V2_DIR, "features_bands_indices_v2.parquet")
+    v2_cols_available = [c for c in pq.read_schema(v2_pq).names if c != "cell_id"]
+
+    mlp_info = load_mlp_for_inference()
+    tree_info = load_tree_for_inference()
+
+    mlp_feat_cols = mlp_info["feature_cols"]
+    tree_feat_cols = tree_info["feature_cols"]
+
+    # MLP features (all from features_merged_full)
+    X_mlp = feat_df[mlp_feat_cols].values.astype(np.float32)
+    np.nan_to_num(X_mlp, copy=False)
+
+    # LightGBM features (some from features_merged_full, some from V2)
+    tree_in_full = [c for c in tree_feat_cols if c in feat_df.columns]
+    tree_in_v2 = [c for c in tree_feat_cols if c not in feat_df.columns and c in v2_cols_available]
+
+    if tree_in_v2:
+        v2_df = pd.read_parquet(v2_pq, columns=["cell_id"] + tree_in_v2)
+        tree_df = feat_df[["cell_id"] + tree_in_full].merge(v2_df, on="cell_id", how="inner")
+    else:
+        tree_df = feat_df[["cell_id"] + tree_in_full]
+    X_tree = tree_df[tree_feat_cols].values.astype(np.float32)
+    np.nan_to_num(X_tree, copy=False)
 
     split_df = data["split"]
     with open(os.path.join(PROCESSED_V2_DIR, "split_spatial_meta.json")) as f:
         meta_split = json.load(f)
-
     y_true = data["y_true"]
 
-    # Baseline (should match original OOF)
-    print("  Computing baseline inference...")
-    oof_baseline = run_mlp_inference(mlp_info, X_full, split_df, meta_split)
-    r2_base = r2_uniform(y_true, oof_baseline)
-    mae_base = mae_mean(y_true, oof_baseline)
-    print("  Baseline: R2={:.4f}  MAE={:.2f}pp".format(r2_base, mae_base))
+    # Define model configs
+    model_configs = [
+        ("MLP", mlp_info, mlp_feat_cols, X_mlp,
+         lambda info, X, s, m: run_mlp_inference(info, X, s, m)),
+        ("LightGBM", tree_info, tree_feat_cols, X_tree,
+         lambda info, X, s, m: run_tree_inference(info, X, s, m)),
+    ]
 
-    # ── Test 1: Gaussian noise injection ──
-    print("\n  Test 1: Gaussian noise injection")
-    noise_levels = [0.1, 0.25, 0.5, 1.0, 2.0]
-    feat_stds = np.std(X_full, axis=0)
+    all_noise_rows = []
+    all_season_rows = []
+    all_ablation_rows = []
 
-    noise_rows = [{"noise_sigma": 0.0, "r2": r2_base, "mae_pp": mae_base}]
-    for sigma in noise_levels:
-        rng = np.random.RandomState(42)
-        noise = rng.randn(*X_full.shape).astype(np.float32) * feat_stds * sigma
-        X_noisy = X_full + noise
+    for model_name, m_info, feat_cols, X_full, infer_fn in model_configs:
+        print("\n  -- {} --".format(model_name))
 
-        oof_noisy = run_mlp_inference(mlp_info, X_noisy, split_df, meta_split)
-        r2_n = r2_uniform(y_true, oof_noisy)
-        mae_n = mae_mean(y_true, oof_noisy)
-        noise_rows.append({"noise_sigma": sigma, "r2": r2_n, "mae_pp": mae_n})
-        print("    sigma={:.2f}: R2={:.4f} (delta={:+.4f})  MAE={:.2f}pp".format(
-            sigma, r2_n, r2_n - r2_base, mae_n))
+        # Baseline
+        oof_baseline = infer_fn(m_info, X_full, split_df, meta_split)
+        r2_base = r2_uniform(y_true, oof_baseline)
+        mae_base = mae_mean(y_true, oof_baseline)
+        print("  Baseline: R2={:.4f}  MAE={:.2f}pp".format(r2_base, mae_base))
 
-    noise_df = pd.DataFrame(noise_rows)
+        # ── Test 1: Gaussian noise injection ──
+        print("  Test 1: Gaussian noise injection")
+        feat_stds = np.std(X_full, axis=0)
+        noise_levels = [0.1, 0.25, 0.5, 1.0, 2.0]
+
+        all_noise_rows.append({"model": model_name, "noise_sigma": 0.0,
+                               "r2": r2_base, "mae_pp": mae_base})
+        for sigma in noise_levels:
+            rng = np.random.RandomState(42)
+            noise = rng.randn(*X_full.shape).astype(np.float32) * feat_stds * sigma
+            X_noisy = X_full + noise
+            oof_noisy = infer_fn(m_info, X_noisy, split_df, meta_split)
+            r2_n = r2_uniform(y_true, oof_noisy)
+            mae_n = mae_mean(y_true, oof_noisy)
+            all_noise_rows.append({"model": model_name, "noise_sigma": sigma,
+                                   "r2": r2_n, "mae_pp": mae_n})
+            print("    sigma={:.2f}: R2={:.4f} (delta={:+.4f})  MAE={:.2f}pp".format(
+                sigma, r2_n, r2_n - r2_base, mae_n))
+
+        # ── Test 2: Season dropout ──
+        print("  Test 2: Season dropout")
+        season_patterns = {}
+        for c in feat_cols:
+            m = re.search(r"(2020|2021)_(spring|summer|autumn)", c)
+            if m:
+                key = "{}_{}".format(m.group(1), m.group(2))
+                season_patterns.setdefault(key, []).append(feat_cols.index(c))
+
+        all_season_rows.append({"model": model_name, "season_dropped": "none",
+                                "r2": r2_base, "mae_pp": mae_base, "n_zeroed": 0})
+        for season, idxs in sorted(season_patterns.items()):
+            X_dropped = X_full.copy()
+            X_dropped[:, idxs] = 0.0
+            oof_dropped = infer_fn(m_info, X_dropped, split_df, meta_split)
+            r2_d = r2_uniform(y_true, oof_dropped)
+            mae_d = mae_mean(y_true, oof_dropped)
+            all_season_rows.append({"model": model_name, "season_dropped": season,
+                                    "r2": r2_d, "mae_pp": mae_d, "n_zeroed": len(idxs)})
+            print("    Drop {}: R2={:.4f} (delta={:+.4f})  MAE={:.2f}pp  ({} features zeroed)".format(
+                season, r2_d, r2_d - r2_base, mae_d, len(idxs)))
+
+        # ── Test 3: Feature group ablation ──
+        print("  Test 3: Feature group ablation")
+        group_defs = {
+            "LBP":      [i for i, c in enumerate(feat_cols) if c.startswith("LBP_")],
+            "Indices":  [i for i, c in enumerate(feat_cols)
+                         if any(x in c.lower() for x in ["ndvi", "ndbi", "ndwi", "ndmi",
+                                "evi", "savi", "bsi", "mndwi", "gndvi", "ndti", "ireci", "cri"])],
+            "Bands":    [i for i, c in enumerate(feat_cols)
+                         if any(x in c for x in ["B02", "B03", "B04", "B05", "B06", "B07",
+                                "B08", "B8A", "B11", "B12"])],
+        }
+
+        all_ablation_rows.append({"model": model_name, "group_dropped": "none",
+                                  "r2": r2_base, "mae_pp": mae_base,
+                                  "n_zeroed": 0, "n_remaining": len(feat_cols)})
+        for group_name, idxs in sorted(group_defs.items()):
+            if not idxs:
+                continue
+            X_dropped = X_full.copy()
+            X_dropped[:, idxs] = 0.0
+            oof_dropped = infer_fn(m_info, X_dropped, split_df, meta_split)
+            r2_d = r2_uniform(y_true, oof_dropped)
+            mae_d = mae_mean(y_true, oof_dropped)
+            all_ablation_rows.append({
+                "model": model_name, "group_dropped": group_name,
+                "r2": r2_d, "mae_pp": mae_d,
+                "n_zeroed": len(idxs), "n_remaining": len(feat_cols) - len(idxs),
+            })
+            print("    Drop {}: R2={:.4f} (delta={:+.4f})  MAE={:.2f}pp  ({} features zeroed)".format(
+                group_name, r2_d, r2_d - r2_base, mae_d, len(idxs)))
+
+    # ── Save ──
+    noise_df = pd.DataFrame(all_noise_rows)
     noise_df.to_csv(os.path.join(TABLE_DIR, "stress_noise.csv"), index=False)
-
-    # ── Test 2: Season dropout ──
-    print("\n  Test 2: Season dropout")
-    season_patterns = {}
-    for c in feature_cols:
-        m = re.search(r"(2020|2021)_(spring|summer|autumn)", c)
-        if m:
-            key = "{}_{}".format(m.group(1), m.group(2))
-            season_patterns.setdefault(key, []).append(feature_cols.index(c))
-
-    season_rows = [{"season_dropped": "none", "r2": r2_base, "mae_pp": mae_base,
-                    "n_zeroed": 0}]
-    for season, idxs in sorted(season_patterns.items()):
-        X_dropped = X_full.copy()
-        X_dropped[:, idxs] = 0.0
-
-        oof_dropped = run_mlp_inference(mlp_info, X_dropped, split_df, meta_split)
-        r2_d = r2_uniform(y_true, oof_dropped)
-        mae_d = mae_mean(y_true, oof_dropped)
-        season_rows.append({
-            "season_dropped": season, "r2": r2_d, "mae_pp": mae_d,
-            "n_zeroed": len(idxs),
-        })
-        print("    Drop {}: R2={:.4f} (delta={:+.4f})  MAE={:.2f}pp  ({} features zeroed)".format(
-            season, r2_d, r2_d - r2_base, mae_d, len(idxs)))
-
-    season_df = pd.DataFrame(season_rows)
+    season_df = pd.DataFrame(all_season_rows)
     season_df.to_csv(os.path.join(TABLE_DIR, "stress_season_dropout.csv"), index=False)
-
-    # ── Test 3: Feature group ablation ──
-    print("\n  Test 3: Feature group ablation")
-    group_defs = {
-        "LBP":      [i for i, c in enumerate(feature_cols) if c.startswith("LBP_")],
-        "Indices":  [i for i, c in enumerate(feature_cols)
-                     if any(x in c.lower() for x in ["ndvi", "ndbi", "ndwi", "ndmi",
-                            "evi", "savi", "bsi", "mndwi", "gndvi", "ndti", "ireci", "cri"])],
-        "Bands":    [i for i, c in enumerate(feature_cols)
-                     if any(x in c for x in ["B02", "B03", "B04", "B05", "B06", "B07",
-                            "B08", "B8A", "B11", "B12"])],
-    }
-
-    ablation_rows = [{"group_dropped": "none", "r2": r2_base, "mae_pp": mae_base,
-                      "n_zeroed": 0, "n_remaining": len(feature_cols)}]
-    for group_name, idxs in sorted(group_defs.items()):
-        if not idxs:
-            continue
-        X_dropped = X_full.copy()
-        X_dropped[:, idxs] = 0.0
-
-        oof_dropped = run_mlp_inference(mlp_info, X_dropped, split_df, meta_split)
-        r2_d = r2_uniform(y_true, oof_dropped)
-        mae_d = mae_mean(y_true, oof_dropped)
-        ablation_rows.append({
-            "group_dropped": group_name, "r2": r2_d, "mae_pp": mae_d,
-            "n_zeroed": len(idxs), "n_remaining": len(feature_cols) - len(idxs),
-        })
-        print("    Drop {}: R2={:.4f} (delta={:+.4f})  MAE={:.2f}pp  ({} features zeroed)".format(
-            group_name, r2_d, r2_d - r2_base, mae_d, len(idxs)))
-
-    ablation_df = pd.DataFrame(ablation_rows)
+    ablation_df = pd.DataFrame(all_ablation_rows)
     ablation_df.to_csv(os.path.join(TABLE_DIR, "stress_feature_ablation.csv"), index=False)
 
     # ── Figures ──
@@ -688,7 +759,7 @@ def section_c(data):
     _fig_c10_feature_ablation(ablation_df)
 
     # Cleanup
-    del feat_df, X_full
+    del feat_df, X_mlp, X_tree
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
 
@@ -699,20 +770,26 @@ def _fig_c8_noise_degradation(noise_df):
     """R2 degradation curve vs noise level."""
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
 
-    ax1.plot(noise_df.noise_sigma, noise_df.r2, "o-", color=MODEL_COLORS["MLP"],
-             markersize=8, linewidth=2)
-    ax1.fill_between(noise_df.noise_sigma, noise_df.r2,
-                     noise_df.r2.iloc[0], alpha=0.1, color=MODEL_COLORS["MLP"])
+    for model_name in noise_df.model.unique():
+        sub = noise_df[noise_df.model == model_name]
+        color = MODEL_COLORS.get(model_name, "gray")
+        ax1.plot(sub.noise_sigma, sub.r2, "o-", color=color,
+                 markersize=8, linewidth=2, label=model_name)
+        ax1.fill_between(sub.noise_sigma, sub.r2,
+                         sub.r2.iloc[0], alpha=0.08, color=color)
+        ax2.plot(sub.noise_sigma, sub.mae_pp, "o-", color=color,
+                 markersize=8, linewidth=2, label=model_name)
+
     ax1.set_xlabel("Noise Level (sigma x feature_std)")
     ax1.set_ylabel("R2")
     ax1.set_title("R2 Degradation Under Gaussian Noise")
+    ax1.legend()
     ax1.grid(True, alpha=0.3)
 
-    ax2.plot(noise_df.noise_sigma, noise_df.mae_pp, "o-", color=MODEL_COLORS["MLP"],
-             markersize=8, linewidth=2)
     ax2.set_xlabel("Noise Level (sigma x feature_std)")
     ax2.set_ylabel("MAE (pp)")
     ax2.set_title("MAE Increase Under Gaussian Noise")
+    ax2.legend()
     ax2.grid(True, alpha=0.3)
 
     fig.suptitle("Stress Test: Gaussian Noise Injection", fontsize=14, y=1.02)
@@ -723,27 +800,37 @@ def _fig_c8_noise_degradation(noise_df):
 
 
 def _fig_c9_season_dropout(season_df):
-    """Season dropout impact bar chart."""
-    df = season_df[season_df.season_dropped != "none"].copy()
-    df["r2_delta"] = df.r2 - season_df[season_df.season_dropped == "none"].r2.values[0]
+    """Season dropout impact grouped bar chart — MLP vs LightGBM."""
+    models = season_df.model.unique()
+    seasons = [s for s in season_df.season_dropped.unique() if s != "none"]
+    x = np.arange(len(seasons))
+    n_models = len(models)
+    width = 0.8 / n_models
 
-    fig, ax = plt.subplots(figsize=(10, 5))
-    colors = plt.cm.RdYlGn_r(np.linspace(0.2, 0.8, len(df)))
-    bars = ax.bar(range(len(df)), df.r2_delta, color=colors, edgecolor="white")
+    fig, ax = plt.subplots(figsize=(12, 6))
+    for mi, model_name in enumerate(models):
+        sub = season_df[season_df.model == model_name]
+        base_r2 = sub[sub.season_dropped == "none"].r2.values[0]
+        deltas = []
+        for s in seasons:
+            row = sub[sub.season_dropped == s]
+            deltas.append(float(row.r2.values[0] - base_r2) if len(row) else 0.0)
+        color = MODEL_COLORS.get(model_name, "gray")
+        bars = ax.bar(x + mi * width, deltas, width, label=model_name,
+                      color=color, alpha=0.85, edgecolor="white")
+        for bar, val in zip(bars, deltas):
+            ax.annotate("{:.3f}".format(val),
+                        (bar.get_x() + bar.get_width() / 2, val),
+                        textcoords="offset points", xytext=(0, -12 if val < 0 else 5),
+                        ha="center", fontsize=7)
 
-    ax.set_xticks(range(len(df)))
-    ax.set_xticklabels(df.season_dropped, rotation=30, ha="right")
+    ax.set_xticks(x + width * (n_models - 1) / 2)
+    ax.set_xticklabels(seasons, rotation=30, ha="right")
     ax.set_ylabel("R2 Change from Baseline")
     ax.set_title("Impact of Dropping Each Season's Features")
     ax.axhline(0, color="black", lw=0.5)
+    ax.legend()
     ax.grid(True, alpha=0.3, axis="y")
-
-    # Annotate
-    for bar, val in zip(bars, df.r2_delta):
-        ax.annotate("{:.4f}".format(val),
-                    (bar.get_x() + bar.get_width() / 2, val),
-                    textcoords="offset points", xytext=(0, -12 if val < 0 else 5),
-                    ha="center", fontsize=8)
 
     fig.tight_layout()
     fig.savefig(os.path.join(FIG_DIR, "fig09_season_dropout.png"))
@@ -752,28 +839,43 @@ def _fig_c9_season_dropout(season_df):
 
 
 def _fig_c10_feature_ablation(ablation_df):
-    """Feature group ablation bar chart."""
-    df = ablation_df[ablation_df.group_dropped != "none"].copy()
-    base_r2 = ablation_df[ablation_df.group_dropped == "none"].r2.values[0]
-    df["r2_delta"] = df.r2 - base_r2
+    """Feature group ablation grouped bar chart — MLP vs LightGBM."""
+    models = ablation_df.model.unique()
+    groups = [g for g in ablation_df.group_dropped.unique() if g != "none"]
+    y = np.arange(len(groups))
+    n_models = len(models)
+    height = 0.8 / n_models
 
-    fig, ax = plt.subplots(figsize=(8, 5))
-    colors = ["#e74c3c" if d < -0.01 else "#f39c12" if d < 0 else "#2ecc71"
-              for d in df.r2_delta]
-    bars = ax.barh(range(len(df)), df.r2_delta, color=colors, edgecolor="white", height=0.6)
+    fig, ax = plt.subplots(figsize=(10, 5))
+    for mi, model_name in enumerate(models):
+        sub = ablation_df[ablation_df.model == model_name]
+        base_r2 = sub[sub.group_dropped == "none"].r2.values[0]
+        deltas = []
+        labels = []
+        for g in groups:
+            row = sub[sub.group_dropped == g]
+            if len(row):
+                deltas.append(float(row.r2.values[0] - base_r2))
+                labels.append("{} ({} feat)".format(g, int(row.n_zeroed.values[0])))
+            else:
+                deltas.append(0.0)
+                labels.append(g)
+        color = MODEL_COLORS.get(model_name, "gray")
+        bars = ax.barh(y + mi * height, deltas, height, label=model_name,
+                       color=color, alpha=0.85, edgecolor="white")
+        for bar, val in zip(bars, deltas):
+            ax.annotate("{:+.4f}".format(val),
+                        (val, bar.get_y() + bar.get_height() / 2),
+                        textcoords="offset points", xytext=(5, 0),
+                        va="center", fontsize=8)
 
-    ax.set_yticks(range(len(df)))
-    labels = ["{} ({} feat)".format(r.group_dropped, r.n_zeroed) for _, r in df.iterrows()]
-    ax.set_yticklabels(labels)
-    ax.set_xlabel("R2 Change from Baseline ({:.4f})".format(base_r2))
+    ax.set_yticks(y + height * (n_models - 1) / 2)
+    ax.set_yticklabels(groups)
+    ax.set_xlabel("R2 Change from Baseline")
     ax.set_title("Feature Group Ablation (zeroing out)")
     ax.axvline(0, color="black", lw=0.5)
+    ax.legend()
     ax.grid(True, alpha=0.3, axis="x")
-
-    for bar, val in zip(bars, df.r2_delta):
-        ax.annotate("{:+.4f}".format(val),
-                    (val, bar.get_y() + bar.get_height() / 2),
-                    textcoords="offset points", xytext=(5, 0), va="center", fontsize=9)
 
     fig.tight_layout()
     fig.savefig(os.path.join(FIG_DIR, "fig10_feature_ablation.png"))
@@ -788,76 +890,80 @@ def _fig_c10_feature_ablation(ablation_df):
 def section_d(data):
     """Spatial failure analysis: error heatmap, error by land-cover, fold maps."""
     print("\n" + "=" * 70)
-    print("SECTION D: Spatial Failure Analysis")
+    print("SECTION D: Spatial Failure Analysis (MLP + LightGBM)")
     print("=" * 70)
 
     y_true = data["y_true"]
-    y_pred = data["y_pred_mlp"]  # Focus on MLP for spatial analysis
     grid = data["grid"]
     folds = data["folds"]
 
-    # Total absolute error per cell (mean across classes, in pp)
-    cell_mae = np.mean(np.abs(y_pred - y_true), axis=1) * 100
+    models_d = {
+        "MLP": data["y_pred_mlp"],
+        "LightGBM": data["y_pred_tree"],
+    }
 
     # Dominant land-cover class
     dominant_class = np.argmax(y_true, axis=1)
-    dominant_names = [CLASS_NAMES[i] for i in dominant_class]
 
-    # Aitchison distance per cell
     from src.transforms import aitchison_distance
-    aitch = aitchison_distance(y_true, y_pred, eps=1e-6)
 
-    # Prediction entropy (how uncertain/spread the prediction is)
-    pred_entropy = -np.sum(np.clip(y_pred, 1e-10, 1) * np.log(np.clip(y_pred, 1e-10, 1)), axis=1)
+    all_failure_rows = []
 
-    # ── Save failure table ──
-    failure_rows = []
-    for ci, cn in enumerate(CLASS_NAMES):
-        mask = dominant_class == ci
-        if mask.sum() > 0:
-            failure_rows.append({
-                "dominant_class": cn,
-                "n_cells": int(mask.sum()),
-                "mae_pp": float(cell_mae[mask].mean()),
-                "mae_std_pp": float(cell_mae[mask].std()),
-                "aitchison_mean": float(aitch[mask].mean()),
-                "r2_uniform": float(r2_uniform(y_true[mask], y_pred[mask])),
-            })
-    failure_df = pd.DataFrame(failure_rows)
+    for model_name, y_pred in models_d.items():
+        print("\n  -- {} --".format(model_name))
+        cell_mae = np.mean(np.abs(y_pred - y_true), axis=1) * 100
+        aitch = aitchison_distance(y_true, y_pred, eps=1e-6)
+        pred_entropy = -np.sum(np.clip(y_pred, 1e-10, 1) * np.log(np.clip(y_pred, 1e-10, 1)), axis=1)
+
+        # ── Failure table ──
+        for ci, cn in enumerate(CLASS_NAMES):
+            mask = dominant_class == ci
+            if mask.sum() > 0:
+                all_failure_rows.append({
+                    "model": model_name,
+                    "dominant_class": cn,
+                    "n_cells": int(mask.sum()),
+                    "mae_pp": float(cell_mae[mask].mean()),
+                    "mae_std_pp": float(cell_mae[mask].std()),
+                    "aitchison_mean": float(aitch[mask].mean()),
+                    "r2_uniform": float(r2_uniform(y_true[mask], y_pred[mask])),
+                })
+
+        # Print summary
+        for ci, cn in enumerate(CLASS_NAMES):
+            mask = dominant_class == ci
+            if mask.sum() > 0:
+                sub = [r for r in all_failure_rows
+                       if r["model"] == model_name and r["dominant_class"] == cn]
+                if sub:
+                    r = sub[0]
+                    print("    {:15s}: n={:5d}  MAE={:.2f}pp  Aitchison={:.3f}  R2={:.4f}".format(
+                        cn, r["n_cells"], r["mae_pp"], r["aitchison_mean"], r["r2_uniform"]))
+
+        # ── Fold-level metrics ──
+        for fold_id in range(N_FOLDS):
+            mask = folds == fold_id
+            if mask.sum() > 0:
+                r2_f = float(r2_uniform(y_true[mask], y_pred[mask]))
+                mae_f = float(mae_mean(y_true[mask], y_pred[mask]))
+                print("  Fold {}: n={:5d}  R2={:.4f}  MAE={:.2f}pp".format(
+                    fold_id, int(mask.sum()), r2_f, mae_f))
+
+        # ── Figures (per model, with suffix) ──
+        suffix = "_mlp" if model_name == "MLP" else "_lgbm"
+        _fig_d11_error_heatmap(grid, cell_mae, model_name, suffix)
+        _fig_d12_error_by_landcover(cell_mae, dominant_class, model_name, suffix)
+        _fig_d13_error_vs_aitchison(cell_mae, aitch, pred_entropy, model_name, suffix)
+        _fig_d14_fold_error_map(grid, cell_mae, folds, model_name, suffix)
+
+    failure_df = pd.DataFrame(all_failure_rows)
     failure_df.to_csv(os.path.join(TABLE_DIR, "failure_by_landcover.csv"), index=False)
     print("  Saved failure_by_landcover.csv")
-
-    for _, r in failure_df.iterrows():
-        print("    {:15s}: n={:5d}  MAE={:.2f}pp  Aitchison={:.3f}  R2={:.4f}".format(
-            r.dominant_class, r.n_cells, r.mae_pp, r.aitchison_mean, r.r2_uniform))
-
-    # ── Fold-level metrics ──
-    fold_rows = []
-    for fold_id in range(N_FOLDS):
-        mask = folds == fold_id
-        if mask.sum() > 0:
-            fold_rows.append({
-                "fold": fold_id,
-                "n_cells": int(mask.sum()),
-                "r2": float(r2_uniform(y_true[mask], y_pred[mask])),
-                "mae_pp": float(mae_mean(y_true[mask], y_pred[mask])),
-                "aitchison_mean": float(np.mean(aitch[mask])),
-            })
-            print("  Fold {}: n={:5d}  R2={:.4f}  MAE={:.2f}pp".format(
-                fold_id, fold_rows[-1]["n_cells"],
-                fold_rows[-1]["r2"], fold_rows[-1]["mae_pp"]))
-    fold_df = pd.DataFrame(fold_rows)
-
-    # ── Figures ──
-    _fig_d11_error_heatmap(grid, cell_mae)
-    _fig_d12_error_by_landcover(cell_mae, dominant_class)
-    _fig_d13_error_vs_aitchison(cell_mae, aitch, pred_entropy)
-    _fig_d14_fold_error_map(grid, cell_mae, folds)
 
     return failure_df
 
 
-def _fig_d11_error_heatmap(grid, cell_mae):
+def _fig_d11_error_heatmap(grid, cell_mae, model_name, suffix):
     """Spatial error heatmap."""
     gdf = grid.copy()
     gdf["mae_pp"] = cell_mae
@@ -866,16 +972,17 @@ def _fig_d11_error_heatmap(grid, cell_mae):
     gdf.plot(column="mae_pp", cmap="YlOrRd", ax=ax, legend=True,
              legend_kwds={"label": "MAE (pp)", "shrink": 0.6},
              vmin=0, vmax=np.percentile(cell_mae, 95))
-    ax.set_title("MLP Prediction Error Heatmap (MAE per cell)")
+    ax.set_title("{} Prediction Error Heatmap (MAE per cell)".format(model_name))
     ax.set_xlabel("Easting")
     ax.set_ylabel("Northing")
     fig.tight_layout()
-    fig.savefig(os.path.join(FIG_DIR, "fig11_error_heatmap.png"))
+    fname = "fig11_error_heatmap{}.png".format(suffix)
+    fig.savefig(os.path.join(FIG_DIR, fname))
     plt.close(fig)
-    print("  Saved fig11_error_heatmap.png")
+    print("  Saved {}".format(fname))
 
 
-def _fig_d12_error_by_landcover(cell_mae, dominant_class):
+def _fig_d12_error_by_landcover(cell_mae, dominant_class, model_name, suffix):
     """Box plots of error by dominant land-cover class."""
     fig, ax = plt.subplots(figsize=(10, 6))
 
@@ -887,22 +994,23 @@ def _fig_d12_error_by_landcover(cell_mae, dominant_class):
             data_by_class.append(cell_mae[mask])
             labels.append("{}\n(n={:,})".format(cl, mask.sum()))
 
-    bp = ax.boxplot(data_by_class, labels=labels, patch_artist=True,
+    bp = ax.boxplot(data_by_class, tick_labels=labels, patch_artist=True,
                     showfliers=False, medianprops=dict(color="black", linewidth=2))
     for patch, color in zip(bp["boxes"], CLASS_COLORS[:len(data_by_class)]):
         patch.set_facecolor(color)
         patch.set_alpha(0.6)
 
     ax.set_ylabel("MAE (pp)")
-    ax.set_title("Prediction Error by Dominant Land-Cover Class (MLP)")
+    ax.set_title("Prediction Error by Dominant Land-Cover Class ({})".format(model_name))
     ax.grid(True, alpha=0.3, axis="y")
     fig.tight_layout()
-    fig.savefig(os.path.join(FIG_DIR, "fig12_error_by_landcover.png"))
+    fname = "fig12_error_by_landcover{}.png".format(suffix)
+    fig.savefig(os.path.join(FIG_DIR, fname))
     plt.close(fig)
-    print("  Saved fig12_error_by_landcover.png")
+    print("  Saved {}".format(fname))
 
 
-def _fig_d13_error_vs_aitchison(cell_mae, aitch, pred_entropy):
+def _fig_d13_error_vs_aitchison(cell_mae, aitch, pred_entropy, model_name, suffix):
     """Scatter: MAE vs Aitchison distance, colored by prediction entropy."""
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
 
@@ -918,14 +1026,15 @@ def _fig_d13_error_vs_aitchison(cell_mae, aitch, pred_entropy):
     ax2.set_ylabel("MAE (pp)")
     ax2.set_title("Error vs Prediction Uncertainty")
 
-    fig.suptitle("MLP Error Diagnostic Scatterplots", fontsize=14, y=1.02)
+    fig.suptitle("{} Error Diagnostic Scatterplots".format(model_name), fontsize=14, y=1.02)
     fig.tight_layout()
-    fig.savefig(os.path.join(FIG_DIR, "fig13_error_vs_aitchison.png"))
+    fname = "fig13_error_vs_aitchison{}.png".format(suffix)
+    fig.savefig(os.path.join(FIG_DIR, fname))
     plt.close(fig)
-    print("  Saved fig13_error_vs_aitchison.png")
+    print("  Saved {}".format(fname))
 
 
-def _fig_d14_fold_error_map(grid, cell_mae, folds):
+def _fig_d14_fold_error_map(grid, cell_mae, folds, model_name, suffix):
     """5-panel fold error map."""
     fig, axes = plt.subplots(1, N_FOLDS, figsize=(25, 8))
 
@@ -945,20 +1054,16 @@ def _fig_d14_fold_error_map(grid, cell_mae, folds):
                        vmin=0, vmax=vmax, legend=(fold_id == N_FOLDS - 1),
                        legend_kwds={"label": "MAE (pp)", "shrink": 0.8})
 
-        r2_fold = r2_uniform(
-            np.stack([grid.index[mask]]),  # dummy - recompute properly
-            np.stack([grid.index[mask]])
-        ) if False else "—"
-
         ax.set_title("Fold {} (n={:,})".format(fold_id, mask.sum()), fontsize=11)
         ax.set_xticks([])
         ax.set_yticks([])
 
-    fig.suptitle("Per-Fold Prediction Error Maps (MLP)", fontsize=14)
+    fig.suptitle("Per-Fold Prediction Error Maps ({})".format(model_name), fontsize=14)
     fig.tight_layout()
-    fig.savefig(os.path.join(FIG_DIR, "fig14_fold_error_map.png"))
+    fname = "fig14_fold_error_map{}.png".format(suffix)
+    fig.savefig(os.path.join(FIG_DIR, fname))
     plt.close(fig)
-    print("  Saved fig14_fold_error_map.png")
+    print("  Saved {}".format(fname))
 
 
 # =====================================================================
