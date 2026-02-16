@@ -66,12 +66,19 @@ pub async fn download_season(
         println!("  [{year}/{season}] WARNING: No scenes found -- skipping!");
         return Ok(None);
     }
-    println!("  [{year}/{season}] Found {} scenes, signing URLs...", items.len());
+    println!("  [{year}/{season}] Found {} scenes, signing...", items.len());
 
-    // 2. Sign all band URLs concurrently
+    // 2. Get collection SAS token (single API call) and sign all URLs locally
     let all_bands = stac::all_download_bands();
-    let signed_scenes = sign_all_scenes(client, &items, &all_bands).await?;
-    println!("  [{year}/{season}] URLs signed, downloading bands...");
+    let token = stac::get_collection_token(client).await?;
+    let signed_scenes: Vec<std::collections::HashMap<String, String>> = items
+        .iter()
+        .map(|item| {
+            let band_refs: Vec<&str> = all_bands.iter().copied().collect();
+            stac::sign_scene_assets_with_token(item, &band_refs, &token)
+        })
+        .collect::<Result<Vec<_>>>()?;
+    println!("  [{year}/{season}] URLs signed, compositing...");
 
     // 3. Pass signed URLs to Python helper for download + composite + reproject
     // (Python uses rasterio WarpedVRT for efficient reprojection)
@@ -87,31 +94,6 @@ pub async fn download_season(
     }
 }
 
-/// Sign all scene assets in parallel using tokio tasks.
-async fn sign_all_scenes(
-    client: &Client,
-    items: &[StacItem],
-    band_names: &[&str],
-) -> Result<Vec<HashMap<String, String>>> {
-    let mut results = Vec::with_capacity(items.len());
-    // Sign scenes in batches of 8 to avoid hitting rate limits
-    for chunk in items.chunks(8) {
-        let mut handles = Vec::new();
-        for item in chunk {
-            let client = client.clone();
-            let item = item.clone();
-            let bands: Vec<String> = band_names.iter().map(|b| b.to_string()).collect();
-            handles.push(tokio::spawn(async move {
-                let band_refs: Vec<&str> = bands.iter().map(|s| s.as_str()).collect();
-                stac::sign_scene_assets(&client, &item, &band_refs).await
-            }));
-        }
-        for handle in handles {
-            results.push(handle.await??);
-        }
-    }
-    Ok(results)
-}
 
 /// Build JSON describing scenes + signed URLs for the Python helper.
 fn build_scene_json(

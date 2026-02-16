@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 const STAC_API: &str = "https://planetarycomputer.microsoft.com/api/stac/v1";
-const SIGN_API: &str = "https://planetarycomputer.microsoft.com/api/sas/v1/sign";
+const TOKEN_API: &str = "https://planetarycomputer.microsoft.com/api/sas/v1/token/sentinel-2-l2a";
 
 // ---- STAC search request/response types ----
 
@@ -47,8 +47,8 @@ pub struct StacAsset {
 }
 
 #[derive(Deserialize)]
-struct SignResponse {
-    href: String,
+struct TokenResponse {
+    token: String,
 }
 
 // ---- Season date ranges ----
@@ -157,49 +157,65 @@ fn chrono_parse_expand(date_str: &str, days: i32) -> String {
     format!("{year:04}-{month:02}-{total_day:02}")
 }
 
-// ---- URL signing ----
+// ---- Token-based signing ----
 
-/// Sign a single Planetary Computer blob URL.
-pub async fn sign_url(client: &Client, href: &str) -> Result<String> {
-    let resp = client
-        .get(SIGN_API)
-        .query(&[("href", href)])
-        .send()
-        .await
-        .context("Sign URL request failed")?;
+/// Get a SAS token for the sentinel-2-l2a collection (with retry on 429).
+pub async fn get_collection_token(client: &Client) -> Result<String> {
+    let max_retries = 3;
+    let mut wait_secs = 5u64;
 
-    let status = resp.status();
-    if !status.is_success() {
-        let text = resp.text().await.unwrap_or_default();
-        anyhow::bail!("Sign URL returned {status}: {text}");
+    for attempt in 0..=max_retries {
+        let resp = client
+            .get(TOKEN_API)
+            .send()
+            .await
+            .context("Token request failed")?;
+
+        let status = resp.status();
+        if status.as_u16() == 429 && attempt < max_retries {
+            eprintln!("    Rate limited on token, waiting {wait_secs}s...");
+            tokio::time::sleep(std::time::Duration::from_secs(wait_secs)).await;
+            wait_secs *= 2;
+            continue;
+        }
+
+        if !status.is_success() {
+            let text = resp.text().await.unwrap_or_default();
+            anyhow::bail!("Token API returned {status}: {text}");
+        }
+
+        let tr: TokenResponse = resp.json().await.context("Failed to parse token response")?;
+        return Ok(tr.token);
     }
 
-    let sr: SignResponse = resp.json().await.context("Failed to parse sign response")?;
-    Ok(sr.href)
+    anyhow::bail!("get_collection_token exhausted retries");
 }
 
-/// Sign all band asset URLs in a scene item.
-pub async fn sign_scene_assets(
-    client: &Client,
+/// Apply a SAS token to a blob URL.
+fn apply_token(href: &str, token: &str) -> String {
+    if href.contains('?') {
+        format!("{href}&{token}")
+    } else {
+        format!("{href}?{token}")
+    }
+}
+
+/// Sign all band asset URLs in a scene item using a pre-fetched token.
+pub fn sign_scene_assets_with_token(
     item: &StacItem,
     band_names: &[&str],
+    token: &str,
 ) -> Result<HashMap<String, String>> {
     let mut signed = HashMap::new();
     for band in band_names {
         let band_str = band.to_string();
         if let Some(asset) = item.assets.get(&band_str) {
-            let signed_href = sign_url(client, &asset.href).await?;
-            signed.insert(band_str, signed_href);
+            signed.insert(band_str, apply_token(&asset.href, token));
         } else {
             anyhow::bail!("Scene {} missing band {}", item.id, band);
         }
     }
     Ok(signed)
-}
-
-/// Get the list of band names we need to download.
-pub fn sentinel_bands() -> Vec<&'static str> {
-    vec!["B02", "B03", "B04", "B05", "B06", "B07", "B08", "B8A", "B11", "B12"]
 }
 
 /// Get bands + SCL for cloud masking.
