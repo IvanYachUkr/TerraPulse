@@ -43,7 +43,7 @@ const TC10_B: [f32; 10] = [0.3510, 0.3813, 0.3437, 0.7196, 0.2396, 0.1949, 0.182
 const TC10_G: [f32; 10] = [-0.3599, -0.3533, -0.4734, 0.6633, 0.0087, -0.0469, -0.0322, -0.0015, -0.0693, -0.0180];
 const TC10_W: [f32; 10] = [0.2578, 0.2305, 0.0883, 0.1071, -0.7611, 0.0882, 0.4572, -0.0021, -0.4064, 0.0117];
 
-// 20m bands that need block-reduce (factor=2) before stats, matching Python V10
+// 20m bands that need block-reduce (factor=2) before stats, matching original Python
 const BANDS_20M: [usize; 6] = [B05, B06, B07, B8A, B11, B12];
 
 // Feature counts
@@ -407,6 +407,7 @@ fn percentile_linear(sorted: &[f32], q: f32) -> f32 {
 }
 
 /// 8 stats: mean, std, min, max, q25, median, q75, finite_frac
+/// Uses np.percentile-compatible linear interpolation on finite-only values.
 fn cell_stats_8(px: &[f32; N_PX]) -> [f32; 8] {
     let mut vals = [0.0f32; N_PX];
     let mut n: usize = 0;
@@ -420,12 +421,8 @@ fn cell_stats_8(px: &[f32; N_PX]) -> [f32; 8] {
             vals[n] = v;
             n += 1;
             sum += v as f64;
-            if v < mn {
-                mn = v;
-            }
-            if v > mx {
-                mx = v;
-            }
+            if v < mn { mn = v; }
+            if v > mx { mx = v; }
         }
     }
 
@@ -436,7 +433,7 @@ fn cell_stats_8(px: &[f32; N_PX]) -> [f32; 8] {
 
     let mean = (sum / n as f64) as f32;
 
-    // Stable variance (two-pass) in f64
+    // Stable variance (two-pass) in f64 — ddof=0 like numpy
     let mut var = 0.0f64;
     for i in 0..n {
         let d = vals[i] as f64 - mean as f64;
@@ -965,8 +962,9 @@ fn extract_season<'py>(
     let swir1_clean = clean_band_nan_fill(band_slice(B11), h, w);
     let swir2_clean = clean_band_nan_fill(band_slice(B12), h, w);
 
-    // LBP inputs: clipped to [0,1] to match Python's np.clip(band, 0, 1)
-    let nir_lbp = clean_band_nan_fill_clipped(band_slice(B08), h, w);
+    // LBP inputs:
+    // NIR: full-raster unclipped (matching V3 Python that generated LBP in features_merged_full)
+    // SWIR1 clipped for full-raster LBP
     let swir1_lbp = clean_band_nan_fill_clipped(band_slice(B11), h, w);
 
     // Index images for LBP (rescaled to [0,1])
@@ -994,7 +992,9 @@ fn extract_season<'py>(
         })
         .collect();
 
-    let lbp_nir = compute_lbp_raster(&nir_lbp, h, w, &lbp_lut);
+    // NIR LBP: per-patch with clip (matching original lbp_features())
+    let lbp_nir = compute_lbp_perpatch(band_slice(B08), h, w, n_rows, n_cols, &lbp_lut, true);
+    // Multi-band LBP: full-raster
     let lbp_ndvi = compute_lbp_raster(&ndvi_img, h, w, &lbp_lut);
     let lbp_evi2 = compute_lbp_raster(&evi2_img, h, w, &lbp_lut);
     let lbp_swir1 = compute_lbp_raster(&swir1_lbp, h, w, &lbp_lut);
@@ -1137,8 +1137,8 @@ fn extract_all_seasons<'py>(
             let swir1_clean = clean_band_nan_fill(band_slice(B11), h, w);
             let swir2_clean = clean_band_nan_fill(band_slice(B12), h, w);
 
-            // LBP inputs: clipped to [0,1] to match Python
-            let nir_lbp = clean_band_nan_fill_clipped(band_slice(B08), h, w);
+            // LBP: NIR per-patch with clip (matching original lbp_features())
+            // Multi-band: full-raster
             let swir1_lbp = clean_band_nan_fill_clipped(band_slice(B11), h, w);
 
             let ndvi_img: Vec<f32> = (0..h * w)
@@ -1165,7 +1165,8 @@ fn extract_all_seasons<'py>(
                 })
                 .collect();
 
-            let lbp_nir = compute_lbp_raster(&nir_lbp, h, w, &lbp_lut);
+            // NIR: per-patch LBP with clip (matches original Python lbp_features())
+            let lbp_nir = compute_lbp_perpatch(band_slice(B08), h, w, n_rows, n_cols, &lbp_lut, true);
             let lbp_ndvi = compute_lbp_raster(&ndvi_img, h, w, &lbp_lut);
             let lbp_evi2 = compute_lbp_raster(&evi2_img, h, w, &lbp_lut);
             let lbp_swir1 = compute_lbp_raster(&swir1_lbp, h, w, &lbp_lut);
@@ -1242,8 +1243,8 @@ fn extract_all_seasons_v2<'py>(
             let swir1_clean = clean_band_nan_fill(band_slice(B11), h, w);
             let swir2_clean = clean_band_nan_fill(band_slice(B12), h, w);
 
-            // LBP inputs: clipped to [0,1] to match Python
-            let nir_lbp = clean_band_nan_fill_clipped(band_slice(B08), h, w);
+            // LBP: NIR full-raster unclipped (matching V3 Python)
+            // Multi-band LBP uses full-raster
             let swir1_lbp = clean_band_nan_fill_clipped(band_slice(B11), h, w);
 
             let ndvi_img: Vec<f32> = (0..h * w)
@@ -1270,14 +1271,13 @@ fn extract_all_seasons_v2<'py>(
                 })
                 .collect();
 
-            // Per-patch LBP: isolated 10x10 patches with per-cell NaN fill
-            // NIR/SWIR1: pass raw band data, clip_01=true (per-cell NaN fill + clip)
+            // NIR: per-patch LBP with clip (matches original lbp_features())
             let lbp_nir = compute_lbp_perpatch(band_slice(B08), h, w, n_rows, n_cols, &lbp_lut, true);
-            let lbp_swir1 = compute_lbp_perpatch(band_slice(B11), h, w, n_rows, n_cols, &lbp_lut, true);
-            // Index images: already NaN-free and in [0,1], no clipping needed
-            let lbp_ndvi = compute_lbp_perpatch(&ndvi_img, h, w, n_rows, n_cols, &lbp_lut, false);
-            let lbp_evi2 = compute_lbp_perpatch(&evi2_img, h, w, n_rows, n_cols, &lbp_lut, false);
-            let lbp_ndti = compute_lbp_perpatch(&ndti_img, h, w, n_rows, n_cols, &lbp_lut, false);
+            // Multi-band: full-raster LBP
+            let lbp_swir1 = compute_lbp_raster(&swir1_lbp, h, w, &lbp_lut);
+            let lbp_ndvi = compute_lbp_raster(&ndvi_img, h, w, &lbp_lut);
+            let lbp_evi2 = compute_lbp_raster(&evi2_img, h, w, &lbp_lut);
+            let lbp_ndti = compute_lbp_raster(&ndti_img, h, w, &lbp_lut);
 
             (0..n_cells)
                 .into_par_iter()
