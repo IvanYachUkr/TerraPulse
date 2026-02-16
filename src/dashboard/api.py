@@ -58,6 +58,35 @@ def get_predictions(model: str):
 
 
 @lru_cache(maxsize=None)
+def get_predictions_year(model: str, year: int):
+    """Load predictions for a specific model and year.
+    For 2021 falls back to the OOF predictions file.
+    For 2022-2025 loads the pipeline prediction file.
+    """
+    name = f"predictions_{model}_{year}.json"
+    path = os.path.join(DATA_DIR, name)
+    if os.path.exists(path):
+        with open(path, "r") as f:
+            return json.load(f)
+    # Fall back to the OOF file for 2021
+    if year == 2021:
+        return get_predictions(model)
+    raise FileNotFoundError(f"No predictions for {model}/{year}")
+
+
+def get_available_prediction_years():
+    """Scan data directory for available prediction years."""
+    years = {2021}  # Always available (OOF)
+    for fname in os.listdir(DATA_DIR):
+        # predictions_mlp_2023.json
+        if fname.startswith("predictions_") and fname.endswith(".json"):
+            parts = fname.replace(".json", "").split("_")
+            if len(parts) == 3 and parts[2].isdigit():
+                years.add(int(parts[2]))
+    return sorted(years)
+
+
+@lru_cache(maxsize=None)
 def get_benchmark():
     return _load_json("model_benchmark.json")
 
@@ -138,6 +167,23 @@ def predictions(model: str):
             detail=f"Unknown model '{model}'. Available: {MODELS}",
         )
     return get_predictions(model)
+
+
+@app.get("/api/predictions/{model}/{year}")
+def predictions_year(model: str, year: int):
+    """Predicted proportions for a model and year (2021=OOF, 2022-2025=pipeline)."""
+    if model not in MODELS:
+        raise HTTPException(status_code=404, detail=f"Unknown model '{model}'")
+    try:
+        return get_predictions_year(model, year)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail=f"No predictions for {model}/{year}")
+
+
+@app.get("/api/prediction-years")
+def prediction_years():
+    """List available prediction years."""
+    return get_available_prediction_years()
 
 
 @app.get("/api/models")

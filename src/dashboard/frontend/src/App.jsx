@@ -50,7 +50,10 @@ export default function App() {
     const { data: labels2021 } = useApi('/api/labels/2021');
     const { data: changeData } = useApi('/api/change');
     const { data: models } = useApi('/api/models');
-    const { data: predictions } = useApi(`/api/predictions/${selectedModel}`);
+    const predUrl = selectedYear > 2021
+        ? `/api/predictions/${selectedModel}/${selectedYear}`
+        : `/api/predictions/${selectedModel}`;
+    const { data: predictions } = useApi(predUrl);
     const { data: conformal } = useApi('/api/conformal');
     const { data: splitData } = useApi('/api/split');
     const { data: evaluationData } = useApi('/api/evaluation');

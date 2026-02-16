@@ -130,6 +130,51 @@ def export_predictions(out_dir):
 
 
 # ---------------------------------------------------------------------------
+# 4b. Pipeline predictions (multi-year, from run_overnight_pipeline.py)
+# ---------------------------------------------------------------------------
+PIPELINE_PRED_DIR = os.path.join(PROJECT_ROOT, "data", "pipeline_output", "predictions")
+# Map pipeline model names to dashboard model names
+PIPELINE_MODELS = {"mlp": "mlp", "tree": "tree"}
+
+
+def export_pipeline_predictions(out_dir):
+    """Export predictions for years 2022-2025 from the pipeline output.
+
+    For 2021 we already have full OOF from the final models, so we skip it.
+    For each future year, predictions come from the year-pair where
+    curr_year == that year.
+    """
+    if not os.path.isdir(PIPELINE_PRED_DIR):
+        print("  [!] No pipeline output found, skipping future-year predictions")
+        return
+
+    count = 0
+    for year in range(2022, 2026):
+        prev = year - 1
+        for pipe_model, dash_model in PIPELINE_MODELS.items():
+            pq_name = f"predictions_{pipe_model}_{prev}_{year}.parquet"
+            pq_path = os.path.join(PIPELINE_PRED_DIR, pq_name)
+            if not os.path.exists(pq_path):
+                continue
+            df = pd.read_parquet(pq_path)
+            pred_cols = [f"{c}_pred" for c in CLASSES]
+            if pred_cols[0] not in df.columns:
+                pred_cols = CLASSES
+            data = {}
+            for _, row in df.iterrows():
+                data[int(row.cell_id)] = _round_dict(
+                    {c: float(row[pc]) for c, pc in zip(CLASSES, pred_cols)}
+                )
+            out_name = f"predictions_{dash_model}_{year}.json"
+            path = os.path.join(out_dir, out_name)
+            with open(path, "w") as f:
+                json.dump(data, f, separators=(",", ":"))
+            count += 1
+            print(f"  [ok] {out_name} -- {len(data)} cells")
+    print(f"  Total: {count} future-year prediction files")
+
+
+# ---------------------------------------------------------------------------
 # 5. Model benchmark (from final model meta.json)
 # ---------------------------------------------------------------------------
 def export_benchmark(out_dir):
@@ -455,37 +500,40 @@ def main():
     os.makedirs(OUT_DIR, exist_ok=True)
     print(f"Precomputing dashboard data → {OUT_DIR}\n")
 
-    print("[1/10] Grid geometry ...")
+    print("[1/12] Grid geometry ...")
     export_grid(OUT_DIR)
 
-    print("[2/10] Labels ...")
+    print("[2/12] Labels ...")
     export_labels(OUT_DIR)
 
-    print("[3/10] Change map ...")
+    print("[3/12] Change map ...")
     export_change(OUT_DIR)
 
-    print("[4/10] Predictions ...")
+    print("[4/12] Predictions (OOF, 2021) ...")
     export_predictions(OUT_DIR)
 
-    print("[5/11] Model benchmark ...")
+    print("[5/12] Pipeline predictions (2022-2025) ...")
+    export_pipeline_predictions(OUT_DIR)
+
+    print("[6/12] Model benchmark ...")
     export_benchmark(OUT_DIR)
 
-    print("[6/11] Conformal coverage ...")
+    print("[7/12] Conformal coverage ...")
     export_conformal(OUT_DIR)
 
-    print("[7/11] Split info ...")
+    print("[8/12] Split info ...")
     export_split(OUT_DIR)
 
-    print("[8/11] Evaluation metrics (Phase 9) ...")
+    print("[9/12] Evaluation metrics (Phase 9) ...")
     export_evaluation(OUT_DIR)
 
-    print("[9/11] Stress tests (Phase 9) ...")
+    print("[10/12] Stress tests (Phase 9) ...")
     export_stress_tests(OUT_DIR)
 
-    print("[10/11] Failure analysis (Phase 9) ...")
+    print("[11/12] Failure analysis (Phase 9) ...")
     export_failure_analysis(OUT_DIR)
 
-    print("[11/11] Explainability (Phase 10) ...")
+    print("[12/12] Explainability (Phase 10) ...")
     export_explainability(OUT_DIR)
 
     print(f"\n[OK] Done -- {len(os.listdir(OUT_DIR))} files written to {OUT_DIR}")
