@@ -20,6 +20,7 @@ import argparse
 import json
 import os
 import pickle
+import re
 import sys
 import time
 import warnings
@@ -416,24 +417,53 @@ def load_rust_features(prev_year, curr_year):
         f"No Rust features found for {tag}. Checked: {path}")
 
 
-def swap_lbp_cols_for_mlp(feature_cols):
-    """Swap NIR LBP columns for NDTI LBP columns in the MLP feature list.
+# Feature group prefixes for dynamic feature selection
+_BAND_PREFIXES = {"B02", "B03", "B04", "B05", "B06", "B07", "B08", "B8A", "B11", "B12"}
+_INDEX_PREFIXES = {
+    "NDVI", "NDWI", "NDBI", "NDMI", "NBR", "SAVI", "BSI",
+    "NDRE1", "NDRE2", "EVI", "MSAVI", "CRI1", "CRI2", "MCARI", "MNDWI", "TC",
+}
 
-    The baseline MLP uses LBP_u8_* and LBP_entropy_* (NIR-based LBP).
-    LBP band sweep showed NDTI is the best band for MLP (R2=0.7712,
-    most stable fold 3 at 0.7501 vs NIR's 0.5942).
 
-    Tree model keeps the original NIR LBP unchanged.
+def build_bi_lbp(feature_cols):
+    """Select bands + indices + TC + all LBP columns from available features.
+
+    Dynamically discovers features from the Rust parquet columns instead of
+    loading a hardcoded column list from old model metadata.
     """
-    swapped = []
+    selected = []
+    for i, col in enumerate(feature_cols):
+        if col.startswith("delta"):
+            continue
+        prefix = col.split("_")[0]
+        if prefix in _BAND_PREFIXES or prefix in _INDEX_PREFIXES:
+            selected.append(i)
+        elif prefix == "LBP":
+            selected.append(i)
+    return sorted(set(selected))
+
+
+def build_tree_features(feature_cols):
+    """Select VegIdx + RedEdge + TC + NDTI + IRECI + CRI1 from available features."""
+    band_pat = re.compile(r'^B(05|06|07|8A)_')
+    novel = ["NDTI", "IRECI", "CRI1"]
+    selected = []
     for c in feature_cols:
-        if c.startswith("LBP_u8_") or c.startswith("LBP_entropy_"):
-            # LBP_u8_3_2020_spring -> LBP_NDTI_u8_3_2020_spring
-            # LBP_entropy_2020_spring -> LBP_NDTI_entropy_2020_spring
-            swapped.append("LBP_NDTI_" + c[len("LBP_"):])
-        else:
-            swapped.append(c)
-    return swapped
+        if any(c.startswith(p) for p in ["NDVI_", "SAVI_", "NDRE"]):
+            if not c.startswith("NDVI_range") and not c.startswith("NDVI_iqr"):
+                selected.append(c)
+                continue
+        if band_pat.match(c):
+            selected.append(c)
+            continue
+        if c.startswith("TC_"):
+            selected.append(c)
+            continue
+        for idx in novel:
+            if c.startswith(f"{idx}_"):
+                selected.append(c)
+                break
+    return selected
 
 
 def load_labels(year):
@@ -523,43 +553,32 @@ def stage_train():
     merged = load_rust_features(2020, 2021)
     print(f"  Merged shape: {merged.shape}")
 
-    # Load baseline feature column lists
-    with open(os.path.join(PROJECT_ROOT,
-              "models", "final_mlp", "meta.json")) as f:
-        mlp_meta = json.load(f)
-    mlp_cols_baseline = mlp_meta["feature_cols"]  # 864 (NIR LBP)
+    # Dynamic feature selection from ACTUAL Rust parquet columns
+    # (not from old Python-extraction model metadata)
+    from pandas.api.types import is_numeric_dtype
+    full_feature_cols = [
+        c for c in merged.columns
+        if c not in CONTROL_COLS and is_numeric_dtype(merged[c])
+    ]
 
-    with open(os.path.join(PROJECT_ROOT,
-              "models", "final_tree", "meta.json")) as f:
-        tree_meta = json.load(f)
-    tree_cols = tree_meta["feature_cols"]  # 438 (NIR LBP -- unchanged)
+    # MLP: bands + indices + TC + all LBP (including multi-band LBP)
+    mlp_idx = build_bi_lbp(full_feature_cols)
+    mlp_cols = [full_feature_cols[i] for i in mlp_idx]
 
-    # MLP: swap NIR LBP -> NDTI LBP (best band per sweep)
-    mlp_cols = swap_lbp_cols_for_mlp(mlp_cols_baseline)
-    n_swapped = sum(1 for a, b in zip(mlp_cols_baseline, mlp_cols) if a != b)
-    print(f"  MLP: swapped {n_swapped} LBP cols from NIR to NDTI")
+    # Tree: VegIdx + RedEdge + TC + NDTI + IRECI + CRI1
+    tree_cols = build_tree_features(full_feature_cols)
 
-    # Verify columns present
-    merged_cols_set = set(merged.columns)
-    mlp_missing = [c for c in mlp_cols if c not in merged_cols_set]
-    tree_missing = [c for c in tree_cols if c not in merged_cols_set]
-    if mlp_missing:
-        print(f"  WARNING: {len(mlp_missing)} MLP cols missing! "
-              f"Examples: {mlp_missing[:3]}")
-    if tree_missing:
-        print(f"  WARNING: {len(tree_missing)} tree cols missing! "
-              f"Examples: {tree_missing[:3]}")
+    n_mlp = len(mlp_cols)
+    n_tree = len(tree_cols)
+    print(f"  MLP features: {n_mlp} (bi_LBP, dynamic from Rust parquet)")
+    print(f"  Tree features: {n_tree} (VegIdx+RedEdge+TC+novel, dynamic)")
 
-    # Extract feature arrays
     X_mlp = np.nan_to_num(
-        merged[[c for c in mlp_cols if c in merged_cols_set]]
-        .values.astype(np.float32), 0.0)
+        merged[mlp_cols].values.astype(np.float32), 0.0)
     X_tree = np.nan_to_num(
-        merged[[c for c in tree_cols if c in merged_cols_set]]
-        .values.astype(np.float32), 0.0)
+        merged[tree_cols].values.astype(np.float32), 0.0)
 
-    # Labels: combine 2020 + 2021
-    # For training, we use 2021 labels (the "current year" in our setup)
+    # Labels: we use 2021 labels (the "current year" in our setup)
     labels_df = load_labels(2021)
     y = labels_df[CLASS_NAMES].values.astype(np.float32)
 
@@ -572,9 +591,6 @@ def stage_train():
     folds_arr = split_df["fold_region_growing"].values
     tiles = split_df["tile_group"].values
 
-    n_mlp = X_mlp.shape[1]
-    n_tree = X_tree.shape[1]
-    print(f"  MLP features: {n_mlp}, Tree features: {n_tree}")
     print(f"  Labels: {y.shape}")
 
     # -- Train LightGBM --
@@ -688,14 +704,14 @@ def stage_train():
 
         mlp_r2 = np.mean([m["r2"] for m in mlp_fold_metrics])
         mlp_meta_out = {
-            "model": "MLP", "lbp_band": "NDTI",
-            "feature_cols": mlp_cols,  # NDTI LBP columns
+            "model": "MLP", "lbp_band": "all_rust",
+            "feature_cols": mlp_cols,
             "n_features": n_mlp, "r2_mean": float(mlp_r2),
             "fold_metrics": mlp_fold_metrics,
         }
         with open(os.path.join(MODELS_DIR, "mlp_meta.json"), "w") as f:
             json.dump(mlp_meta_out, f, indent=2)
-        print(f"  MLP mean R2: {mlp_r2:.4f} (LBP band: NDTI)")
+        print(f"  MLP mean R2: {mlp_r2:.4f}")
 
     print(f"\n[{ts()}] Train stage complete.")
 
