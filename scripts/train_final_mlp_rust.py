@@ -136,8 +136,8 @@ def main():
 
         n_epochs, best_val, trained_net = train_model(
             net, X_trn_t, y_trn_t, X_val_t, y_val_t,
-            lr=cfg["lr"], weight_decay=cfg.get("weight_decay", 1e-4),
-            batch_size=2048, max_epochs=2000, patience_steps=5000, min_steps=2000,
+            lr=cfg["lr"], weight_decay=1e-3,
+            batch_size=4096, max_epochs=2000, patience_steps=5000, min_steps=2000,
             mixup_alpha=0, use_swa=False, use_cosine=True)
         elapsed = time.time() - t0
 
