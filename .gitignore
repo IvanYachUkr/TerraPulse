@@ -74,3 +74,5 @@ scripts/_tmp_*.py
 # === Model weights (large binary files) ===
 models/final_mlp_rust/
 models/final_mlp_pyv3/
+
+terrapulse/target/
