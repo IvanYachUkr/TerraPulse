@@ -249,6 +249,42 @@ body {
   box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
 }
 
+.toggle-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.toggle-btn.mini {
+  padding: 5px 4px;
+  font-size: 11px;
+}
+
+.toggle-group.compact {
+  gap: 3px;
+  padding: 3px;
+}
+
+/* Change view year picker */
+.change-year-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.change-year-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.change-year-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
 /* --- Class Chips --- */
 
 .class-chips {
@@ -700,8 +736,15 @@ body {
 }
 
 @keyframes slideIn {
-  from { transform: translateX(100%); opacity: 0; }
-  to { transform: translateX(0); opacity: 1; }
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
 }
 
 .metric-grid {

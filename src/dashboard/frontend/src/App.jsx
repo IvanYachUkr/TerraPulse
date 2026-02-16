@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import Header from './components/Header.jsx';
 import Sidebar from './components/Sidebar.jsx';
 import MapView from './components/MapView.jsx';
@@ -29,11 +29,17 @@ const CLASS_LABELS = {
 
 // Years with actual labels (ground truth)
 const LABEL_YEARS = [2020, 2021];
+// All years available (labels + predictions)
+const ALL_YEARS = [2020, 2021, 2022, 2023, 2024, 2025];
 
 export default function App() {
     const [selectedModel, setSelectedModel] = useState('mlp');
     const [viewMode, setViewMode] = useState('labels');
     const [selectedYear, setSelectedYear] = useState(2021);
+
+    // Change view: from/to year pickers
+    const [changeYearFrom, setChangeYearFrom] = useState(2020);
+    const [changeYearTo, setChangeYearTo] = useState(2021);
 
     const [selectedClass, setSelectedClass] = useState('all');
     const [selectedCell, setSelectedCell] = useState(null);
@@ -42,19 +48,25 @@ export default function App() {
     const [showComparison, setShowComparison] = useState(false);
     const [showEvaluation, setShowEvaluation] = useState(false);
 
-    // Data fetching
+    // Data fetching — labels (always loaded)
     const { data: grid, loading: gridLoading } = useApi('/api/grid');
     const { data: labels2020 } = useApi('/api/labels/2020');
     const { data: labels2021 } = useApi('/api/labels/2021');
-    const { data: changeData } = useApi('/api/change');
     const { data: models } = useApi('/api/models');
 
-    // Predictions: year-aware fetch
-    // For 2021 use the OOF endpoint, for 2022+ use the year-keyed endpoint
+    // Predictions: year-aware fetch for predictions view
     const predUrl = viewMode === 'predictions' && selectedYear > 2021
         ? `/api/predictions/${selectedModel}/${selectedYear}`
         : `/api/predictions/${selectedModel}`;
     const { data: predictions } = useApi(predUrl);
+
+    // Change view: fetch prediction data for "from" and "to" years (only when > 2021)
+    const changeFromUrl = changeYearFrom > 2021
+        ? `/api/predictions/${selectedModel}/${changeYearFrom}` : null;
+    const changeToUrl = changeYearTo > 2021
+        ? `/api/predictions/${selectedModel}/${changeYearTo}` : null;
+    const { data: changeFromPred } = useApi(changeFromUrl);
+    const { data: changeToPred } = useApi(changeToUrl);
 
     const { data: conformal } = useApi('/api/conformal');
     const { data: splitData } = useApi('/api/split');
@@ -66,6 +78,37 @@ export default function App() {
         selectedCell != null ? `/api/cell/${selectedCell}` : null
     );
 
+    // Resolve year data: labels for 2020/2021, predictions for 2022+
+    const resolveYearData = (year) => {
+        if (year === 2020) return labels2020;
+        if (year === 2021) return labels2021;
+        // For 2022+, use the fetched prediction data
+        if (year === changeYearFrom && changeFromPred) return changeFromPred;
+        if (year === changeYearTo && changeToPred) return changeToPred;
+        return null;
+    };
+
+    // Compute change data dynamically from two years
+    const computedChangeData = useMemo(() => {
+        const fromData = resolveYearData(changeYearFrom);
+        const toData = resolveYearData(changeYearTo);
+        if (!fromData || !toData) return null;
+
+        const result = {};
+        // Use all cell IDs from the "from" dataset
+        for (const cellId of Object.keys(fromData)) {
+            const from = fromData[cellId];
+            const to = toData[cellId];
+            if (!from || !to) continue;
+            const entry = {};
+            for (const c of CLASSES) {
+                entry[`delta_${c}`] = (to[c] ?? 0) - (from[c] ?? 0);
+            }
+            result[cellId] = entry;
+        }
+        return result;
+    }, [changeYearFrom, changeYearTo, labels2020, labels2021, changeFromPred, changeToPred]);
+
     // Pick the right data based on view mode
     const getViewData = () => {
         switch (viewMode) {
@@ -74,7 +117,7 @@ export default function App() {
             case 'predictions':
                 return predictions;
             case 'change':
-                return changeData;
+                return computedChangeData;
             case 'folds':
                 return splitData;
             default:
@@ -114,6 +157,11 @@ export default function App() {
                         classLabels={CLASS_LABELS}
                         classColors={CLASS_COLORS}
                         labelYears={LABEL_YEARS}
+                        allYears={ALL_YEARS}
+                        changeYearFrom={changeYearFrom}
+                        changeYearTo={changeYearTo}
+                        onChangeYearFrom={setChangeYearFrom}
+                        onChangeYearTo={setChangeYearTo}
                         searchCellId={searchCellId}
                         onSearchCellId={handleSearchCell}
                     />
@@ -128,7 +176,7 @@ export default function App() {
                     predictions={predictions}
                     labels2020={labels2020}
                     labels2021={labels2021}
-                    changeData={changeData}
+                    changeData={computedChangeData}
                     splitData={splitData}
                     classColors={CLASS_COLORS}
                     classes={CLASSES}

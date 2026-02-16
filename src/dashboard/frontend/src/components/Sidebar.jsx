@@ -36,10 +36,18 @@ export default function Sidebar({
     classLabels,
     classColors,
     labelYears,
+    allYears,
+    changeYearFrom,
+    changeYearTo,
+    onChangeYearFrom,
+    onChangeYearTo,
     searchCellId,
     onSearchCellId,
 }) {
     const showClasses = viewMode !== 'folds';
+    // Show model selector when predictions or change involves predicted years
+    const needsModel = viewMode === 'predictions' ||
+        (viewMode === 'change' && (changeYearFrom > 2021 || changeYearTo > 2021));
 
     return (
         <aside className="sidebar">
@@ -82,57 +90,94 @@ export default function Sidebar({
 
             {/* Predictions view: year + model selectors */}
             {viewMode === 'predictions' && (
-                <>
-                    <div className="section">
-                        <div className="section-title">Prediction Year</div>
-                        <div className="toggle-group">
-                            {PREDICTION_YEARS.map((y) => (
-                                <button
-                                    key={y}
-                                    className={`toggle-btn ${selectedYear === y ? 'active' : ''}`}
-                                    onClick={() => onYearChange(y)}
-                                >
-                                    {y}
-                                </button>
-                            ))}
-                        </div>
-                        {selectedYear === 2021 && (
-                            <div className="info-badge" style={{ marginTop: 6 }}>
-                                Out-of-fold predictions (holdout cells)
-                            </div>
-                        )}
-                        {selectedYear > 2021 && (
-                            <div className="info-badge" style={{ marginTop: 6 }}>
-                                Pipeline predictions &mdash; all 29,946 cells
-                            </div>
-                        )}
+                <div className="section">
+                    <div className="section-title">Prediction Year</div>
+                    <div className="toggle-group">
+                        {PREDICTION_YEARS.map((y) => (
+                            <button
+                                key={y}
+                                className={`toggle-btn ${selectedYear === y ? 'active' : ''}`}
+                                onClick={() => onYearChange(y)}
+                            >
+                                {y}
+                            </button>
+                        ))}
                     </div>
-                    <div className="section">
-                        <div className="section-title">Model</div>
-                        <div className="model-list">
-                            {models &&
-                                models.map((m) => (
-                                    <div
-                                        key={m.model}
-                                        className={`model-item ${selectedModel === m.model ? 'active' : ''}`}
-                                        onClick={() => onModelChange(m.model)}
-                                    >
-                                        <span className="model-name">{MODEL_DISPLAY[m.model] || m.model}</span>
-                                        <span className="model-r2">{m.r2_uniform.toFixed(3)}</span>
-                                        <span className="model-mae">{m.mae_mean_pp.toFixed(1)} pp</span>
-                                    </div>
-                                ))}
+                    {selectedYear === 2021 && (
+                        <div className="info-badge" style={{ marginTop: 6 }}>
+                            Out-of-fold predictions (holdout cells)
                         </div>
-                    </div>
-                </>
+                    )}
+                    {selectedYear > 2021 && (
+                        <div className="info-badge" style={{ marginTop: 6 }}>
+                            Pipeline predictions &mdash; all 29,946 cells
+                        </div>
+                    )}
+                </div>
             )}
 
-            {/* Change mode note */}
+            {/* Change view: from/to year pickers */}
             {viewMode === 'change' && (
                 <div className="section">
-                    <div className="section-title">Year Range</div>
-                    <div className="info-badge">
-                        Showing change: 2020 &rarr; 2021
+                    <div className="section-title">Compare Years</div>
+                    <div className="change-year-row">
+                        <div className="change-year-picker">
+                            <label className="change-year-label">From</label>
+                            <div className="toggle-group compact">
+                                {allYears.map((y) => (
+                                    <button
+                                        key={y}
+                                        className={`toggle-btn mini ${changeYearFrom === y ? 'active' : ''}`}
+                                        onClick={() => onChangeYearFrom(y)}
+                                        disabled={y === changeYearTo}
+                                    >
+                                        {y}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                        <div className="change-year-picker">
+                            <label className="change-year-label">To</label>
+                            <div className="toggle-group compact">
+                                {allYears.map((y) => (
+                                    <button
+                                        key={y}
+                                        className={`toggle-btn mini ${changeYearTo === y ? 'active' : ''}`}
+                                        onClick={() => onChangeYearTo(y)}
+                                        disabled={y === changeYearFrom}
+                                    >
+                                        {y}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                    <div className="info-badge" style={{ marginTop: 6 }}>
+                        {changeYearFrom} &rarr; {changeYearTo}
+                        {(changeYearFrom > 2021 || changeYearTo > 2021) && (
+                            <span> &middot; using {MODEL_DISPLAY[selectedModel] || selectedModel} predictions</span>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {/* Model Selector — for predictions view or change view with predicted years */}
+            {needsModel && (
+                <div className="section">
+                    <div className="section-title">Model</div>
+                    <div className="model-list">
+                        {models &&
+                            models.map((m) => (
+                                <div
+                                    key={m.model}
+                                    className={`model-item ${selectedModel === m.model ? 'active' : ''}`}
+                                    onClick={() => onModelChange(m.model)}
+                                >
+                                    <span className="model-name">{MODEL_DISPLAY[m.model] || m.model}</span>
+                                    <span className="model-r2">{m.r2_uniform.toFixed(3)}</span>
+                                    <span className="model-mae">{m.mae_mean_pp.toFixed(1)} pp</span>
+                                </div>
+                            ))}
                     </div>
                 </div>
             )}
