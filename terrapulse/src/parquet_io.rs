@@ -98,3 +98,48 @@ pub fn write_predictions_parquet(
 
     Ok(())
 }
+
+/// Write features to a parquet file.
+/// extra_cols/extra_data: metadata columns (cell_id, valid_fraction).
+/// feature_cols: feature column names.
+/// rows: [n_cells][n_features] feature data.
+pub fn write_feature_parquet(
+    path: &Path,
+    extra_cols: &[String],
+    extra_data: &[Vec<f32>],
+    feature_cols: &[String],
+    rows: &[Vec<f32>],
+) -> Result<()> {
+    use arrow::array::Float32Array;
+    use arrow::datatypes::{DataType, Field, Schema};
+    use arrow::record_batch::RecordBatch;
+    use parquet::arrow::ArrowWriter;
+    use std::sync::Arc;
+
+    let n_cells = rows.len();
+    let mut fields = Vec::new();
+    let mut arrays: Vec<Arc<dyn arrow::array::Array>> = Vec::new();
+
+    // Extra columns first
+    for (i, name) in extra_cols.iter().enumerate() {
+        fields.push(Field::new(name, DataType::Float32, false));
+        arrays.push(Arc::new(Float32Array::from(extra_data[i].clone())));
+    }
+
+    // Feature columns
+    for (ci, name) in feature_cols.iter().enumerate() {
+        fields.push(Field::new(name, DataType::Float32, true));
+        let vals: Vec<f32> = (0..n_cells).map(|ri| rows[ri][ci]).collect();
+        arrays.push(Arc::new(Float32Array::from(vals)));
+    }
+
+    let schema = Arc::new(Schema::new(fields));
+    let batch = RecordBatch::try_new(schema.clone(), arrays)?;
+
+    let file = std::fs::File::create(path)?;
+    let mut writer = ArrowWriter::try_new(file, schema, None)?;
+    writer.write(&batch)?;
+    writer.close()?;
+
+    Ok(())
+}

@@ -1,5 +1,7 @@
 mod config;
 mod download;
+mod extract;
+mod features;
 mod parquet_io;
 mod predict;
 mod stac;
@@ -65,6 +67,29 @@ enum Commands {
         #[arg(long, value_delimiter = ' ')]
         year_pairs: Vec<String>,
     },
+
+    /// Extract features from downloaded GeoTIFFs
+    Extract {
+        /// Year pairs (e.g., "2020_2021 2021_2022")
+        #[arg(long, value_delimiter = ' ')]
+        year_pairs: Vec<String>,
+
+        /// Region name
+        #[arg(long, default_value = "nuremberg")]
+        region: String,
+
+        /// Raw TIF directory
+        #[arg(long)]
+        raw_dir: PathBuf,
+
+        /// Features output directory
+        #[arg(long)]
+        features_dir: PathBuf,
+
+        /// Minimum valid fraction threshold
+        #[arg(long, default_value = "0.3")]
+        min_valid_frac: f32,
+    },
 }
 
 #[tokio::main]
@@ -90,8 +115,47 @@ async fn main() -> Result<()> {
         } => {
             run_predict(&models_dir, &features_dir, &output_dir, &year_pairs)?;
         }
+        Commands::Extract {
+            year_pairs,
+            region,
+            raw_dir,
+            features_dir,
+            min_valid_frac,
+        } => {
+            run_extract(&year_pairs, &region, &raw_dir, &features_dir, min_valid_frac)?;
+        }
     }
 
+    Ok(())
+}
+
+fn run_extract(
+    year_pairs: &[String],
+    region: &str,
+    raw_dir: &Path,
+    features_dir: &Path,
+    min_valid_frac: f32,
+) -> Result<()> {
+    let t0 = Instant::now();
+    println!("\nTerraPulse Feature Extraction");
+    println!("  Region: {region}");
+    println!("  Min valid frac: {min_valid_frac}");
+
+    for yp in year_pairs {
+        let parts: Vec<&str> = yp.split('_').collect();
+        if parts.len() != 2 {
+            anyhow::bail!("Invalid year pair format '{}', expected 'YYYY_YYYY'", yp);
+        }
+        let prev_year: u32 = parts[0].parse().context("Bad year")?;
+        let curr_year: u32 = parts[1].parse().context("Bad year")?;
+
+        println!("\n--- Year pair: {prev_year}_{curr_year} ---");
+        extract::extract_year_pair(
+            prev_year, curr_year, region, raw_dir, features_dir, min_valid_frac,
+        )?;
+    }
+
+    println!("\nTotal extraction time: {:.1}s", t0.elapsed().as_secs_f64());
     Ok(())
 }
 
