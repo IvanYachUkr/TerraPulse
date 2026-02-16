@@ -1,6 +1,8 @@
 mod config;
+mod download;
 mod parquet_io;
 mod predict;
+mod stac;
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
@@ -18,6 +20,33 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Download Sentinel-2 composites via STAC
+    Download {
+        /// Bounding box [west, south, east, north] in WGS84
+        #[arg(long, num_args = 4)]
+        bbox: Vec<f64>,
+
+        /// EPSG code for the target CRS (e.g., 32632)
+        #[arg(long, default_value = "32632")]
+        epsg: u32,
+
+        /// Years to download
+        #[arg(long, value_delimiter = ' ')]
+        years: Vec<u32>,
+
+        /// Region name (used in filenames)
+        #[arg(long, default_value = "nuremberg")]
+        region: String,
+
+        /// Output directory for raw TIF files
+        #[arg(long)]
+        raw_dir: PathBuf,
+
+        /// Path to the anchor reference GeoTIFF
+        #[arg(long)]
+        anchor_ref: PathBuf,
+    },
+
     /// Run prediction on existing feature parquets
     Predict {
         /// Path to the models/onnx directory
@@ -38,10 +67,21 @@ enum Commands {
     },
 }
 
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
+        Commands::Download {
+            bbox,
+            epsg,
+            years,
+            region,
+            raw_dir,
+            anchor_ref,
+        } => {
+            run_download(&bbox, epsg, &years, &region, &raw_dir, &anchor_ref).await?;
+        }
         Commands::Predict {
             models_dir,
             features_dir,
@@ -230,4 +270,91 @@ fn run_predict(
     );
 
     Ok(())
+}
+
+async fn run_download(
+    bbox: &[f64],
+    epsg: u32,
+    years: &[u32],
+    region: &str,
+    raw_dir: &Path,
+    anchor_ref: &Path,
+) -> Result<()> {
+    let t0 = Instant::now();
+
+    // Resolve the composite helper script (relative to the binary or provided)
+    let helper_script = find_helper_script()?;
+
+    let bbox_arr: [f64; 4] = [bbox[0], bbox[1], bbox[2], bbox[3]];
+
+    // Build HTTP client with generous timeouts for large COG downloads
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(300))
+        .connect_timeout(std::time::Duration::from_secs(30))
+        .build()?;
+
+    println!("TerraPulse Download");
+    println!("  Region: {region}");
+    println!("  BBOX: [{}, {}, {}, {}]", bbox[0], bbox[1], bbox[2], bbox[3]);
+    println!("  EPSG: {epsg}");
+    println!("  Years: {:?}", years);
+    println!("  Helper: {}", helper_script.display());
+    println!();
+
+    for &year in years {
+        println!("--- Year: {year} ---");
+        download::download_year(
+            &client,
+            bbox_arr,
+            epsg,
+            year,
+            region,
+            raw_dir,
+            anchor_ref,
+            &helper_script,
+        )
+        .await?;
+    }
+
+    println!(
+        "\nTotal download time: {:.1}s",
+        t0.elapsed().as_secs_f64()
+    );
+
+    Ok(())
+}
+
+/// Find the composite.py helper script.
+/// Looks for it relative to the executable, then in the terrapulse/helpers dir.
+fn find_helper_script() -> Result<PathBuf> {
+    // Try next to the executable
+    if let Ok(exe) = std::env::current_exe() {
+        let dir = exe.parent().unwrap_or(Path::new("."));
+        let candidate = dir.join("helpers").join("composite.py");
+        if candidate.exists() {
+            return Ok(candidate);
+        }
+        // Try sibling of target dir (source layout)
+        let candidate = dir
+            .parent()
+            .and_then(|p| p.parent())
+            .and_then(|p| p.parent())
+            .map(|p| p.join("helpers").join("composite.py"));
+        if let Some(p) = candidate {
+            if p.exists() {
+                return Ok(p);
+            }
+        }
+    }
+
+    // Try relative to CWD
+    let cwd_candidate = PathBuf::from("terrapulse/helpers/composite.py");
+    if cwd_candidate.exists() {
+        return Ok(cwd_candidate);
+    }
+
+    anyhow::bail!(
+        "Cannot find helpers/composite.py. \
+         Place it next to the terrapulse executable or run from the project root."
+    );
 }
