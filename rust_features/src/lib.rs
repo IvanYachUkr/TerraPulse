@@ -130,7 +130,9 @@ fn bilinear_constant_zero(img: &[f32], h: usize, w: usize, ry: f64, rx: f64) -> 
 }
 
 fn compute_lbp_raster(img: &[f32], h: usize, w: usize, lut: &[u8; 256]) -> Vec<u8> {
-    let s2 = std::f64::consts::FRAC_1_SQRT_2;
+    // skimage rounds offsets to 5 decimals: np.round(rr, 5)
+    // Using 0.70711 instead of FRAC_1_SQRT_2 to match exactly.
+    let s2: f64 = 0.70711;
     let dr: [f64; 8] = [0.0, -s2, -1.0, -s2, 0.0, s2, 1.0, s2];
     let dc: [f64; 8] = [1.0, s2, 0.0, -s2, -1.0, -s2, 0.0, s2];
 
@@ -203,7 +205,9 @@ fn compute_lbp_perpatch(
     lut: &[u8; 256],
     clip_01: bool,
 ) -> Vec<u8> {
-    let s2 = std::f64::consts::FRAC_1_SQRT_2;
+    // skimage rounds offsets to 5 decimals: np.round(rr, 5)
+    // Using 0.70711 instead of FRAC_1_SQRT_2 to match exactly.
+    let s2: f64 = 0.70711;
     let dr: [f64; 8] = [0.0, -s2, -1.0, -s2, 0.0, s2, 1.0, s2];
     let dc: [f64; 8] = [1.0, s2, 0.0, -s2, -1.0, -s2, 0.0, s2];
 
