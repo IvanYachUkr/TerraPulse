@@ -78,20 +78,27 @@ pub fn extract_year_pair(
     let mut nc = 0usize;
     let mut vf_first: Option<Vec<f32>> = None;
 
-    for (actual_year, season) in &jobs {
+    for (idx, (actual_year, season)) in jobs.iter().enumerate() {
         let model_year = year_map.iter().find(|(a, _)| a == actual_year).unwrap().1;
         let tif = raw_dir.join(format!("sentinel2_{region_name}_{actual_year}_{season}.tif"));
 
         let t_read = std::time::Instant::now();
-        let (nb, h, w, mut data) = tif_reader::read_tif_bands(&tif, features::N_BANDS)?;
-        let read_ms = t_read.elapsed().as_millis();
-        assert!(nb >= features::N_BANDS, "TIF has {nb} bands, need {}", features::N_BANDS);
 
-        if nr == 0 {
+        let (nb, h, w, mut data) = if idx == 0 {
+            // First TIF: decode once and get both bands + valid_fraction
+            let (nb, h, w, band_data, vf) =
+                tif_reader::read_tif_bands_and_valid_fraction(&tif, features::N_BANDS)?;
             nr = h / features::GP;
             nc = w / features::GP;
-            vf_first = tif_reader::read_valid_fraction(&tif)?;
-        }
+            vf_first = vf;
+            (nb, h, w, band_data)
+        } else {
+            let (nb, h, w, band_data) = tif_reader::read_tif_bands(&tif, features::N_BANDS)?;
+            (nb, h, w, band_data)
+        };
+
+        let read_ms = t_read.elapsed().as_millis();
+        assert!(nb >= features::N_BANDS, "TIF has {nb} bands, need {}", features::N_BANDS);
 
         // Normalize to [0,1] if in DN scale
         let scale = detect_scale(&data);
