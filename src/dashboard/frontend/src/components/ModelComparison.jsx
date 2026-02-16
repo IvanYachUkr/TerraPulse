@@ -4,12 +4,9 @@ import { Chart, registerables } from 'chart.js';
 Chart.register(...registerables);
 
 const MODEL_DISPLAY = {
-    ridge: 'Ridge',
-    elasticnet: 'ElasticNet',
-    extratrees: 'ExtraTrees',
-    rf: 'Random Forest',
-    catboost: 'CatBoost',
     mlp: 'MLP',
+    tree: 'LightGBM',
+    ridge: 'Ridge',
 };
 
 const MODEL_COLORS_BAR = {
@@ -110,12 +107,16 @@ export default function ModelComparison({ models, evaluation }) {
                     datasets: [{
                         label: 'Aitchison Distance',
                         data: aitchSorted.map((m) => m.aitchison_mean),
-                        backgroundColor: aitchSorted.map((m) =>
-                            m.model === 'MLP' ? 'rgba(236,72,153,0.6)' : 'rgba(59,130,246,0.6)'
-                        ),
-                        borderColor: aitchSorted.map((m) =>
-                            m.model === 'MLP' ? 'rgb(236,72,153)' : 'rgb(59,130,246)'
-                        ),
+                        backgroundColor: aitchSorted.map((m) => {
+                            if (m.model === 'MLP') return 'rgba(236,72,153,0.6)';
+                            if (m.model === 'LightGBM') return 'rgba(16,185,129,0.6)';
+                            return 'rgba(59,130,246,0.6)';
+                        }),
+                        borderColor: aitchSorted.map((m) => {
+                            if (m.model === 'MLP') return 'rgb(236,72,153)';
+                            if (m.model === 'LightGBM') return 'rgb(16,185,129)';
+                            return 'rgb(59,130,246)';
+                        }),
                         borderWidth: 1,
                     }],
                 },
