@@ -9,10 +9,15 @@ All config values are inlined — no project imports required.
 Intermediate results are checkpointed so crashed runs can resume.
 
 Usage:
+    # Full Nuremberg pipeline (train + predict)
     python pipeline.py [--skip-download] [--skip-extract] [--skip-train] [--skip-predict]
+
+    # Inference for arbitrary region (uses pre-trained Nuremberg models)
+    python pipeline.py infer --bbox 11.4 48.0 11.7 48.2 --name munich
 """
 
 import argparse
+import dataclasses
 import json
 import math
 import os
@@ -107,6 +112,7 @@ OUT_DIR = os.path.join(PROJECT_ROOT, "data", "pipeline_output")
 FEATURES_DIR = os.path.join(OUT_DIR, "features")
 MODELS_DIR = os.path.join(OUT_DIR, "models")
 PREDICTIONS_DIR = os.path.join(OUT_DIR, "predictions")
+REGIONS_DIR = os.path.join(OUT_DIR, "regions")
 
 
 def ts():
@@ -117,6 +123,65 @@ def ensure_dirs():
     for d in [OUT_DIR, FEATURES_DIR, MODELS_DIR, PREDICTIONS_DIR,
               RAW_V2_DIR, GRID_DIR, PROCESSED_V2_DIR]:
         os.makedirs(d, exist_ok=True)
+
+
+# =====================================================================
+# Multi-Region Context
+# =====================================================================
+
+@dataclasses.dataclass
+class RegionCtx:
+    """Runtime context for a non-default region (inference mode)."""
+    name: str
+    bbox: list             # [west, south, east, north]
+    epsg: int              # UTM EPSG code
+    wc_tile: str           # ESA WorldCover tile ID
+    years: list            # years to process
+    grid_dir: str = ""
+    raw_dir: str = ""
+    features_dir: str = ""
+    predictions_dir: str = ""
+    grid_ref_path: str = ""
+    grid_json_path: str = ""
+
+
+def _auto_epsg(bbox):
+    """UTM zone EPSG from bbox center longitude."""
+    lon = (bbox[0] + bbox[2]) / 2
+    zone = int((lon + 180) / 6) + 1
+    lat = (bbox[1] + bbox[3]) / 2
+    return 32600 + zone if lat >= 0 else 32700 + zone
+
+
+def _auto_wc_tile(bbox):
+    """ESA WorldCover 3-degree tile ID from bbox center."""
+    lat = (bbox[1] + bbox[3]) / 2
+    lon = (bbox[0] + bbox[2]) / 2
+    # Tile anchors at multiples of 3 degrees
+    lat_anchor = int(lat // 3 * 3)
+    lon_anchor = int(lon // 3 * 3)
+    ns = "N" if lat_anchor >= 0 else "S"
+    ew = "E" if lon_anchor >= 0 else "W"
+    return f"{ns}{abs(lat_anchor):02d}{ew}{abs(lon_anchor):03d}"
+
+
+def build_region_ctx(name, bbox, years=None):
+    """Build a RegionCtx with auto-detected EPSG, WC tile, and paths."""
+    region_root = os.path.join(REGIONS_DIR, name)
+    grid_dir = os.path.join(region_root, "grid")
+    return RegionCtx(
+        name=name,
+        bbox=bbox,
+        epsg=_auto_epsg(bbox),
+        wc_tile=_auto_wc_tile(bbox),
+        years=years or PREDICT_YEARS,
+        grid_dir=grid_dir,
+        raw_dir=os.path.join(region_root, "raw"),
+        features_dir=os.path.join(region_root, "features"),
+        predictions_dir=os.path.join(region_root, "predictions"),
+        grid_ref_path=os.path.join(grid_dir, f"anchor_utm{_auto_epsg(bbox)}_10m.tif"),
+        grid_json_path=os.path.join(grid_dir, "anchor.json"),
+    )
 
 
 # =====================================================================
@@ -182,14 +247,20 @@ def evaluate_predictions(y_true, y_pred, per_class=False):
 # STAGE 0: ANCHOR GRID
 # =====================================================================
 
-def create_anchor():
+def create_anchor(ctx=None):
     """Create the canonical spatial anchor grid if it doesn't exist.
 
     Produces a deterministic reference GeoTIFF that all downloads are
-    warped to.  Algorithm: project AOI bbox from EPSG:4326 -> AOI_EPSG,
+    warped to.  Algorithm: project AOI bbox from EPSG:4326 -> target EPSG,
     snap to pixel_size grid lines, pad to grid_size_m block multiples.
     """
-    if os.path.exists(GRID_REF_PATH):
+    ref_path = ctx.grid_ref_path if ctx else GRID_REF_PATH
+    json_path = ctx.grid_json_path if ctx else GRID_JSON_PATH
+    g_dir = ctx.grid_dir if ctx else GRID_DIR
+    bbox = ctx.bbox if ctx else AOI_BBOX
+    epsg = ctx.epsg if ctx else AOI_EPSG
+
+    if os.path.exists(ref_path):
         return  # already exists
 
     from math import ceil, floor
@@ -197,8 +268,9 @@ def create_anchor():
     from rasterio.crs import CRS
     from rasterio.warp import transform_bounds
 
+    region_label = f" [{ctx.name}]" if ctx else ""
     print(f"\n{'='*70}")
-    print(f"STAGE 0: CREATE ANCHOR GRID")
+    print(f"STAGE 0: CREATE ANCHOR GRID{region_label}")
     print(f"{'='*70}")
 
     pixel_size = float(SENTINEL_RES)
@@ -206,10 +278,10 @@ def create_anchor():
 
     # Step 1: Project bbox
     src_crs = CRS.from_epsg(4326)
-    dst_crs = CRS.from_epsg(AOI_EPSG)
+    dst_crs = CRS.from_epsg(epsg)
     left, bottom, right, top = transform_bounds(
         src_crs, dst_crs,
-        AOI_BBOX[0], AOI_BBOX[1], AOI_BBOX[2], AOI_BBOX[3],
+        bbox[0], bbox[1], bbox[2], bbox[3],
         densify_pts=21,
     )
 
@@ -235,11 +307,11 @@ def create_anchor():
 
     # Step 5: Write anchor GeoTIFF
     import rasterio
-    os.makedirs(GRID_DIR, exist_ok=True)
+    os.makedirs(g_dir, exist_ok=True)
 
     data = np.full((1, height, width), SENTINEL_NODATA, dtype=np.float32)
     with rasterio.open(
-        GRID_REF_PATH, "w", driver="GTiff",
+        ref_path, "w", driver="GTiff",
         height=height, width=width, count=1, dtype="float32",
         crs=dst_crs, transform=transform, nodata=SENTINEL_NODATA,
         compress="lzw",
@@ -247,30 +319,32 @@ def create_anchor():
         dst.write(data)
         dst.set_band_description(1, "ANCHOR_DUMMY")
         dst.update_tags(
-            DESCRIPTION="Canonical spatial anchor for TerraPulse v2 pipeline",
+            DESCRIPTION="Canonical spatial anchor for TerraPulse pipeline",
             PIXEL_SIZE=str(pixel_size), GRID_SIZE_M=str(GRID_SIZE_M),
             BLOCK_PX=str(block), N_CELLS=str(n_cells),
         )
 
     # Step 6: Write anchor.json
     anchor_meta = {
-        "description": "Canonical spatial anchor for TerraPulse v2 pipeline",
-        "epsg": AOI_EPSG, "crs": f"EPSG:{AOI_EPSG}",
+        "description": "Canonical spatial anchor for TerraPulse pipeline",
+        "epsg": epsg, "crs": f"EPSG:{epsg}",
         "pixel_size": pixel_size, "grid_size_m": GRID_SIZE_M, "block_px": block,
-        "bounds_wgs84": {"west": AOI_BBOX[0], "south": AOI_BBOX[1],
-                         "east": AOI_BBOX[2], "north": AOI_BBOX[3]},
+        "bounds_wgs84": {"west": bbox[0], "south": bbox[1],
+                         "east": bbox[2], "north": bbox[3]},
         "bounds_projected": {"left": left_s, "bottom": bottom_f,
                              "right": right_f, "top": top_s},
         "width": width, "height": height,
         "n_cols": n_cols, "n_rows": n_rows, "n_cells": n_cells,
         "transform": list(transform)[:6],
     }
-    with open(GRID_JSON_PATH, "w") as f:
+    if ctx:
+        anchor_meta["region"] = ctx.name
+    with open(json_path, "w") as f:
         json.dump(anchor_meta, f, indent=2)
 
-    kb = os.path.getsize(GRID_REF_PATH) / 1024
-    print(f"  Wrote: {GRID_REF_PATH} ({kb:.1f} KB)")
-    print(f"  Wrote: {GRID_JSON_PATH}")
+    kb = os.path.getsize(ref_path) / 1024
+    print(f"  Wrote: {ref_path} ({kb:.1f} KB)")
+    print(f"  Wrote: {json_path}")
 
 
 # =====================================================================
@@ -657,7 +731,7 @@ def prepare_spatial_split():
 # STAGE 1: DOWNLOAD
 # =====================================================================
 
-def download_season(year, season):
+def download_season(year, season, ctx=None):
     """Download one Sentinel-2 v2 composite via Planetary Computer."""
     import planetary_computer
     import pystac_client
@@ -668,13 +742,20 @@ def download_season(year, season):
     from rasterio.enums import Resampling
     from rasterio.warp import reproject
 
-    path = os.path.join(RAW_V2_DIR, f"sentinel2_nuremberg_{year}_{season}.tif")
+    raw_dir = ctx.raw_dir if ctx else RAW_V2_DIR
+    ref_path = ctx.grid_ref_path if ctx else GRID_REF_PATH
+    bbox = ctx.bbox if ctx else AOI_BBOX
+    epsg = ctx.epsg if ctx else AOI_EPSG
+    region_name = ctx.name if ctx else "nuremberg"
+
+    os.makedirs(raw_dir, exist_ok=True)
+    path = os.path.join(raw_dir, f"sentinel2_{region_name}_{year}_{season}.tif")
     if os.path.exists(path):
         mb = os.path.getsize(path) / 1024 / 1024
         print(f"  [{year}/{season}] Already exists ({mb:.1f} MB) -- skip")
         return
 
-    with rasterio.open(GRID_REF_PATH) as ref:
+    with rasterio.open(ref_path) as ref:
         dst_crs = ref.crs
         dst_transform = ref.transform
         dst_width = ref.width
@@ -690,7 +771,7 @@ def download_season(year, season):
 
     for cloud_max in [40, 50, 60]:
         items = catalog.search(
-            collections=["sentinel-2-l2a"], bbox=AOI_BBOX,
+            collections=["sentinel-2-l2a"], bbox=bbox,
             datetime=f"{s_date}/{e_date}",
             query={"eo:cloud_cover": {"lt": cloud_max}},
         ).item_collection()
@@ -704,7 +785,7 @@ def download_season(year, season):
         s_date = (s - timedelta(days=14)).strftime("%Y-%m-%d")
         e_date = (e + timedelta(days=14)).strftime("%Y-%m-%d")
         items = catalog.search(
-            collections=["sentinel-2-l2a"], bbox=AOI_BBOX,
+            collections=["sentinel-2-l2a"], bbox=bbox,
             datetime=f"{s_date}/{e_date}",
             query={"eo:cloud_cover": {"lt": 60}},
         ).item_collection()
@@ -717,14 +798,14 @@ def download_season(year, season):
 
     warnings.filterwarnings("ignore", module="stackstac")
     spectral = stackstac.stack(
-        items, assets=SENTINEL_BANDS, bounds_latlon=AOI_BBOX,
-        resolution=SENTINEL_RES, epsg=AOI_EPSG, dtype="float64",
+        items, assets=SENTINEL_BANDS, bounds_latlon=bbox,
+        resolution=SENTINEL_RES, epsg=epsg, dtype="float64",
         fill_value=np.nan, resampling=Resampling.bilinear, chunksize=1024,
         rescale=False,
     )
     scl = stackstac.stack(
-        items, assets=["SCL"], bounds_latlon=AOI_BBOX,
-        resolution=SENTINEL_RES, epsg=AOI_EPSG, dtype="float64",
+        items, assets=["SCL"], bounds_latlon=bbox,
+        resolution=SENTINEL_RES, epsg=epsg, dtype="float64",
         fill_value=np.nan, resampling=Resampling.nearest, chunksize=1024,
         rescale=False,
     ).sel(band="SCL")
@@ -763,7 +844,7 @@ def download_season(year, season):
         float(xs.min()) - rx / 2, float(ys.min()) - ry / 2,
         float(xs.max()) + rx / 2, float(ys.max()) + ry / 2,
         len(xs), len(ys))
-    src_crs = CRS.from_epsg(AOI_EPSG)
+    src_crs = CRS.from_epsg(epsg)
 
     nodata = SENTINEL_NODATA
     comp_clean = np.where(np.isnan(composite), nodata, composite).astype(np.float32)
@@ -810,14 +891,16 @@ def download_season(year, season):
     print(f"  [{year}/{season}] Saved ({mb:.1f} MB)")
 
 
-def stage_download():
-    create_anchor()  # ensure anchor grid exists
+def stage_download(ctx=None):
+    create_anchor(ctx)  # ensure anchor grid exists
+    region_label = f" [{ctx.name}]" if ctx else ""
     print(f"\n{'='*70}")
-    print(f"STAGE 1: DOWNLOAD (Sentinel-2 composites)")
+    print(f"STAGE 1: DOWNLOAD (Sentinel-2 composites){region_label}")
     print(f"{'='*70}")
-    for year in ALL_YEARS:
+    years = ctx.years if ctx else ALL_YEARS
+    for year in years:
         for season in SEASONS:
-            download_season(year, season)
+            download_season(year, season, ctx)
     print(f"\n[{ts()}] Download stage complete.")
 
 
@@ -825,11 +908,13 @@ def stage_download():
 # STAGE 2: EXTRACT FEATURES (Rust)
 # =====================================================================
 
-def load_sentinel_raster(year, season):
+def load_sentinel_raster(year, season, ctx=None):
     """Load Sentinel-2 raster, return (spectral, valid_fraction)."""
     import rasterio
 
-    path = os.path.join(RAW_V2_DIR, f"sentinel2_nuremberg_{year}_{season}.tif")
+    raw_dir = ctx.raw_dir if ctx else RAW_V2_DIR
+    region_name = ctx.name if ctx else "nuremberg"
+    path = os.path.join(raw_dir, f"sentinel2_{region_name}_{year}_{season}.tif")
     with rasterio.open(path) as ds:
         data = ds.read()
         nodata = ds.nodata
@@ -858,7 +943,7 @@ def detect_scale(spectral):
     return 10000.0 if np.percentile(finite, 95) > 2.0 else 1.0
 
 
-def extract_year_pair(prev_year, curr_year):
+def extract_year_pair(prev_year, curr_year, ctx=None):
     """Extract features for a year-pair using Rust.
 
     Loads 6 season rasters (3 per year), runs terrapulse_features in one
@@ -868,8 +953,13 @@ def extract_year_pair(prev_year, curr_year):
     """
     import terrapulse_features as tf
 
+    features_dir = ctx.features_dir if ctx else FEATURES_DIR
+    raw_dir = ctx.raw_dir if ctx else RAW_V2_DIR
+    region_name = ctx.name if ctx else "nuremberg"
+
+    os.makedirs(features_dir, exist_ok=True)
     tag = f"{prev_year}_{curr_year}"
-    out_path = os.path.join(FEATURES_DIR, f"features_rust_{tag}.parquet")
+    out_path = os.path.join(features_dir, f"features_rust_{tag}.parquet")
     if os.path.exists(out_path):
         print(f"  [{tag}] Already extracted -- skip")
         return out_path
@@ -881,8 +971,8 @@ def extract_year_pair(prev_year, curr_year):
     jobs = []
     for actual_year in [prev_year, curr_year]:
         for season in SEASONS:
-            tif = os.path.join(RAW_V2_DIR,
-                               f"sentinel2_nuremberg_{actual_year}_{season}.tif")
+            tif = os.path.join(raw_dir,
+                               f"sentinel2_{region_name}_{actual_year}_{season}.tif")
             if not os.path.exists(tif):
                 print(f"  [{tag}] WARNING: Missing {tif} -- skip")
                 return None
@@ -897,7 +987,7 @@ def extract_year_pair(prev_year, curr_year):
     t0 = time.time()
     for actual_year, season in jobs:
         model_year = year_map[actual_year]
-        spectral, vf = load_sentinel_raster(actual_year, season)
+        spectral, vf = load_sentinel_raster(actual_year, season, ctx)
         scale = detect_scale(spectral)
         if nr is None:
             _, H, W = spectral.shape
@@ -961,13 +1051,19 @@ def extract_year_pair(prev_year, curr_year):
     return out_path
 
 
-def stage_extract():
+def stage_extract(ctx=None):
+    region_label = f" [{ctx.name}]" if ctx else ""
     print(f"\n{'='*70}")
-    print(f"STAGE 2: EXTRACT FEATURES (Rust)")
+    print(f"STAGE 2: EXTRACT FEATURES (Rust){region_label}")
     print(f"{'='*70}")
-    year_pairs = [(y, y + 1) for y in range(2020, 2025)]
+    if ctx:
+        # For inference: only need consecutive year pairs from ctx.years
+        years = sorted(ctx.years)
+        year_pairs = [(years[i], years[i + 1]) for i in range(len(years) - 1)]
+    else:
+        year_pairs = [(y, y + 1) for y in range(2020, 2025)]
     for prev_year, curr_year in year_pairs:
-        extract_year_pair(prev_year, curr_year)
+        extract_year_pair(prev_year, curr_year, ctx)
     print(f"\n[{ts()}] Extract stage complete.")
 
 
@@ -1412,9 +1508,15 @@ def stage_train():
 # STAGE 4: PREDICT
 # =====================================================================
 
-def stage_predict():
+def stage_predict(ctx=None):
+    region_label = f" [{ctx.name}]" if ctx else ""
+    features_dir = ctx.features_dir if ctx else FEATURES_DIR
+    predictions_dir = ctx.predictions_dir if ctx else PREDICTIONS_DIR
+
+    os.makedirs(predictions_dir, exist_ok=True)
+
     print(f"\n{'='*70}")
-    print(f"STAGE 4: PREDICT MAPS")
+    print(f"STAGE 4: PREDICT MAPS{region_label}")
     print(f"{'='*70}")
 
     with open(os.path.join(MODELS_DIR, "tree_meta.json")) as f:
@@ -1435,21 +1537,25 @@ def stage_predict():
 
     PlainMLP = _build_mlp()
 
-    year_pairs = [(y, y + 1) for y in range(2020, 2025)]
+    if ctx:
+        years = sorted(ctx.years)
+        year_pairs = [(years[i], years[i + 1]) for i in range(len(years) - 1)]
+    else:
+        year_pairs = [(y, y + 1) for y in range(2020, 2025)]
 
     for prev_year, curr_year in year_pairs:
         tag = f"{prev_year}_{curr_year}"
-        tree_path = os.path.join(PREDICTIONS_DIR, f"predictions_tree_{tag}.parquet")
-        mlp_path = os.path.join(PREDICTIONS_DIR, f"predictions_mlp_{tag}.parquet")
+        tree_path = os.path.join(predictions_dir, f"predictions_tree_{tag}.parquet")
+        mlp_path = os.path.join(predictions_dir, f"predictions_mlp_{tag}.parquet")
 
         if os.path.exists(tree_path) and os.path.exists(mlp_path):
             print(f"  [{tag}] Already predicted -- skip")
             continue
 
         print(f"\n  [{ts()}] Loading features for {tag}...")
-        feat_path = os.path.join(FEATURES_DIR, f"features_rust_{tag}.parquet")
+        feat_path = os.path.join(features_dir, f"features_rust_{tag}.parquet")
         if not os.path.exists(feat_path):
-            if prev_year == 2020 and curr_year == 2021:
+            if not ctx and prev_year == 2020 and curr_year == 2021:
                 feat_path = os.path.join(PROCESSED_V2_DIR, "features_v3.parquet")
             if not os.path.exists(feat_path):
                 print(f"  [{tag}] WARNING: No features found -- skip")
@@ -1523,48 +1629,106 @@ def stage_predict():
 def main():
     parser = argparse.ArgumentParser(
         description="Production pipeline: download -> extract -> train -> predict")
+
+    # Top-level skip flags (backward compatible with old usage)
     parser.add_argument("--skip-download", action="store_true")
     parser.add_argument("--skip-extract", action="store_true")
     parser.add_argument("--skip-train", action="store_true")
     parser.add_argument("--skip-predict", action="store_true")
+
+    sub = parser.add_subparsers(dest="command")
+
+    # Default: full Nuremberg pipeline (no extra args needed)
+    sub.add_parser("full", help="Full pipeline (default for Nuremberg)")
+
+    # Inference for arbitrary region
+    inf = sub.add_parser("infer",
+        help="Inference-only for an arbitrary bounding box")
+    inf.add_argument("--bbox", nargs=4, type=float, required=True,
+                     metavar=("W", "S", "E", "N"),
+                     help="Bounding box: west south east north (WGS84)")
+    inf.add_argument("--name", required=True,
+                     help="Region name (used for output directory)")
+    inf.add_argument("--years", nargs="+", type=int, default=[2023, 2024, 2025],
+                     help="Years to process (default: 2023 2024 2025)")
+
     args = parser.parse_args()
 
+    # Default to 'full' if no subcommand given
+    if args.command is None:
+        args.command = "full"
+
     t_total = time.time()
-    print(f"[{ts()}] Production Pipeline starting")
-    print(f"  Years: {ALL_YEARS}")
-    print(f"  Seasons: {SEASONS}")
-    print(f"  Labels available: {LABELED_YEARS}")
-    print(f"  Predict: {PREDICT_YEARS}")
 
-    ensure_dirs()
+    if args.command == "infer":
+        # --- Inference mode for arbitrary region ---
+        ctx = build_region_ctx(args.name, args.bbox, args.years)
+        print(f"[{ts()}] Inference Pipeline starting")
+        print(f"  Region: {ctx.name}")
+        print(f"  Bbox: {ctx.bbox}")
+        print(f"  EPSG: {ctx.epsg} (auto-detected)")
+        print(f"  WorldCover tile: {ctx.wc_tile}")
+        print(f"  Years: {ctx.years}")
+        print(f"  Output: {os.path.join(REGIONS_DIR, ctx.name)}")
 
-    if not args.skip_download:
-        stage_download()
+        if not args.skip_download:
+            stage_download(ctx)
+        else:
+            print("\n  DOWNLOAD skipped (--skip-download)")
+
+        if not args.skip_extract:
+            stage_extract(ctx)
+        else:
+            print("\n  EXTRACT skipped (--skip-extract)")
+
+        # Always predict (that's the point of inference mode)
+        stage_predict(ctx)
+
+        total = time.time() - t_total
+        hours = int(total // 3600)
+        mins = int((total % 3600) // 60)
+        print(f"\n{'='*70}")
+        print(f"INFERENCE COMPLETE [{ctx.name}] in {hours}h {mins}m")
+        print(f"  Predictions: {ctx.predictions_dir}")
+        print(f"{'='*70}")
+
     else:
-        print("\n  DOWNLOAD skipped (--skip-download)")
+        # --- Full Nuremberg pipeline ---
+        print(f"[{ts()}] Production Pipeline starting")
+        print(f"  Years: {ALL_YEARS}")
+        print(f"  Seasons: {SEASONS}")
+        print(f"  Labels available: {LABELED_YEARS}")
+        print(f"  Predict: {PREDICT_YEARS}")
 
-    if not args.skip_extract:
-        stage_extract()
-    else:
-        print("\n  EXTRACT skipped (--skip-extract)")
+        ensure_dirs()
 
-    if not args.skip_train:
-        stage_train()
-    else:
-        print("\n  TRAIN skipped (--skip-train)")
+        if not args.skip_download:
+            stage_download()
+        else:
+            print("\n  DOWNLOAD skipped (--skip-download)")
 
-    if not args.skip_predict:
-        stage_predict()
-    else:
-        print("\n  PREDICT skipped (--skip-predict)")
+        if not args.skip_extract:
+            stage_extract()
+        else:
+            print("\n  EXTRACT skipped (--skip-extract)")
 
-    total = time.time() - t_total
-    hours = int(total // 3600)
-    mins = int((total % 3600) // 60)
-    print(f"\n{'='*70}")
-    print(f"PIPELINE COMPLETE in {hours}h {mins}m")
-    print(f"  Output: {OUT_DIR}")
-    print(f"{'='*70}")
+        if not args.skip_train:
+            stage_train()
+        else:
+            print("\n  TRAIN skipped (--skip-train)")
+
+        if not args.skip_predict:
+            stage_predict()
+        else:
+            print("\n  PREDICT skipped (--skip-predict)")
+
+        total = time.time() - t_total
+        hours = int(total // 3600)
+        mins = int((total % 3600) // 60)
+        print(f"\n{'='*70}")
+        print(f"PIPELINE COMPLETE in {hours}h {mins}m")
+        print(f"  Output: {OUT_DIR}")
+        print(f"{'='*70}")
 
 
 if __name__ == "__main__":
