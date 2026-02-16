@@ -29,7 +29,7 @@ ort = { version = "2.0.0-rc.9", default-features = false, features = ["std", "lo
 # Data I/O
 parquet = { version = "53", features = ["arrow"] }
 arrow = { version = "53", features = ["ffi"] }
-
+tiff = "0.11"
 # Utilities
 anyhow = "1"
 indicatif = "0.17"  # progress bars

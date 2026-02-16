@@ -1,106 +1,15 @@
 //! Feature extraction module: reads seasonal GeoTIFFs, runs feature extraction,
 //! writes output as parquet.
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use crate::features;
 use crate::parquet_io;
+use crate::tif_reader;
 
 const SEASONS: [&str; 3] = ["spring", "summer", "autumn"];
 const NODATA: f32 = -9999.0;
-
-/// Load a GeoTIFF as raw f32 band data using a Python helper.
-/// Returns (n_bands, height, width, data) where data is [bands * H * W] flat.
-fn read_tif_bands(tif_path: &Path) -> Result<(usize, usize, usize, Vec<f32>)> {
-    // Use Python one-liner to read TIF and write raw binary + metadata
-    let out = Command::new("python")
-        .arg("-c")
-        .arg(format!(
-            r#"import rasterio, sys, struct
-ds = rasterio.open(r'{}')
-nb, h, w = ds.count, ds.height, ds.width
-# Read only spectral bands (first 10), skip valid_fraction (band 11)
-nb_read = min(nb, {})
-sys.stdout.buffer.write(struct.pack('III', nb_read, h, w))
-for b in range(1, nb_read + 1):
-    arr = ds.read(b)
-    sys.stdout.buffer.write(arr.astype('<f4').tobytes())
-ds.close()"#,
-            tif_path.display(),
-            features::N_BANDS,
-        ))
-        .output()
-        .context("Failed to run Python TIF reader")?;
-
-    if !out.status.success() {
-        let stderr = String::from_utf8_lossy(&out.stderr);
-        anyhow::bail!("Python TIF reader failed: {stderr}");
-    }
-
-    let buf = &out.stdout;
-    if buf.len() < 12 {
-        anyhow::bail!("TIF reader output too short ({} bytes)", buf.len());
-    }
-
-    let nb = u32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]) as usize;
-    let h = u32::from_le_bytes([buf[4], buf[5], buf[6], buf[7]]) as usize;
-    let w = u32::from_le_bytes([buf[8], buf[9], buf[10], buf[11]]) as usize;
-
-    let expected = 12 + nb * h * w * 4;
-    if buf.len() < expected {
-        anyhow::bail!(
-            "TIF reader: expected {} bytes, got {} (nb={}, h={}, w={})",
-            expected, buf.len(), nb, h, w,
-        );
-    }
-
-    // Convert bytes to f32 (little-endian)
-    let data: Vec<f32> = buf[12..expected]
-        .chunks(4)
-        .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
-        .collect();
-
-    Ok((nb, h, w, data))
-}
-
-/// Load valid fraction from band 11 of the TIF.
-fn read_valid_fraction(tif_path: &Path) -> Result<Option<Vec<f32>>> {
-    let out = Command::new("python")
-        .arg("-c")
-        .arg(format!(
-            r#"import rasterio, sys, struct, numpy as np
-ds = rasterio.open(r'{}')
-if ds.count >= 11:
-    vf = ds.read(11).astype('<f4')
-    vf = np.where(vf > -9000, vf, np.nan)
-    sys.stdout.buffer.write(struct.pack('II', ds.height, ds.width))
-    sys.stdout.buffer.write(vf.tobytes())
-ds.close()"#,
-            tif_path.display(),
-        ))
-        .output()
-        .context("Failed to read valid fraction")?;
-
-    let buf = &out.stdout;
-    if buf.len() < 8 {
-        return Ok(None);
-    }
-
-    let h = u32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]) as usize;
-    let w = u32::from_le_bytes([buf[4], buf[5], buf[6], buf[7]]) as usize;
-    let data: Vec<f32> = buf[8..]
-        .chunks(4)
-        .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
-        .collect();
-
-    if data.len() == h * w {
-        Ok(Some(data))
-    } else {
-        Ok(None)
-    }
-}
 
 /// Detect if data is in DN (> 1.0 scale) and compute scale factor.
 fn detect_scale(data: &[f32]) -> f32 {
@@ -162,7 +71,7 @@ pub fn extract_year_pair(
 
     let t0 = std::time::Instant::now();
 
-    // Load all seasonal rasters
+    // Load all seasonal rasters using native TIF reader
     let mut spectral_list: Vec<Vec<f32>> = Vec::new();
     let mut suffixes = Vec::new();
     let mut nr = 0usize;
@@ -173,13 +82,15 @@ pub fn extract_year_pair(
         let model_year = year_map.iter().find(|(a, _)| a == actual_year).unwrap().1;
         let tif = raw_dir.join(format!("sentinel2_{region_name}_{actual_year}_{season}.tif"));
 
-        let (nb, h, w, mut data) = read_tif_bands(&tif)?;
+        let t_read = std::time::Instant::now();
+        let (nb, h, w, mut data) = tif_reader::read_tif_bands(&tif, features::N_BANDS)?;
+        let read_ms = t_read.elapsed().as_millis();
         assert!(nb >= features::N_BANDS, "TIF has {nb} bands, need {}", features::N_BANDS);
 
         if nr == 0 {
             nr = h / features::GP;
             nc = w / features::GP;
-            vf_first = read_valid_fraction(&tif)?;
+            vf_first = tif_reader::read_valid_fraction(&tif)?;
         }
 
         // Normalize to [0,1] if in DN scale
@@ -200,7 +111,7 @@ pub fn extract_year_pair(
 
         spectral_list.push(data);
         suffixes.push(format!("{model_year}_{season}"));
-        println!("    Loaded {actual_year}_{season} -> {model_year}_{season}");
+        println!("    Loaded {actual_year}_{season} -> {model_year}_{season} ({read_ms}ms)");
     }
 
     let n_cells = nr * nc;

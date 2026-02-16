@@ -5,6 +5,7 @@ mod features;
 mod parquet_io;
 mod predict;
 mod stac;
+mod tif_reader;
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
