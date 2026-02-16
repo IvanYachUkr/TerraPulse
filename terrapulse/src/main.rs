@@ -90,6 +90,53 @@ enum Commands {
         #[arg(long, default_value = "0.3")]
         min_valid_frac: f32,
     },
+
+    /// Run the full pipeline: download → extract → predict
+    Pipeline {
+        /// Bounding box [west, south, east, north] in WGS84
+        #[arg(long, num_args = 4)]
+        bbox: Vec<f64>,
+
+        /// EPSG code for the target CRS
+        #[arg(long, default_value = "32632")]
+        epsg: u32,
+
+        /// Years to process (consecutive pairs derived automatically)
+        #[arg(long, value_delimiter = ' ')]
+        years: Vec<u32>,
+
+        /// Region name
+        #[arg(long, default_value = "nuremberg")]
+        region: String,
+
+        /// Base data directory (raw/, features/, predictions/ created inside)
+        #[arg(long, default_value = "data/pipeline_output")]
+        data_dir: PathBuf,
+
+        /// Path to the anchor reference GeoTIFF
+        #[arg(long)]
+        anchor_ref: PathBuf,
+
+        /// Path to the models/onnx directory
+        #[arg(long)]
+        models_dir: PathBuf,
+
+        /// Minimum valid fraction threshold
+        #[arg(long, default_value = "0.3")]
+        min_valid_frac: f32,
+
+        /// Skip download stage (use existing TIFs)
+        #[arg(long, default_value = "false")]
+        skip_download: bool,
+
+        /// Skip extract stage (use existing parquets)
+        #[arg(long, default_value = "false")]
+        skip_extract: bool,
+
+        /// Skip predict stage
+        #[arg(long, default_value = "false")]
+        skip_predict: bool,
+    },
 }
 
 #[tokio::main]
@@ -123,6 +170,25 @@ async fn main() -> Result<()> {
             min_valid_frac,
         } => {
             run_extract(&year_pairs, &region, &raw_dir, &features_dir, min_valid_frac)?;
+        }
+        Commands::Pipeline {
+            bbox,
+            epsg,
+            years,
+            region,
+            data_dir,
+            anchor_ref,
+            models_dir,
+            min_valid_frac,
+            skip_download,
+            skip_extract,
+            skip_predict,
+        } => {
+            run_pipeline(
+                &bbox, epsg, &years, &region, &data_dir, &anchor_ref,
+                &models_dir, min_valid_frac,
+                skip_download, skip_extract, skip_predict,
+            ).await?;
         }
     }
 
@@ -384,6 +450,84 @@ async fn run_download(
         "\nTotal download time: {:.1}s",
         t0.elapsed().as_secs_f64()
     );
+
+    Ok(())
+}
+
+async fn run_pipeline(
+    bbox: &[f64],
+    epsg: u32,
+    years: &[u32],
+    region: &str,
+    data_dir: &Path,
+    anchor_ref: &Path,
+    models_dir: &Path,
+    min_valid_frac: f32,
+    skip_download: bool,
+    skip_extract: bool,
+    skip_predict: bool,
+) -> Result<()> {
+    let t0 = Instant::now();
+
+    let raw_dir = data_dir.join("raw");
+    let features_dir = data_dir.join("features");
+    let predictions_dir = data_dir.join("predictions");
+
+    // Derive consecutive year pairs
+    let mut sorted_years = years.to_vec();
+    sorted_years.sort();
+    sorted_years.dedup();
+    let year_pairs: Vec<String> = sorted_years
+        .windows(2)
+        .map(|w| format!("{}_{}", w[0], w[1]))
+        .collect();
+
+    let sep = "=".repeat(60);
+    println!("\n{sep}");
+    println!("TerraPulse Full Pipeline");
+    println!("{sep}");
+    println!("  Region: {region}");
+    println!("  Years: {:?}", sorted_years);
+    println!("  Year pairs: {:?}", year_pairs);
+    println!("  Data dir: {}", data_dir.display());
+    println!("  Skip download: {skip_download}");
+    println!("  Skip extract: {skip_extract}");
+    println!("  Skip predict: {skip_predict}");
+    println!();
+
+    // ================= STAGE 1: DOWNLOAD =================
+    if !skip_download {
+        println!("\n{sep}");
+        println!("STAGE 1: DOWNLOAD");
+        println!("{sep}");
+        run_download(bbox, epsg, &sorted_years, region, &raw_dir, anchor_ref).await?;
+    } else {
+        println!("\n[SKIP] Stage 1: Download");
+    }
+
+    // ================= STAGE 2: EXTRACT =================
+    if !skip_extract {
+        println!("\n{sep}");
+        println!("STAGE 2: EXTRACT");
+        println!("{sep}");
+        run_extract(&year_pairs, region, &raw_dir, &features_dir, min_valid_frac)?;
+    } else {
+        println!("\n[SKIP] Stage 2: Extract");
+    }
+
+    // ================= STAGE 3: PREDICT =================
+    if !skip_predict {
+        println!("\n{sep}");
+        println!("STAGE 3: PREDICT");
+        println!("{sep}");
+        run_predict(models_dir, &features_dir, &predictions_dir, &year_pairs)?;
+    } else {
+        println!("\n[SKIP] Stage 3: Predict");
+    }
+
+    println!("\n{sep}");
+    println!("Pipeline complete in {:.1}s", t0.elapsed().as_secs_f64());
+    println!("{sep}");
 
     Ok(())
 }
