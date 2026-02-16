@@ -407,7 +407,7 @@ def extract_year_pair(prev_year, curr_year):
     # Rust extraction (batch) — v2 expects pre-normalized data, no scale param
     t1 = time.time()
     n_feat = tf.n_features_per_cell()
-    flat = tf.extract_all_seasons_v2(spectral_list, nr, nc)
+    flat = tf.extract_all_seasons(spectral_list, nr, nc)
     dt_rust = time.time() - t1
     print(f"    Rust extraction: {dt_rust:.1f}s for {len(jobs)} seasons")
     del spectral_list

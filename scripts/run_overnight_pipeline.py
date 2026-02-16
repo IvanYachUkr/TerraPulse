@@ -326,7 +326,7 @@ def extract_year_pair_rust(prev_year, curr_year):
     # Phase 2: Rust extraction
     t1 = time.time()
     n_feat = tf.n_features_per_cell()
-    flat = tf.extract_all_seasons_v2(spectral_arrays, nr, nc)
+    flat = tf.extract_all_seasons(spectral_arrays, nr, nc)
     dt_rust = time.time() - t1
     print(f"    Rust extraction: {dt_rust:.1f}s for {len(jobs)} seasons")
 

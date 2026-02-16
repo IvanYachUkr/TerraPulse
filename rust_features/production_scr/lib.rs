@@ -1201,6 +1201,7 @@ fn extract_all_seasons<'py>(
     Ok(ndarray::Array1::from_vec(flat).into_pyarray(py).into())
 }
 
+/// Backward-compatible alias for `extract_all_seasons`.
 #[pyfunction]
 fn extract_all_seasons_v2<'py>(
     py: Python<'py>,
@@ -1208,104 +1209,7 @@ fn extract_all_seasons_v2<'py>(
     n_rows: usize,
     n_cols: usize,
 ) -> PyResult<Bound<'py, PyArray1<f32>>> {
-    let n_seasons = spectral_list.len();
-    let n_cells = n_rows * n_cols;
-    let total_feats = n_cells * n_seasons * N_FEAT;
-
-    let mut season_data: Vec<Vec<f32>> = Vec::with_capacity(n_seasons);
-    let mut h = 0usize;
-    let mut w = 0usize;
-
-    for (si, spec_arr) in spectral_list.iter().enumerate() {
-        let view = spec_arr.as_array();
-        if si == 0 {
-            h = view.shape()[1];
-            w = view.shape()[2];
-            assert_eq!(view.shape()[0], N_BANDS);
-            assert_eq!(h, n_rows * GP);
-            assert_eq!(w, n_cols * GP);
-        }
-        let data: Vec<f32> = match view.as_slice() {
-            Some(s) => s.to_vec(),
-            None => view.iter().copied().collect(),
-        };
-        season_data.push(data);
-    }
-
-    let lbp_lut = build_lbp_lut();
-
-    let season_results: Vec<Vec<[f32; N_FEAT]>> = season_data
-        .iter()
-        .map(|spec_slice| {
-            let band_slice = |b: usize| -> &[f32] { &spec_slice[b * h * w..(b + 1) * h * w] };
-
-            let nir_clean = clean_band_nan_fill(band_slice(B08), h, w);
-            let sobel = compute_sobel_mag(&nir_clean, h, w);
-            let laplacian = compute_laplacian(&nir_clean, h, w);
-
-            let red_clean = clean_band_nan_fill(band_slice(B04), h, w);
-            let swir1_clean = clean_band_nan_fill(band_slice(B11), h, w);
-            let swir2_clean = clean_band_nan_fill(band_slice(B12), h, w);
-
-            // LBP: NIR full-raster unclipped (matching V3 Python)
-            // Multi-band LBP uses full-raster
-            let swir1_lbp = clean_band_nan_fill_clipped(band_slice(B11), h, w);
-
-            let ndvi_img: Vec<f32> = (0..h * w)
-                .into_par_iter()
-                .map(|i| {
-                    let v = (nir_clean[i] - red_clean[i]) / (nir_clean[i] + red_clean[i] + EPS);
-                    ((v + 1.0) * 0.5).clamp(0.0, 1.0)
-                })
-                .collect();
-
-            let evi2_img: Vec<f32> = (0..h * w)
-                .into_par_iter()
-                .map(|i| {
-                    let e = 2.5 * (nir_clean[i] - red_clean[i]) / (nir_clean[i] + 2.4 * red_clean[i] + 1.0 + EPS);
-                    ((e + 0.5) / 1.5).clamp(0.0, 1.0)
-                })
-                .collect();
-
-            let ndti_img: Vec<f32> = (0..h * w)
-                .into_par_iter()
-                .map(|i| {
-                    let v = (swir1_clean[i] - swir2_clean[i]) / (swir1_clean[i] + swir2_clean[i] + EPS);
-                    ((v + 1.0) * 0.5).clamp(0.0, 1.0)
-                })
-                .collect();
-
-            // NIR: per-patch LBP with clip (matches original lbp_features())
-            let lbp_nir = compute_lbp_perpatch(band_slice(B08), h, w, n_rows, n_cols, &lbp_lut, true);
-            // Multi-band: full-raster LBP
-            let lbp_swir1 = compute_lbp_raster(&swir1_lbp, h, w, &lbp_lut);
-            let lbp_ndvi = compute_lbp_raster(&ndvi_img, h, w, &lbp_lut);
-            let lbp_evi2 = compute_lbp_raster(&evi2_img, h, w, &lbp_lut);
-            let lbp_ndti = compute_lbp_raster(&ndti_img, h, w, &lbp_lut);
-
-            (0..n_cells)
-                .into_par_iter()
-                .map(|ci| {
-                    extract_cell_features(
-                        spec_slice, h, w, ci / n_cols, ci % n_cols,
-                        &sobel, &laplacian, &nir_clean,
-                        &lbp_nir, &lbp_ndvi, &lbp_evi2, &lbp_swir1, &lbp_ndti,
-                    )
-                })
-                .collect::<Vec<_>>()
-        })
-        .collect();
-
-    let mut flat = vec![0.0f32; total_feats];
-    for ci in 0..n_cells {
-        let cell_base = ci * n_seasons * N_FEAT;
-        for si in 0..n_seasons {
-            let dst = cell_base + si * N_FEAT;
-            flat[dst..dst + N_FEAT].copy_from_slice(&season_results[si][ci]);
-        }
-    }
-
-    Ok(ndarray::Array1::from_vec(flat).into_pyarray(py).into())
+    extract_all_seasons(py, spectral_list, n_rows, n_cols)
 }
 
 #[pymodule]
