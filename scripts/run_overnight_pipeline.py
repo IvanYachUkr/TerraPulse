@@ -304,7 +304,7 @@ def extract_year_pair_rust(prev_year, curr_year):
     spectral_arrays = []
     suffixes = []
     nr, nc = None, None
-    vf_first = None
+    vf_min = None
 
     t0 = time.time()
     for actual_year, season in jobs:
@@ -313,7 +313,13 @@ def extract_year_pair_rust(prev_year, curr_year):
         scale = detect_reflectance_scale(spectral)
         if nr is None:
             nr, nc = compute_grid_shape(spectral)
-            vf_first = vf
+        # Accumulate minimum valid fraction across all rasters
+        if vf is not None:
+            vf_clean = np.where(np.isfinite(vf), vf, np.nan)
+            if vf_min is None:
+                vf_min = vf_clean
+            else:
+                vf_min = np.fmin(vf_min, vf_clean)  # NaN-aware min
         ref = spectral.astype(np.float32)
         if scale != 1.0:
             ref = ref / scale
@@ -340,9 +346,9 @@ def extract_year_pair_rust(prev_year, curr_year):
     for i, col in enumerate(columns):
         data[col] = result_2d[:, i]
 
-    # Valid fraction from first raster
+    # Valid fraction from minimum across all rasters
     MIN_VALID_FRAC = CFG["quality"]["min_valid_fraction"]
-    vf_cells = np.where(np.isfinite(vf_first), vf_first, 0.0).astype(np.float32)
+    vf_cells = np.where(np.isfinite(vf_min), vf_min, 0.0).astype(np.float32)
     from src.features.extract_features import GRID_PX
     vf_cells = (vf_cells
                 .reshape(nr, GRID_PX, nc, GRID_PX)
@@ -481,10 +487,11 @@ def train_tree_model(X_train, y_train, fold_id):
     import lightgbm as lgb
     from sklearn.multioutput import MultiOutputRegressor
 
+    # Best config from LightGBM sweep (strong_wide)
     params = dict(
-        n_estimators=500, max_depth=6, learning_rate=0.05,
-        num_leaves=31, min_child_samples=20, reg_lambda=0.1,
-        subsample=0.85, colsample_bytree=0.85, verbosity=-1,
+        n_estimators=1000, max_depth=6, learning_rate=0.03,
+        num_leaves=255, min_child_samples=20, reg_lambda=3.0,
+        subsample=0.8, colsample_bytree=0.7, verbosity=-1,
         random_state=SEED + fold_id, n_jobs=-1,
     )
     model = MultiOutputRegressor(lgb.LGBMRegressor(**params))
@@ -811,6 +818,10 @@ def stage_predict():
             for fold_id in range(N_FOLDS):
                 preds_all += predict_with_tree(X_tree, fold_id)
             preds_all /= N_FOLDS
+            # Normalize to sum to 1.0 (compositional constraint)
+            row_sums = preds_all.sum(axis=1, keepdims=True)
+            row_sums = np.where(row_sums < 1e-8, 1.0, row_sums)
+            preds_all = preds_all / row_sums
 
             tree_df = pd.DataFrame({"cell_id": cell_ids})
             for ci, cn in enumerate(CLASS_NAMES):

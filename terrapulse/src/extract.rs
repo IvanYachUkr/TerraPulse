@@ -76,26 +76,41 @@ pub fn extract_year_pair(
     let mut suffixes = Vec::new();
     let mut nr = 0usize;
     let mut nc = 0usize;
-    let mut vf_first: Option<Vec<f32>> = None;
+    let mut vf_min: Option<Vec<f32>> = None;
 
-    for (idx, (actual_year, season)) in jobs.iter().enumerate() {
+    for (actual_year, season) in jobs.iter() {
         let model_year = year_map.iter().find(|(a, _)| a == actual_year).unwrap().1;
         let tif = raw_dir.join(format!("sentinel2_{region_name}_{actual_year}_{season}.tif"));
 
         let t_read = std::time::Instant::now();
 
-        let (nb, h, w, mut data) = if idx == 0 {
-            // First TIF: decode once and get both bands + valid_fraction
-            let (nb, h, w, band_data, vf) =
-                tif_reader::read_tif_bands_and_valid_fraction(&tif, features::N_BANDS)?;
+        // Always read bands + valid fraction together (single decode)
+        let (nb, h, w, mut data, vf) =
+            tif_reader::read_tif_bands_and_valid_fraction(&tif, features::N_BANDS)?;
+
+        if nr == 0 {
             nr = h / features::GP;
             nc = w / features::GP;
-            vf_first = vf;
-            (nb, h, w, band_data)
-        } else {
-            let (nb, h, w, band_data) = tif_reader::read_tif_bands(&tif, features::N_BANDS)?;
-            (nb, h, w, band_data)
-        };
+        }
+
+        // Accumulate minimum valid fraction across all rasters
+        if let Some(vf_data) = vf {
+            vf_min = Some(match vf_min {
+                None => vf_data,
+                Some(prev) => {
+                    prev.iter().zip(vf_data.iter())
+                        .map(|(&a, &b)| {
+                            match (a.is_finite(), b.is_finite()) {
+                                (true, true) => a.min(b),
+                                (true, false) => a,
+                                (false, true) => b,
+                                (false, false) => f32::NAN,
+                            }
+                        })
+                        .collect()
+                }
+            });
+        }
 
         let read_ms = t_read.elapsed().as_millis();
         assert!(nb >= features::N_BANDS, "TIF has {nb} bands, need {}", features::N_BANDS);
@@ -193,7 +208,7 @@ pub fn extract_year_pair(
     let mut extra_cols = vec!["cell_id".to_string()];
     let mut extra_data: Vec<Vec<f32>> = vec![(0..n_cells as u32).map(|i| i as f32).collect()];
 
-    if let Some(ref vf) = vf_first {
+    if let Some(ref vf) = vf_min {
         // Aggregate valid fraction per cell (mean of GP×GP pixels)
         let gp = features::GP;
         let mut vf_cells = vec![0.0f32; n_cells];
