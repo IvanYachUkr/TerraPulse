@@ -27,10 +27,8 @@ const CLASS_LABELS = {
     water: 'Water',
 };
 
-// Years with actual labels
+// Years with actual labels (ground truth)
 const LABEL_YEARS = [2020, 2021];
-// Future years where we can only predict (no labels yet)
-const ALL_YEARS = [2020, 2021, 2022, 2023, 2024, 2025];
 
 export default function App() {
     const [selectedModel, setSelectedModel] = useState('mlp');
@@ -50,10 +48,14 @@ export default function App() {
     const { data: labels2021 } = useApi('/api/labels/2021');
     const { data: changeData } = useApi('/api/change');
     const { data: models } = useApi('/api/models');
-    const predUrl = selectedYear > 2021
+
+    // Predictions: year-aware fetch
+    // For 2021 use the OOF endpoint, for 2022+ use the year-keyed endpoint
+    const predUrl = viewMode === 'predictions' && selectedYear > 2021
         ? `/api/predictions/${selectedModel}/${selectedYear}`
         : `/api/predictions/${selectedModel}`;
     const { data: predictions } = useApi(predUrl);
+
     const { data: conformal } = useApi('/api/conformal');
     const { data: splitData } = useApi('/api/split');
     const { data: evaluationData } = useApi('/api/evaluation');
@@ -64,21 +66,21 @@ export default function App() {
         selectedCell != null ? `/api/cell/${selectedCell}` : null
     );
 
-    // Pick the right data based on view mode + year
+    // Pick the right data based on view mode
     const getViewData = () => {
         switch (viewMode) {
             case 'labels':
-                if (selectedYear === 2020) return labels2020;
-                if (selectedYear === 2021) return labels2021;
+                return selectedYear === 2020 ? labels2020 : labels2021;
+            case 'predictions':
                 return predictions;
-            case 'predictions': return predictions;
-            case 'change': return changeData;
-            case 'folds': return splitData;
-            default: return labels2021;
+            case 'change':
+                return changeData;
+            case 'folds':
+                return splitData;
+            default:
+                return labels2021;
         }
     };
-
-    const isFutureYear = selectedYear > 2021;
 
     // When user searches a cell, also select it for inspection
     const handleSearchCell = (id) => {
@@ -112,8 +114,6 @@ export default function App() {
                         classLabels={CLASS_LABELS}
                         classColors={CLASS_COLORS}
                         labelYears={LABEL_YEARS}
-                        allYears={ALL_YEARS}
-                        isFutureYear={isFutureYear}
                         searchCellId={searchCellId}
                         onSearchCellId={handleSearchCell}
                     />
@@ -136,7 +136,7 @@ export default function App() {
                     loading={gridLoading}
                     onCellClick={setSelectedCell}
                     selectedCell={selectedCell}
-                    isFutureYear={isFutureYear}
+                    isFutureYear={false}
                     searchCellId={searchCellId}
                 />
                 {showComparison && (

@@ -19,6 +19,9 @@ const FOLD_LABELS = [
     { fold: 4, label: 'Fold 4', color: '#8b5cf6' },
 ];
 
+// Years available for predictions (OOF 2021 + pipeline 2022-2025)
+const PREDICTION_YEARS = [2021, 2022, 2023, 2024, 2025];
+
 export default function Sidebar({
     models,
     selectedModel,
@@ -33,13 +36,9 @@ export default function Sidebar({
     classLabels,
     classColors,
     labelYears,
-    allYears,
-    isFutureYear,
     searchCellId,
     onSearchCellId,
 }) {
-    const showModels = viewMode === 'predictions';
-    const showYears = viewMode === 'labels';
     const showClasses = viewMode !== 'folds';
 
     return (
@@ -60,26 +59,72 @@ export default function Sidebar({
                 </div>
             </div>
 
-            {showYears && (
+            {/* Labels view: year selector — only ground-truth years */}
+            {viewMode === 'labels' && (
                 <div className="section">
-                    <div className="section-title">Year</div>
-                    <select
-                        className="select"
-                        value={selectedYear}
-                        onChange={(e) => onYearChange(Number(e.target.value))}
-                    >
-                        {allYears.map((y) => (
-                            <option key={y} value={y}>
-                                {y}{!labelYears.includes(y) ? ' (predicted)' : ''}
-                            </option>
+                    <div className="section-title">Year (Ground Truth)</div>
+                    <div className="toggle-group">
+                        {labelYears.map((y) => (
+                            <button
+                                key={y}
+                                className={`toggle-btn ${selectedYear === y ? 'active' : ''}`}
+                                onClick={() => onYearChange(y)}
+                            >
+                                {y}
+                            </button>
                         ))}
-                    </select>
-                    {isFutureYear && viewMode === 'labels' && (
-                        <div className="info-badge">
-                            No labels for {selectedYear} &mdash; showing model predictions
-                        </div>
-                    )}
+                    </div>
+                    <div className="info-badge" style={{ marginTop: 6 }}>
+                        ESA WorldCover labels
+                    </div>
                 </div>
+            )}
+
+            {/* Predictions view: year + model selectors */}
+            {viewMode === 'predictions' && (
+                <>
+                    <div className="section">
+                        <div className="section-title">Prediction Year</div>
+                        <div className="toggle-group">
+                            {PREDICTION_YEARS.map((y) => (
+                                <button
+                                    key={y}
+                                    className={`toggle-btn ${selectedYear === y ? 'active' : ''}`}
+                                    onClick={() => onYearChange(y)}
+                                >
+                                    {y}
+                                </button>
+                            ))}
+                        </div>
+                        {selectedYear === 2021 && (
+                            <div className="info-badge" style={{ marginTop: 6 }}>
+                                Out-of-fold predictions (holdout cells)
+                            </div>
+                        )}
+                        {selectedYear > 2021 && (
+                            <div className="info-badge" style={{ marginTop: 6 }}>
+                                Pipeline predictions &mdash; all 29,946 cells
+                            </div>
+                        )}
+                    </div>
+                    <div className="section">
+                        <div className="section-title">Model</div>
+                        <div className="model-list">
+                            {models &&
+                                models.map((m) => (
+                                    <div
+                                        key={m.model}
+                                        className={`model-item ${selectedModel === m.model ? 'active' : ''}`}
+                                        onClick={() => onModelChange(m.model)}
+                                    >
+                                        <span className="model-name">{MODEL_DISPLAY[m.model] || m.model}</span>
+                                        <span className="model-r2">{m.r2_uniform.toFixed(3)}</span>
+                                        <span className="model-mae">{m.mae_mean_pp.toFixed(1)} pp</span>
+                                    </div>
+                                ))}
+                        </div>
+                    </div>
+                </>
             )}
 
             {/* Change mode note */}
@@ -88,27 +133,6 @@ export default function Sidebar({
                     <div className="section-title">Year Range</div>
                     <div className="info-badge">
                         Showing change: 2020 &rarr; 2021
-                    </div>
-                </div>
-            )}
-
-            {/* Model Selector — only for prediction-relevant views */}
-            {showModels && (
-                <div className="section">
-                    <div className="section-title">Model</div>
-                    <div className="model-list">
-                        {models &&
-                            models.map((m) => (
-                                <div
-                                    key={m.model}
-                                    className={`model-item ${selectedModel === m.model ? 'active' : ''}`}
-                                    onClick={() => onModelChange(m.model)}
-                                >
-                                    <span className="model-name">{MODEL_DISPLAY[m.model] || m.model}</span>
-                                    <span className="model-r2">{m.r2_uniform.toFixed(3)}</span>
-                                    <span className="model-mae">{m.mae_mean_pp.toFixed(1)} pp</span>
-                                </div>
-                            ))}
                     </div>
                 </div>
             )}
@@ -209,7 +233,6 @@ export default function Sidebar({
                     <span className="disclaimer-icon">&#9888;</span>
                     <strong>Caveat:</strong> Labels use ESA WorldCover v100 (2020) vs v200 (2021).
                     Algorithm differences may create apparent change that is not real land-cover change.
-                    Predictions shown only for the holdout fold (6,100 cells).
                 </div>
             </div>
         </aside>
