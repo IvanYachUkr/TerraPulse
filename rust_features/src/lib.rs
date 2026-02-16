@@ -55,7 +55,7 @@ const N_LBP: usize = 5 * (LBP_BINS + 1); // 55 (10 bins + entropy) * 5
 const N_FEAT: usize = N_BAND_STATS + N_IDX_STATS + N_TC + N_SPATIAL + N_LBP; // 224
 
 // =====================================================================
-// Utility: reflect indexing for ndimage-like boundary handling
+// Utility
 // =====================================================================
 
 #[inline(always)]
@@ -74,8 +74,17 @@ fn reflect_index(mut i: isize, len: isize) -> isize {
     i
 }
 
+fn normalize_spectral(raw: &[f32], scale: f32) -> Vec<f32> {
+    if (scale - 1.0).abs() < 1e-6 {
+        raw.to_vec()
+    } else {
+        let s = 1.0 / scale;
+        raw.iter().map(|&v| v * s).collect()
+    }
+}
+
 // =====================================================================
-// LBP: uniform LUT + bilinear sampling
+// LBP
 // =====================================================================
 
 fn build_lbp_lut() -> [u8; 256] {
@@ -97,64 +106,6 @@ fn build_lbp_lut() -> [u8; 256] {
         };
     }
     lut
-}
-
-/// Bilinear interpolation with constant-zero boundary (cval=0).
-/// Matches skimage's bilinear_interpolation(&image[0,0], rows, cols, r, c, 'C', 0, &out).
-#[inline(always)]
-fn bilinear_constant_zero(img: &[f32], h: usize, w: usize, ry: f64, rx: f64) -> f64 {
-    let minr = ry.floor() as isize;
-    let minc = rx.floor() as isize;
-    let maxr = ry.ceil() as isize;
-    let maxc = rx.ceil() as isize;
-    let dr = ry - minr as f64;
-    let dc = rx - minc as f64;
-
-    // get_pixel2d with mode='C', cval=0: out-of-bounds → 0.0
-    let get = |r: isize, c: isize| -> f64 {
-        if r < 0 || r >= h as isize || c < 0 || c >= w as isize {
-            0.0
-        } else {
-            img[r as usize * w + c as usize] as f64
-        }
-    };
-
-    let top_left = get(minr, minc);
-    let top_right = get(minr, maxc);
-    let bottom_left = get(maxr, minc);
-    let bottom_right = get(maxr, maxc);
-
-    let top = (1.0 - dc) * top_left + dc * top_right;
-    let bottom = (1.0 - dc) * bottom_left + dc * bottom_right;
-    (1.0 - dr) * top + dr * bottom
-}
-
-fn compute_lbp_raster(img: &[f32], h: usize, w: usize, lut: &[u8; 256]) -> Vec<u8> {
-    // skimage rounds offsets to 5 decimals: np.round(rr, 5)
-    // Using 0.70711 instead of FRAC_1_SQRT_2 to match exactly.
-    let s2: f64 = 0.70711;
-    let dr: [f64; 8] = [0.0, -s2, -1.0, -s2, 0.0, s2, 1.0, s2];
-    let dc: [f64; 8] = [1.0, s2, 0.0, -s2, -1.0, -s2, 0.0, s2];
-
-    let mut out = vec![0u8; h * w];
-    out.par_chunks_mut(w)
-        .enumerate()
-        .for_each(|(r, row)| {
-            let rf = r as f64;
-            for c in 0..w {
-                let cf = c as f64;
-                let center = img[r * w + c] as f64;
-                let mut code: u8 = 0;
-                for k in 0..8 {
-                    let val = bilinear_constant_zero(img, h, w, rf + dr[k], cf + dc[k]);
-                    if val >= center {
-                        code |= 1 << k;
-                    }
-                }
-                row[c] = lut[code as usize];
-            }
-        });
-    out
 }
 
 /// Bilinear interpolation on a GP×GP patch with constant-zero boundary.
@@ -188,14 +139,6 @@ fn bilinear_patch_constant_zero(patch: &[f32; N_PX], ry: f64, rx: f64) -> f64 {
 }
 
 /// Compute LBP on isolated 10×10 patches with per-cell NaN fill + clip.
-/// Matches Python V10's lbp_features(patch_ref) which does:
-///   nir = np.where(np.isfinite(nir), nir, np.nanmean(nir))
-///   nir = np.clip(nir, 0.0, 1.0)
-///   lbp = local_binary_pattern(nir, P=8, R=1, method="uniform")
-///
-/// `raw_img` is the RAW band data (may contain NaN/non-finite).
-/// `clip_01` indicates whether to clip values to [0, 1] (true for spectral bands,
-///   false for index images already in [0, 1]).
 fn compute_lbp_perpatch(
     raw_img: &[f32],
     h: usize,
@@ -206,7 +149,6 @@ fn compute_lbp_perpatch(
     clip_01: bool,
 ) -> Vec<u8> {
     // skimage rounds offsets to 5 decimals: np.round(rr, 5)
-    // Using 0.70711 instead of FRAC_1_SQRT_2 to match exactly.
     let s2: f64 = 0.70711;
     let dr: [f64; 8] = [0.0, -s2, -1.0, -s2, 0.0, s2, 1.0, s2];
     let dc: [f64; 8] = [1.0, s2, 0.0, -s2, -1.0, -s2, 0.0, s2];
@@ -228,7 +170,7 @@ fn compute_lbp_perpatch(
                 patch[d * GP..d * GP + GP].copy_from_slice(&raw_img[src..src + GP]);
             }
 
-            // Per-cell NaN fill: nanmean of THIS patch (matches Python exactly)
+            // Per-cell NaN fill: nanmean of THIS patch
             let mut sum = 0.0f64;
             let mut n = 0u32;
             for &v in &patch {
@@ -282,104 +224,78 @@ fn compute_lbp_perpatch(
 }
 
 // =====================================================================
-// Full-raster convolutions (reflect boundary like ndimage default)
+// Patch-based Spatial Features
 // =====================================================================
 
-fn compute_sobel_mag(img: &[f32], h: usize, w: usize) -> Vec<f32> {
-    let mut out = vec![0.0f32; h * w];
-    out.par_chunks_mut(w)
-        .enumerate()
-        .for_each(|(r, row)| {
-            let hh = h as isize;
-            let ww = w as isize;
-            let rr = r as isize;
-
-            for c in 0..w {
-                let cc = c as isize;
-
-                let g = |dr: isize, dc: isize| -> f64 {
-                    let r2 = reflect_index(rr + dr, hh) as usize;
-                    let c2 = reflect_index(cc + dc, ww) as usize;
-                    img[r2 * w + c2] as f64
-                };
-
-                // Classic 3x3 Sobel kernels
-                let gx = -g(-1, -1) + g(-1, 1)
-                    - 2.0 * g(0, -1) + 2.0 * g(0, 1)
-                    - g(1, -1) + g(1, 1);
-
-                let gy = -g(-1, -1) - 2.0 * g(-1, 0) - g(-1, 1)
-                    + g(1, -1) + 2.0 * g(1, 0) + g(1, 1);
-
-                row[c] = ((gx * gx + gy * gy).sqrt()) as f32;
-            }
-        });
-    out
+// Helper to get pixel with reflection from a 10x10 patch
+#[inline(always)]
+fn get_patch_pixel_reflect(patch: &[f32; N_PX], r: isize, c: isize) -> f32 {
+    let gp = GP as isize;
+    let r2 = reflect_index(r, gp) as usize;
+    let c2 = reflect_index(c, gp) as usize;
+    patch[r2 * GP + c2]
 }
 
-fn compute_laplacian(img: &[f32], h: usize, w: usize) -> Vec<f32> {
-    let mut out = vec![0.0f32; h * w];
-    out.par_chunks_mut(w)
-        .enumerate()
-        .for_each(|(r, row)| {
-            let hh = h as isize;
-            let ww = w as isize;
-            let rr = r as isize;
-
-            for c in 0..w {
-                let cc = c as isize;
-
-                let g = |dr: isize, dc: isize| -> f64 {
-                    let r2 = reflect_index(rr + dr, hh) as usize;
-                    let c2 = reflect_index(cc + dc, ww) as usize;
-                    img[r2 * w + c2] as f64
-                };
-
-                // 4-neighbor Laplacian: [0 1 0; 1 -4 1; 0 1 0]
-                let v = g(-1, 0) + g(1, 0) + g(0, -1) + g(0, 1) - 4.0 * g(0, 0);
-                row[c] = v as f32;
-            }
-        });
-    out
-}
-
-// =====================================================================
-// Image preparation helpers
-// =====================================================================
-
-fn clean_band_nan_fill(raw: &[f32], h: usize, w: usize) -> Vec<f32> {
+fn compute_sobel_patch(patch: &[f32; N_PX]) -> [f32; 3] { // mean, std, max
+    let mut grad = [0.0f32; N_PX];
     let mut sum = 0.0f64;
-    let mut n = 0u64;
-    for &v in &raw[..h * w] {
-        if v.is_finite() {
-            sum += v as f64;
-            n += 1;
+    let mut mx = f32::NEG_INFINITY;
+
+    for r in 0..GP {
+        for c in 0..GP {
+             let rr = r as isize;
+             let cc = c as isize;
+             let p = |dr, dc| get_patch_pixel_reflect(patch, rr+dr, cc+dc) as f64;
+             // Classic 3x3 Sobel kernels
+             let gx = -p(-1, -1) + p(-1, 1) - 2.0*p(0, -1) + 2.0*p(0, 1) - p(1, -1) + p(1, 1);
+             let gy = -p(-1, -1) - 2.0*p(-1, 0) - p(-1, 1) + p(1, -1) + 2.0*p(1, 0) + p(1, 1);
+             let g = (gx*gx + gy*gy).sqrt() as f32;
+             grad[r*GP+c] = g;
+             sum += g as f64;
+             if g > mx { mx = g; }
         }
     }
-    let fill = if n > 0 { (sum / n as f64) as f32 } else { 0.0 };
-    raw[..h * w]
-        .iter()
-        .map(|&v| if v.is_finite() { v } else { fill })
-        .collect()
+    let mean = (sum / N_PX as f64) as f32;
+    let mut var = 0.0f64;
+    for &g in &grad {
+        let d = g as f64 - mean as f64;
+        var += d*d;
+    }
+    let std = ((var / N_PX as f64).max(0.0)).sqrt() as f32;
+    [mean, std, mx]
 }
 
-/// Same as clean_band_nan_fill but also clips to [0, 1].
-/// Matches Python's `_fill_nan(np.clip(band, 0.0, 1.0))` used before LBP.
-fn clean_band_nan_fill_clipped(raw: &[f32], h: usize, w: usize) -> Vec<f32> {
+fn compute_laplace_patch(patch: &[f32; N_PX]) -> [f32; 2] { // abs_mean, std
+    let mut vals = [0.0f32; N_PX];
+    let mut abs_sum = 0.0f64;
     let mut sum = 0.0f64;
-    let mut n = 0u64;
-    for &v in &raw[..h * w] {
-        if v.is_finite() {
-            sum += v.clamp(0.0, 1.0) as f64;
-            n += 1;
+
+    for r in 0..GP {
+        for c in 0..GP {
+             let rr = r as isize;
+             let cc = c as isize;
+             let p = |dr, dc| get_patch_pixel_reflect(patch, rr+dr, cc+dc) as f64;
+             let v = p(-1, 0) + p(1, 0) + p(0, -1) + p(0, 1) - 4.0*p(0, 0);
+             let vf = v as f32;
+             vals[r*GP+c] = vf;
+             abs_sum += vf.abs() as f64;
+             sum += vf as f64;
         }
     }
-    let fill = if n > 0 { (sum / n as f64) as f32 } else { 0.0 };
-    raw[..h * w]
-        .iter()
-        .map(|&v| if v.is_finite() { v.clamp(0.0, 1.0) } else { fill })
-        .collect()
+    let abs_mean = (abs_sum / N_PX as f64) as f32;
+    let mean = sum / N_PX as f64;
+    let mut var = 0.0f64;
+    for &v in &vals {
+        let d = v as f64 - mean;
+        var += d*d;
+    }
+    let std = ((var / N_PX as f64).max(0.0)).sqrt() as f32;
+    [abs_mean, std]
 }
+
+// =====================================================================
+// Helpers
+// =====================================================================
 
 #[inline(always)]
 fn safe_ratio(a: f32, b: f32) -> f32 {
@@ -411,7 +327,6 @@ fn percentile_linear(sorted: &[f32], q: f32) -> f32 {
 }
 
 /// 8 stats: mean, std, min, max, q25, median, q75, finite_frac
-/// Uses np.percentile-compatible linear interpolation on finite-only values.
 fn cell_stats_8(px: &[f32; N_PX]) -> [f32; 8] {
     let mut vals = [0.0f32; N_PX];
     let mut n: usize = 0;
@@ -437,7 +352,7 @@ fn cell_stats_8(px: &[f32; N_PX]) -> [f32; 8] {
 
     let mean = (sum / n as f64) as f32;
 
-    // Stable variance (two-pass) in f64 — ddof=0 like numpy
+    // Stable variance (two-pass)
     let mut var = 0.0f64;
     for i in 0..n {
         let d = vals[i] as f64 - mean as f64;
@@ -456,7 +371,6 @@ fn cell_stats_8(px: &[f32; N_PX]) -> [f32; 8] {
 }
 
 /// Block-reduce 10×10 → 5×5 via nanmean of 2×2 blocks.
-/// Matches Python's _block_reduce_mean(band, factor=2).
 fn block_reduce_2x2(px: &[f32; N_PX]) -> ([f32; 25], usize) {
     let mut out = [0.0f32; 25];
     let mut count = 0usize;
@@ -484,7 +398,7 @@ fn block_reduce_2x2(px: &[f32; N_PX]) -> ([f32; 25], usize) {
     (out, 25)
 }
 
-/// 8 stats on a dynamically-sized slice (for block-reduced 25-element arrays)
+/// 8 stats on a dynamically-sized slice
 fn cell_stats_8_dyn(px: &[f32], total_size: usize) -> [f32; 8] {
     let mut vals = Vec::with_capacity(total_size);
     let mut sum = 0.0f64;
@@ -570,31 +484,20 @@ fn cell_lbp_hist(lbp: &[u8], w: usize, cr: usize, cc: usize) -> [f32; LBP_BINS +
     out
 }
 
-fn cell_morans_i(px: &[f32; N_PX]) -> f32 {
-    // NaN-aware Moran's I with 4-neighbor pairs (right + down)
+fn cell_morans_i_filled(px: &[f32; N_PX]) -> f32 {
+    // Standard Moran's I on filled data
     let mut sum = 0.0f64;
-    let mut n_valid = 0usize;
-
     for &v in px.iter() {
-        if v.is_finite() {
-            sum += v as f64;
-            n_valid += 1;
-        }
+        sum += v as f64;
     }
-    if n_valid <= 1 {
-        return f32::NAN;
-    }
+    let mean = (sum / N_PX as f64) as f32;
 
-    let mean = (sum / n_valid as f64) as f32;
-
-    let mut z = [f32::NAN; N_PX];
+    let mut z = [0.0f32; N_PX];
     let mut denom = 0.0f64;
     for i in 0..N_PX {
-        if px[i].is_finite() {
-            let dv = px[i] - mean;
-            z[i] = dv;
-            denom += (dv as f64) * (dv as f64);
-        }
+        let dv = px[i] - mean;
+        z[i] = dv;
+        denom += (dv as f64) * (dv as f64);
     }
     if denom < 1e-12 {
         return 0.0;
@@ -606,14 +509,11 @@ fn cell_morans_i(px: &[f32; N_PX]) -> f32 {
     for r in 0..GP {
         for c in 0..GP {
             let i = r * GP + c;
-            if !z[i].is_finite() {
-                continue;
-            }
-            if c + 1 < GP && z[i + 1].is_finite() {
+            if c + 1 < GP {
                 w_sum += (z[i] as f64) * (z[i + 1] as f64);
                 n_pairs += 1;
             }
-            if r + 1 < GP && z[i + GP].is_finite() {
+            if r + 1 < GP {
                 w_sum += (z[i] as f64) * (z[i + GP] as f64);
                 n_pairs += 1;
             }
@@ -624,70 +524,7 @@ fn cell_morans_i(px: &[f32; N_PX]) -> f32 {
         return 0.0;
     }
 
-    ((n_valid as f64 / n_pairs as f64) * w_sum / denom) as f32
-}
-
-fn cell_agg_3(img: &[f32], w: usize, cr: usize, cc: usize) -> [f32; 3] {
-    let r0 = cr * GP;
-    let c0 = cc * GP;
-
-    let mut sum = 0.0f64;
-    let mut mx = f32::NEG_INFINITY;
-
-    for dr in 0..GP {
-        let off = (r0 + dr) * w + c0;
-        for dc in 0..GP {
-            let v = img[off + dc];
-            sum += v as f64;
-            if v > mx {
-                mx = v;
-            }
-        }
-    }
-
-    let mean = sum / N_PX as f64;
-
-    let mut var = 0.0f64;
-    for dr in 0..GP {
-        let off = (r0 + dr) * w + c0;
-        for dc in 0..GP {
-            let d = img[off + dc] as f64 - mean;
-            var += d * d;
-        }
-    }
-    let std = ((var / N_PX as f64).max(0.0)).sqrt() as f32;
-
-    [mean as f32, std, mx]
-}
-
-fn cell_lap_stats(img: &[f32], w: usize, cr: usize, cc: usize) -> [f32; 2] {
-    let r0 = cr * GP;
-    let c0 = cc * GP;
-
-    let mut abs_sum = 0.0f64;
-    let mut sum = 0.0f64;
-
-    for dr in 0..GP {
-        let off = (r0 + dr) * w + c0;
-        for dc in 0..GP {
-            let v = img[off + dc] as f64;
-            abs_sum += v.abs();
-            sum += v;
-        }
-    }
-
-    let mean = sum / N_PX as f64;
-
-    let mut var = 0.0f64;
-    for dr in 0..GP {
-        let off = (r0 + dr) * w + c0;
-        for dc in 0..GP {
-            let d = img[off + dc] as f64 - mean;
-            var += d * d;
-        }
-    }
-
-    [(abs_sum / N_PX as f64) as f32, ((var / N_PX as f64).max(0.0)).sqrt() as f32]
+    ((N_PX as f64 / n_pairs as f64) * w_sum / denom) as f32
 }
 
 // =====================================================================
@@ -700,9 +537,6 @@ fn extract_cell_features(
     w: usize,
     cr: usize,
     cc: usize,
-    sobel: &[f32],
-    lap: &[f32],
-    nir_clean: &[f32],
     lbp_nir: &[u8],
     lbp_ndvi: &[u8],
     lbp_evi2: &[u8],
@@ -713,8 +547,6 @@ fn extract_cell_features(
     let mut fi: usize = 0;
 
     // 1) Band stats (80)
-    // 20m bands (B05/B06/B07/B8A/B11/B12) get block-reduced 10×10→5×5
-    // before stats, matching Python V10's _block_reduce_mean(band, factor=2)
     let mut band_px = [[0.0f32; N_PX]; N_BANDS];
     for b in 0..N_BANDS {
         let band_off = b * h * w;
@@ -747,7 +579,7 @@ fn extract_cell_features(
     let re3 = &band_px[B07];
     let nir = &band_px[B08];
     let swir1 = &band_px[B11];
-    let swir2 = &band_px[B12];
+    let _swir2 = &band_px[B12];
 
     let mut idx_px = [0.0f32; N_PX];
 
@@ -846,8 +678,7 @@ fn extract_cell_features(
         fi += 1;
     }
 
-    // 3) Tasseled Cap (6) — 10-band Nedkov 2017, matching Python exactly
-    // dot product of all 10 bands with each TC coefficient vector
+    // 3) Tasseled Cap (6)
     for coeff in [TC10_B, TC10_G, TC10_W] {
         let mut vals = [0.0f32; N_PX];
         let mut n = 0usize;
@@ -893,17 +724,36 @@ fn extract_cell_features(
     }
 
     // 4) Spatial (8)
-    let e = cell_agg_3(sobel, w, cr, cc);
+    // Extract NIR patch and fill NaNs with patch mean
+    let mut nir_patch = band_px[B08]; // Copy
+    let mut sum = 0.0f64;
+    let mut n = 0u32;
+    for &v in &nir_patch {
+        if v.is_finite() {
+            sum += v as f64;
+            n += 1;
+        }
+    }
+    let fill = if n > 0 { (sum / n as f64) as f32 } else { 0.0 };
+    for v in nir_patch.iter_mut() {
+        if !v.is_finite() {
+            *v = fill;
+        }
+    }
+
+    // Sobel on patch
+    let e = compute_sobel_patch(&nir_patch);
     out[fi] = e[0]; fi += 1;
     out[fi] = e[1]; fi += 1;
     out[fi] = e[2]; fi += 1;
 
-    let l = cell_lap_stats(lap, w, cr, cc);
+    // Laplace on patch
+    let l = compute_laplace_patch(&nir_patch);
     out[fi] = l[0]; fi += 1;
     out[fi] = l[1]; fi += 1;
 
-    let nir_px = extract_cell(nir_clean, w, cr, cc);
-    out[fi] = cell_morans_i(&nir_px); fi += 1;
+    // Morans I on patch
+    out[fi] = cell_morans_i_filled(&nir_patch); fi += 1;
 
     let ndvi_s = cell_stats_8(&ndvi_px);
     out[fi] = ndvi_s[3] - ndvi_s[2]; fi += 1; // range
@@ -934,6 +784,7 @@ fn extract_season<'py>(
     valid_frac: PyReadonlyArray2<'py, f32>,
     n_rows: usize,
     n_cols: usize,
+    scale: f32,
 ) -> PyResult<Bound<'py, PyArray1<f32>>> {
     let spec_view = spectral.as_array();
     let _vf = valid_frac.as_array(); // kept for interface compatibility
@@ -944,65 +795,63 @@ fn extract_season<'py>(
     assert_eq!(h, n_rows * GP);
     assert_eq!(w, n_cols * GP);
 
-    let spec: Vec<f32>;
-    let spec_slice: &[f32] = match spec_view.as_slice() {
+    let spec_slice_raw: &[f32] = match spec_view.as_slice() {
         Some(s) => s,
-        None => {
-            spec = spec_view.iter().copied().collect();
-            &spec
-        }
+        None => return Err(pyo3::exceptions::PyValueError::new_err("Input must be contiguous")),
     };
+
+    // Normalize input
+    let spec_norm = normalize_spectral(spec_slice_raw, scale);
+    let spec_slice = &spec_norm;
 
     let band_slice = |b: usize| -> &[f32] { &spec_slice[b * h * w..(b + 1) * h * w] };
 
     let lbp_lut = build_lbp_lut();
 
-    // Phase 1: spatial features use unclipped NIR
-    let nir_clean = clean_band_nan_fill(band_slice(B08), h, w);
-    let sobel = compute_sobel_mag(&nir_clean, h, w);
-    let laplacian = compute_laplacian(&nir_clean, h, w);
+    // Phase 1: LBP inputs
+    let lbp_nir = compute_lbp_perpatch(band_slice(B08), h, w, n_rows, n_cols, &lbp_lut, true);
 
-    let red_clean = clean_band_nan_fill(band_slice(B04), h, w);
-    let swir1_clean = clean_band_nan_fill(band_slice(B11), h, w);
-    let swir2_clean = clean_band_nan_fill(band_slice(B12), h, w);
+    let nir = band_slice(B08);
+    let red = band_slice(B04);
+    let swir1 = band_slice(B11);
+    let swir2 = band_slice(B12);
 
-    // LBP inputs:
-    // NIR: full-raster unclipped (matching V3 Python that generated LBP in features_merged_full)
-    // SWIR1 clipped for full-raster LBP
-    let swir1_lbp = clean_band_nan_fill_clipped(band_slice(B11), h, w);
-
-    // Index images for LBP (rescaled to [0,1])
     let ndvi_img: Vec<f32> = (0..h * w)
         .into_par_iter()
         .map(|i| {
-            let v = (nir_clean[i] - red_clean[i]) / (nir_clean[i] + red_clean[i] + EPS);
-            ((v + 1.0) * 0.5).clamp(0.0, 1.0)
+            let n = nir[i];
+            let r = red[i];
+            let v = (n - r) / (n + r + EPS);
+            (v + 1.0) * 0.5
         })
         .collect();
 
     let evi2_img: Vec<f32> = (0..h * w)
         .into_par_iter()
         .map(|i| {
-            let e = 2.5 * (nir_clean[i] - red_clean[i]) / (nir_clean[i] + 2.4 * red_clean[i] + 1.0 + EPS);
-            ((e + 0.5) / 1.5).clamp(0.0, 1.0)
+            let n = nir[i];
+            let r = red[i];
+            let e = 2.5 * (n - r) / (n + 2.4 * r + 1.0 + EPS);
+            (e + 0.5) / 1.5
         })
         .collect();
 
     let ndti_img: Vec<f32> = (0..h * w)
         .into_par_iter()
         .map(|i| {
-            let v = (swir1_clean[i] - swir2_clean[i]) / (swir1_clean[i] + swir2_clean[i] + EPS);
-            ((v + 1.0) * 0.5).clamp(0.0, 1.0)
+            let s1 = swir1[i];
+            let s2 = swir2[i];
+            let v = (s1 - s2) / (s1 + s2 + EPS);
+            (v + 1.0) * 0.5
         })
         .collect();
 
-    // NIR LBP: per-patch with clip (matching original lbp_features())
-    let lbp_nir = compute_lbp_perpatch(band_slice(B08), h, w, n_rows, n_cols, &lbp_lut, true);
-    // Multi-band LBP: full-raster
-    let lbp_ndvi = compute_lbp_raster(&ndvi_img, h, w, &lbp_lut);
-    let lbp_evi2 = compute_lbp_raster(&evi2_img, h, w, &lbp_lut);
-    let lbp_swir1 = compute_lbp_raster(&swir1_lbp, h, w, &lbp_lut);
-    let lbp_ndti = compute_lbp_raster(&ndti_img, h, w, &lbp_lut);
+    let swir1_img = swir1;
+
+    let lbp_ndvi = compute_lbp_perpatch(&ndvi_img, h, w, n_rows, n_cols, &lbp_lut, true);
+    let lbp_evi2 = compute_lbp_perpatch(&evi2_img, h, w, n_rows, n_cols, &lbp_lut, true);
+    let lbp_swir1 = compute_lbp_perpatch(swir1_img, h, w, n_rows, n_cols, &lbp_lut, true);
+    let lbp_ndti = compute_lbp_perpatch(&ndti_img, h, w, n_rows, n_cols, &lbp_lut, true);
 
     // Phase 2
     let n_cells = n_rows * n_cols;
@@ -1013,7 +862,6 @@ fn extract_season<'py>(
             let cc = ci % n_cols;
             extract_cell_features(
                 spec_slice, h, w, cr, cc,
-                &sobel, &laplacian, &nir_clean,
                 &lbp_nir, &lbp_ndvi, &lbp_evi2, &lbp_swir1, &lbp_ndti,
             )
         })
@@ -1025,6 +873,128 @@ fn extract_season<'py>(
     }
 
     Ok(ndarray::Array1::from_vec(flat).into_pyarray(py).into())
+}
+
+#[pyfunction]
+fn extract_all_seasons<'py>(
+    py: Python<'py>,
+    spectral_list: Vec<PyReadonlyArray3<'py, f32>>,
+    n_rows: usize,
+    n_cols: usize,
+    scale: f32,
+) -> PyResult<Bound<'py, PyArray1<f32>>> {
+    let n_seasons = spectral_list.len();
+    let n_cells = n_rows * n_cols;
+    let total_feats = n_cells * n_seasons * N_FEAT;
+
+    let mut season_data: Vec<Vec<f32>> = Vec::with_capacity(n_seasons);
+    let mut h = 0usize;
+    let mut w = 0usize;
+
+    for (si, spec_arr) in spectral_list.iter().enumerate() {
+        let view = spec_arr.as_array();
+        if si == 0 {
+            h = view.shape()[1];
+            w = view.shape()[2];
+            assert_eq!(view.shape()[0], N_BANDS);
+            assert_eq!(h, n_rows * GP);
+            assert_eq!(w, n_cols * GP);
+        }
+        let data: Vec<f32> = match view.as_slice() {
+            Some(s) => s.to_vec(),
+            None => view.iter().copied().collect(),
+        };
+        season_data.push(data);
+    }
+
+    let lbp_lut = build_lbp_lut();
+
+    let season_results: Vec<Vec<[f32; N_FEAT]>> = season_data
+        .iter()
+        .map(|spec_slice_raw| {
+            let spec_norm = normalize_spectral(spec_slice_raw, scale);
+            let spec_slice = &spec_norm;
+
+            let band_slice = |b: usize| -> &[f32] { &spec_slice[b * h * w..(b + 1) * h * w] };
+
+            // Phase 1: LBP inputs
+            let lbp_nir = compute_lbp_perpatch(band_slice(B08), h, w, n_rows, n_cols, &lbp_lut, true);
+
+            let nir = band_slice(B08);
+            let red = band_slice(B04);
+            let swir1 = band_slice(B11);
+            let swir2 = band_slice(B12);
+
+            let ndvi_img: Vec<f32> = (0..h * w)
+                .into_par_iter()
+                .map(|i| {
+                    let n = nir[i];
+                    let r = red[i];
+                    let v = (n - r) / (n + r + EPS);
+                    (v + 1.0) * 0.5
+                })
+                .collect();
+
+            let evi2_img: Vec<f32> = (0..h * w)
+                .into_par_iter()
+                .map(|i| {
+                    let n = nir[i];
+                    let r = red[i];
+                    let e = 2.5 * (n - r) / (n + 2.4 * r + 1.0 + EPS);
+                    (e + 0.5) / 1.5
+                })
+                .collect();
+
+            let ndti_img: Vec<f32> = (0..h * w)
+                .into_par_iter()
+                .map(|i| {
+                    let s1 = swir1[i];
+                    let s2 = swir2[i];
+                    let v = (s1 - s2) / (s1 + s2 + EPS);
+                    (v + 1.0) * 0.5
+                })
+                .collect();
+
+            let swir1_img = swir1;
+
+            let lbp_ndvi = compute_lbp_perpatch(&ndvi_img, h, w, n_rows, n_cols, &lbp_lut, true);
+            let lbp_evi2 = compute_lbp_perpatch(&evi2_img, h, w, n_rows, n_cols, &lbp_lut, true);
+            let lbp_swir1 = compute_lbp_perpatch(swir1_img, h, w, n_rows, n_cols, &lbp_lut, true);
+            let lbp_ndti = compute_lbp_perpatch(&ndti_img, h, w, n_rows, n_cols, &lbp_lut, true);
+
+            (0..n_cells)
+                .into_par_iter()
+                .map(|ci| {
+                    extract_cell_features(
+                        spec_slice, h, w, ci / n_cols, ci % n_cols,
+                        &lbp_nir, &lbp_ndvi, &lbp_evi2, &lbp_swir1, &lbp_ndti,
+                    )
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect();
+
+    let mut flat = vec![0.0f32; total_feats];
+    for ci in 0..n_cells {
+        let cell_base = ci * n_seasons * N_FEAT;
+        for si in 0..n_seasons {
+            let dst = cell_base + si * N_FEAT;
+            flat[dst..dst + N_FEAT].copy_from_slice(&season_results[si][ci]);
+        }
+    }
+
+    Ok(ndarray::Array1::from_vec(flat).into_pyarray(py).into())
+}
+
+#[pyfunction]
+fn extract_all_seasons_v2<'py>(
+    py: Python<'py>,
+    spectral_list: Vec<PyReadonlyArray3<'py, f32>>,
+    n_rows: usize,
+    n_cols: usize,
+    scale: f32,
+) -> PyResult<Bound<'py, PyArray1<f32>>> {
+    extract_all_seasons(py, spectral_list, n_rows, n_cols, scale)
 }
 
 #[pyfunction]
@@ -1093,219 +1063,6 @@ fn feature_names_suffixed(suffixes: Vec<String>) -> Vec<String> {
         }
     }
     out
-}
-
-#[pyfunction]
-fn extract_all_seasons<'py>(
-    py: Python<'py>,
-    spectral_list: Vec<PyReadonlyArray3<'py, f32>>,
-    n_rows: usize,
-    n_cols: usize,
-) -> PyResult<Bound<'py, PyArray1<f32>>> {
-    let n_seasons = spectral_list.len();
-    let n_cells = n_rows * n_cols;
-    let total_feats = n_cells * n_seasons * N_FEAT;
-
-    let mut season_data: Vec<Vec<f32>> = Vec::with_capacity(n_seasons);
-    let mut h = 0usize;
-    let mut w = 0usize;
-
-    for (si, spec_arr) in spectral_list.iter().enumerate() {
-        let view = spec_arr.as_array();
-        if si == 0 {
-            h = view.shape()[1];
-            w = view.shape()[2];
-            assert_eq!(view.shape()[0], N_BANDS);
-            assert_eq!(h, n_rows * GP);
-            assert_eq!(w, n_cols * GP);
-        }
-        let data: Vec<f32> = match view.as_slice() {
-            Some(s) => s.to_vec(),
-            None => view.iter().copied().collect(),
-        };
-        season_data.push(data);
-    }
-
-    let lbp_lut = build_lbp_lut();
-
-    let season_results: Vec<Vec<[f32; N_FEAT]>> = season_data
-        .iter()
-        .map(|spec_slice| {
-            let band_slice = |b: usize| -> &[f32] { &spec_slice[b * h * w..(b + 1) * h * w] };
-
-            let nir_clean = clean_band_nan_fill(band_slice(B08), h, w);
-            let sobel = compute_sobel_mag(&nir_clean, h, w);
-            let laplacian = compute_laplacian(&nir_clean, h, w);
-
-            let red_clean = clean_band_nan_fill(band_slice(B04), h, w);
-            let swir1_clean = clean_band_nan_fill(band_slice(B11), h, w);
-            let swir2_clean = clean_band_nan_fill(band_slice(B12), h, w);
-
-            // LBP: NIR per-patch with clip (matching original lbp_features())
-            // Multi-band: full-raster
-            let swir1_lbp = clean_band_nan_fill_clipped(band_slice(B11), h, w);
-
-            let ndvi_img: Vec<f32> = (0..h * w)
-                .into_par_iter()
-                .map(|i| {
-                    let v = (nir_clean[i] - red_clean[i]) / (nir_clean[i] + red_clean[i] + EPS);
-                    ((v + 1.0) * 0.5).clamp(0.0, 1.0)
-                })
-                .collect();
-
-            let evi2_img: Vec<f32> = (0..h * w)
-                .into_par_iter()
-                .map(|i| {
-                    let e = 2.5 * (nir_clean[i] - red_clean[i]) / (nir_clean[i] + 2.4 * red_clean[i] + 1.0 + EPS);
-                    ((e + 0.5) / 1.5).clamp(0.0, 1.0)
-                })
-                .collect();
-
-            let ndti_img: Vec<f32> = (0..h * w)
-                .into_par_iter()
-                .map(|i| {
-                    let v = (swir1_clean[i] - swir2_clean[i]) / (swir1_clean[i] + swir2_clean[i] + EPS);
-                    ((v + 1.0) * 0.5).clamp(0.0, 1.0)
-                })
-                .collect();
-
-            // NIR: per-patch LBP with clip (matches original Python lbp_features())
-            let lbp_nir = compute_lbp_perpatch(band_slice(B08), h, w, n_rows, n_cols, &lbp_lut, true);
-            let lbp_ndvi = compute_lbp_raster(&ndvi_img, h, w, &lbp_lut);
-            let lbp_evi2 = compute_lbp_raster(&evi2_img, h, w, &lbp_lut);
-            let lbp_swir1 = compute_lbp_raster(&swir1_lbp, h, w, &lbp_lut);
-            let lbp_ndti = compute_lbp_raster(&ndti_img, h, w, &lbp_lut);
-
-            (0..n_cells)
-                .into_par_iter()
-                .map(|ci| {
-                    extract_cell_features(
-                        spec_slice, h, w, ci / n_cols, ci % n_cols,
-                        &sobel, &laplacian, &nir_clean,
-                        &lbp_nir, &lbp_ndvi, &lbp_evi2, &lbp_swir1, &lbp_ndti,
-                    )
-                })
-                .collect::<Vec<_>>()
-        })
-        .collect();
-
-    let mut flat = vec![0.0f32; total_feats];
-    for ci in 0..n_cells {
-        let cell_base = ci * n_seasons * N_FEAT;
-        for si in 0..n_seasons {
-            let dst = cell_base + si * N_FEAT;
-            flat[dst..dst + N_FEAT].copy_from_slice(&season_results[si][ci]);
-        }
-    }
-
-    Ok(ndarray::Array1::from_vec(flat).into_pyarray(py).into())
-}
-
-#[pyfunction]
-fn extract_all_seasons_v2<'py>(
-    py: Python<'py>,
-    spectral_list: Vec<PyReadonlyArray3<'py, f32>>,
-    n_rows: usize,
-    n_cols: usize,
-) -> PyResult<Bound<'py, PyArray1<f32>>> {
-    let n_seasons = spectral_list.len();
-    let n_cells = n_rows * n_cols;
-    let total_feats = n_cells * n_seasons * N_FEAT;
-
-    let mut season_data: Vec<Vec<f32>> = Vec::with_capacity(n_seasons);
-    let mut h = 0usize;
-    let mut w = 0usize;
-
-    for (si, spec_arr) in spectral_list.iter().enumerate() {
-        let view = spec_arr.as_array();
-        if si == 0 {
-            h = view.shape()[1];
-            w = view.shape()[2];
-            assert_eq!(view.shape()[0], N_BANDS);
-            assert_eq!(h, n_rows * GP);
-            assert_eq!(w, n_cols * GP);
-        }
-        let data: Vec<f32> = match view.as_slice() {
-            Some(s) => s.to_vec(),
-            None => view.iter().copied().collect(),
-        };
-        season_data.push(data);
-    }
-
-    let lbp_lut = build_lbp_lut();
-
-    let season_results: Vec<Vec<[f32; N_FEAT]>> = season_data
-        .iter()
-        .map(|spec_slice| {
-            let band_slice = |b: usize| -> &[f32] { &spec_slice[b * h * w..(b + 1) * h * w] };
-
-            let nir_clean = clean_band_nan_fill(band_slice(B08), h, w);
-            let sobel = compute_sobel_mag(&nir_clean, h, w);
-            let laplacian = compute_laplacian(&nir_clean, h, w);
-
-            let red_clean = clean_band_nan_fill(band_slice(B04), h, w);
-            let swir1_clean = clean_band_nan_fill(band_slice(B11), h, w);
-            let swir2_clean = clean_band_nan_fill(band_slice(B12), h, w);
-
-            // LBP: NIR full-raster unclipped (matching V3 Python)
-            // Multi-band LBP uses full-raster
-            let swir1_lbp = clean_band_nan_fill_clipped(band_slice(B11), h, w);
-
-            let ndvi_img: Vec<f32> = (0..h * w)
-                .into_par_iter()
-                .map(|i| {
-                    let v = (nir_clean[i] - red_clean[i]) / (nir_clean[i] + red_clean[i] + EPS);
-                    ((v + 1.0) * 0.5).clamp(0.0, 1.0)
-                })
-                .collect();
-
-            let evi2_img: Vec<f32> = (0..h * w)
-                .into_par_iter()
-                .map(|i| {
-                    let e = 2.5 * (nir_clean[i] - red_clean[i]) / (nir_clean[i] + 2.4 * red_clean[i] + 1.0 + EPS);
-                    ((e + 0.5) / 1.5).clamp(0.0, 1.0)
-                })
-                .collect();
-
-            let ndti_img: Vec<f32> = (0..h * w)
-                .into_par_iter()
-                .map(|i| {
-                    let v = (swir1_clean[i] - swir2_clean[i]) / (swir1_clean[i] + swir2_clean[i] + EPS);
-                    ((v + 1.0) * 0.5).clamp(0.0, 1.0)
-                })
-                .collect();
-
-            // NIR: per-patch LBP with clip (matches original lbp_features())
-            let lbp_nir = compute_lbp_perpatch(band_slice(B08), h, w, n_rows, n_cols, &lbp_lut, true);
-            // Multi-band: full-raster LBP
-            let lbp_swir1 = compute_lbp_raster(&swir1_lbp, h, w, &lbp_lut);
-            let lbp_ndvi = compute_lbp_raster(&ndvi_img, h, w, &lbp_lut);
-            let lbp_evi2 = compute_lbp_raster(&evi2_img, h, w, &lbp_lut);
-            let lbp_ndti = compute_lbp_raster(&ndti_img, h, w, &lbp_lut);
-
-            (0..n_cells)
-                .into_par_iter()
-                .map(|ci| {
-                    extract_cell_features(
-                        spec_slice, h, w, ci / n_cols, ci % n_cols,
-                        &sobel, &laplacian, &nir_clean,
-                        &lbp_nir, &lbp_ndvi, &lbp_evi2, &lbp_swir1, &lbp_ndti,
-                    )
-                })
-                .collect::<Vec<_>>()
-        })
-        .collect();
-
-    let mut flat = vec![0.0f32; total_feats];
-    for ci in 0..n_cells {
-        let cell_base = ci * n_seasons * N_FEAT;
-        for si in 0..n_seasons {
-            let dst = cell_base + si * N_FEAT;
-            flat[dst..dst + N_FEAT].copy_from_slice(&season_results[si][ci]);
-        }
-    }
-
-    Ok(ndarray::Array1::from_vec(flat).into_pyarray(py).into())
 }
 
 #[pymodule]
