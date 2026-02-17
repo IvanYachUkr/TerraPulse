@@ -73,6 +73,8 @@ scripts/_tmp_*.py
 scripts/_scan_*.py
 _watcher.ps1
 _assignment_text.txt
+_compare_*.py
+_debug_*.py
 
 # === Model weights (large binary files) ===
 models/final_mlp_rust/

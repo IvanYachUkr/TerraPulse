@@ -26,6 +26,7 @@ pub struct StacFeatureCollection {
 }
 
 #[derive(Deserialize, Debug, Clone)]
+#[allow(dead_code)]
 pub struct StacItem {
     pub id: String,
     pub properties: StacProperties,
@@ -33,6 +34,7 @@ pub struct StacItem {
 }
 
 #[derive(Deserialize, Debug, Clone)]
+#[allow(dead_code)]
 pub struct StacProperties {
     #[serde(rename = "eo:cloud_cover")]
     pub cloud_cover: Option<f64>,
@@ -40,6 +42,7 @@ pub struct StacProperties {
 }
 
 #[derive(Deserialize, Debug, Clone)]
+#[allow(dead_code)]
 pub struct StacAsset {
     pub href: String,
     #[serde(rename = "type")]

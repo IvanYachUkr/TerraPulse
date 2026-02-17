@@ -147,9 +147,9 @@ pub fn extract_year_pair(
 
     let n_seasons = suffixes.len();
 
-    // Build column names
+    // Build column names for per-season features
     let base_names = features::feature_names();
-    let mut columns = Vec::with_capacity(n_seasons * features::N_FEAT + 3);
+    let mut columns = Vec::with_capacity(n_seasons * features::N_FEAT + 200);
     for suffix in &suffixes {
         for name in &base_names {
             columns.push(format!("{name}_{suffix}"));
@@ -172,9 +172,99 @@ pub fn extract_year_pair(
         rows.push(row);
     }
 
-    // Impute NaN values with column medians
+    // =========================================================================
+    // Phenological cross-season features (V4)
+    // For each year's 3 seasons (spring, summer, autumn), compute:
+    //   curvature = summer - (spring + autumn) / 2  (seasonal peak)
+    //   slope     = (autumn - spring) / 2           (greening/browning trend)
+    //   amplitude = max - min across 3 seasons       (seasonal variability)
+    //   peak      = argmax(spring, summer, autumn)   (timing of peak, 0/1/2)
+    // Applied to 10 band means + 5 key index means = 15 signals per year
+    // =========================================================================
+    if n_seasons >= 3 {
+        // Offsets of mean values within N_FEAT for each signal
+        // Bands: mean is at offset 0, 8, 16, ..., 72 (10 bands × 8 stats, mean is first)
+        // Indices: mean is at offset 80, 85, 90, ..., 150 (15 indices × 5 stats, mean is first)
+        // We use 10 bands + 5 key indices (NDVI, NDWI, NDBI, BSI, EVI2)
+        let band_mean_offsets: Vec<usize> = (0..10).map(|b| b * 8).collect();  // 0,8,16,...,72
+        // NDVI=0, NDWI=1, NDBI=2, BSI=11, EVI2=12 within the 15 indices
+        let idx_mean_offsets: Vec<usize> = vec![
+            80 + 0 * 5,   // NDVI mean
+            80 + 1 * 5,   // NDWI mean
+            80 + 2 * 5,   // NDBI mean
+            80 + 11 * 5,  // BSI mean
+            80 + 12 * 5,  // EVI2 mean
+        ];
+
+        let all_offsets: Vec<usize> = band_mean_offsets.iter()
+            .chain(idx_mean_offsets.iter())
+            .copied()
+            .collect();
+
+        let signal_names = [
+            "B02", "B03", "B04", "B05", "B06", "B07", "B08", "B8A", "B11", "B12",
+            "NDVI", "NDWI", "NDBI", "BSI", "EVI2",
+        ];
+
+        let pheno_names = ["curvature", "slope", "amplitude", "peak"];
+
+        // Process each year separately (seasons come in groups of 3)
+        let n_years = n_seasons / 3;
+        for yr_idx in 0..n_years {
+            let spring_season = yr_idx * 3;      // index 0 or 3
+            let summer_season = yr_idx * 3 + 1;  // index 1 or 4
+            let autumn_season = yr_idx * 3 + 2;  // index 2 or 5
+
+            let year_tag = &suffixes[spring_season]; // e.g. "2020_spring"
+            let year_label = year_tag.split('_').next().unwrap_or("unknown");
+
+            // Add column names for this year's phenological features
+            for sig_name in &signal_names {
+                for pheno in &pheno_names {
+                    columns.push(format!("{sig_name}_pheno_{pheno}_{year_label}"));
+                }
+            }
+
+            // Compute phenological features for each cell
+            for row in rows.iter_mut() {
+                for &offset in &all_offsets {
+                    let spring_val = row[spring_season * features::N_FEAT + offset];
+                    let summer_val = row[summer_season * features::N_FEAT + offset];
+                    let autumn_val = row[autumn_season * features::N_FEAT + offset];
+
+                    // curvature: summer peak relative to shoulders
+                    let curvature = summer_val - (spring_val + autumn_val) / 2.0;
+                    // slope: trend from spring to autumn
+                    let slope = (autumn_val - spring_val) / 2.0;
+                    // amplitude: max - min
+                    let mx = spring_val.max(summer_val).max(autumn_val);
+                    let mn = spring_val.min(summer_val).min(autumn_val);
+                    let amplitude = mx - mn;
+                    // peak_season: 0=spring, 1=summer, 2=autumn
+                    let peak = if summer_val >= spring_val && summer_val >= autumn_val {
+                        1.0f32
+                    } else if autumn_val >= spring_val {
+                        2.0f32
+                    } else {
+                        0.0f32
+                    };
+
+                    row.push(curvature);
+                    row.push(slope);
+                    row.push(amplitude);
+                    row.push(peak);
+                }
+            }
+        }
+
+        let n_pheno = all_offsets.len() * 4 * n_years;
+        println!("    Added {n_pheno} phenological features ({} signals × 4 pheno × {n_years} years)", all_offsets.len());
+    }
+
+    // Impute NaN values with column medians (covers all features including pheno)
+    let n_all_cols = rows.first().map_or(0, |r| r.len());
     let mut nan_count = 0u64;
-    for col in 0..n_total_feats {
+    for col in 0..n_all_cols {
         // Collect finite values for this column
         let mut vals: Vec<f32> = rows.iter()
             .map(|row| row[col])

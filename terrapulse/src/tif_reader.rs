@@ -39,56 +39,6 @@ fn deinterleave(interleaved: &[f32], n_pixels: usize, n_bands_total: usize, nb: 
     band_seq
 }
 
-/// Read a GeoTIFF and return band-sequential float32 data.
-///
-/// Returns (n_bands, height, width, data) where data is [n_bands * H * W]
-/// in band-sequential order.
-pub fn read_tif_bands(path: &Path, max_bands: usize) -> Result<(usize, usize, usize, Vec<f32>)> {
-    let (w, h, interleaved) = decode_interleaved_f32(path)?;
-    let n_pixels = h * w;
-    let total_samples = interleaved.len();
-
-    if n_pixels == 0 {
-        anyhow::bail!("Invalid image dimensions: {}x{}", w, h);
-    }
-    if total_samples % n_pixels != 0 {
-        anyhow::bail!(
-            "TIF data size mismatch: {} samples, {}x{} pixels",
-            total_samples, h, w
-        );
-    }
-
-    let n_bands_total = total_samples / n_pixels;
-    let nb = n_bands_total.min(max_bands);
-    let band_seq = deinterleave(&interleaved, n_pixels, n_bands_total, nb);
-
-    Ok((nb, h, w, band_seq))
-}
-
-/// Read only the valid_fraction band (band 11, 0-indexed = 10) from a TIF.
-/// Returns None if the TIF has fewer than 11 bands.
-pub fn read_valid_fraction(path: &Path) -> Result<Option<Vec<f32>>> {
-    let (w, h, interleaved) = decode_interleaved_f32(path)?;
-    let n_pixels = h * w;
-    if n_pixels == 0 || interleaved.len() % n_pixels != 0 {
-        return Ok(None);
-    }
-
-    let n_bands_total = interleaved.len() / n_pixels;
-    if n_bands_total < 11 {
-        return Ok(None);
-    }
-
-    let vf_band = 10;
-    let mut vf = vec![0.0f32; n_pixels];
-    for px in 0..n_pixels {
-        let v = interleaved[px * n_bands_total + vf_band];
-        vf[px] = if v > -9000.0 { v } else { f32::NAN };
-    }
-
-    Ok(Some(vf))
-}
-
 /// Decode once and extract both spectral bands AND valid_fraction,
 /// avoiding decoding the same file twice.
 pub fn read_tif_bands_and_valid_fraction(

@@ -418,7 +418,17 @@ def stage_download():
     for city in CITIES:
         for year in ALL_YEARS:
             for season in SEASONS:
-                download_season(city, year, season)
+                for attempt in range(3):
+                    try:
+                        download_season(city, year, season)
+                        break
+                    except Exception as e:
+                        if attempt < 2:
+                            print(f"  RETRY {attempt+1}/2: {city.name}/{year}/{season} ({e})")
+                            time.sleep(30)
+                        else:
+                            print(f"  FAILED after 3 attempts: {city.name}/{year}/{season}")
+                            print(f"    Error: {e}")
                 done += 1
     print(f"\n[{ts()}] Download stage complete ({done} TIFs).")
 
@@ -820,7 +830,7 @@ def load_nuremberg_validation_data(mlp_cols):
 
 
 def train_production_mlp(X_train, y_train, X_val, y_val,
-                         n_features, device, city_labels,
+                         n_features, device,
                          seed_offset=0):
     """
     Production MLP training with stratified batching and checkpoints.
@@ -876,10 +886,6 @@ def train_production_mlp(X_train, y_train, X_val, y_val,
     patience_epochs = max(math.ceil(PATIENCE_STEPS / steps_per_epoch), 5)
     min_epochs = max(math.ceil(MIN_STEPS / steps_per_epoch), 3)
 
-    # Create stratified sampler
-    sampler = StratifiedCitySampler(
-        y_train, city_labels, batch_size=batch_size, seed=actual_seed)
-
     has_bn = any(isinstance(m, nn.BatchNorm1d) for m in net.modules())
     loss_fn = soft_cross_entropy
 
@@ -890,13 +896,18 @@ def train_production_mlp(X_train, y_train, X_val, y_val,
     checkpoint_dir = os.path.join(MODELS_DIR, "checkpoints")
     os.makedirs(checkpoint_dir, exist_ok=True)
 
+    rng = np.random.RandomState(actual_seed)
+
     for epoch in range(MAX_EPOCHS):
         net.train()
         epoch_loss = 0.0
         n_batches = 0
 
-        for batch_idx in sampler:
-            idx_t = torch.tensor(batch_idx, device=device, dtype=torch.long)
+        # Standard random permutation batching
+        perm = rng.permutation(n)
+        for start in range(0, n, batch_size):
+            idx = perm[start:start + batch_size]
+            idx_t = torch.tensor(idx, device=device, dtype=torch.long)
             xb = X_trn_t[idx_t]
             yb = y_trn_t[idx_t]
             if has_bn and xb.size(0) < 2:
@@ -1059,7 +1070,7 @@ def stage_train():
             t0 = time.time()
             trained_net, n_epochs, best_val = train_production_mlp(
                 X_trn_scaled, y, X_val_scaled, y_val,
-                n_mlp, device, city_labels,
+                n_mlp, device,
                 seed_offset=seed_offset)
             elapsed = time.time() - t0
 
@@ -1094,9 +1105,9 @@ def stage_train():
         print(f"\n  [{ts()}] Evaluating 3-seed ensemble on Nuremberg...")
         preds_sum = np.zeros((len(X_val_scaled), N_CLASSES), dtype=np.float32)
         for seed_idx in range(N_SEEDS):
+            from scripts.run_mlp_overnight_v4 import build_model, _cfg
             cfg = _cfg(0, "bi_LBP", "plain", "silu",
                        MLP_DEPTH, MLP_WIDTH, "batchnorm")
-            from scripts.run_mlp_overnight_v4 import build_model
             net = build_model(cfg, n_mlp, device)
             net.load_state_dict(torch.load(
                 os.path.join(MODELS_DIR, f"mlp_seed{seed_idx}.pt"),

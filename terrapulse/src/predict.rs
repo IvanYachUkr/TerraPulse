@@ -9,7 +9,6 @@ use crate::config::{N_CLASSES, N_FOLDS};
 pub struct ScalerParams {
     pub mean: Vec<f64>,
     pub scale: Vec<f64>,
-    pub n_features: usize,
 }
 
 impl ScalerParams {

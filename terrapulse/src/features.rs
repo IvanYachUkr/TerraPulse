@@ -735,7 +735,7 @@ fn extract_cell_features(
     let re3 = &band_px[B07];
     let nir = &band_px[B08];
     let swir1 = &band_px[B11];
-    let swir2 = &band_px[B12];
+    let _swir2 = &band_px[B12];
 
     let mut idx_px = [0.0f32; N_PX];
 

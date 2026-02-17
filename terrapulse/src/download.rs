@@ -1,8 +1,3 @@
-//! Parallel Sentinel-2 band downloader + median compositing.
-//!
-//! Fetches COG data, does cloud masking, and writes composites via
-//! a small Python/rasterio helper for reprojection + GeoTIFF writing.
-
 use anyhow::{Context, Result};
 use reqwest::Client;
 use std::collections::HashMap;
@@ -11,26 +6,8 @@ use std::process::Command;
 
 use crate::stac::{self, StacItem};
 
-const SENTINEL_NODATA: f32 = -9999.0;
-const SCL_EXCLUDE: [u8; 8] = [0, 1, 2, 3, 8, 9, 10, 11];
 const MIN_SCENES: usize = 8;
 
-/// Download a single band from a signed URL. Returns raw bytes.
-async fn download_band_bytes(client: &Client, signed_url: &str) -> Result<Vec<u8>> {
-    let resp = client
-        .get(signed_url)
-        .send()
-        .await
-        .context("Band download failed")?;
-
-    let status = resp.status();
-    if !status.is_success() {
-        anyhow::bail!("Band download returned {status}");
-    }
-
-    let bytes = resp.bytes().await.context("Failed to read band bytes")?;
-    Ok(bytes.to_vec())
-}
 
 /// Download one season's composite and write it to a GeoTIFF.
 ///

@@ -3,49 +3,87 @@ use std::path::Path;
 
 /// Read a feature parquet file and return (column_names, data_matrix).
 /// data_matrix is row-major: [n_cells, n_features].
+///
+/// Uses Arrow RecordBatch reader for columnar access (much faster than row iteration).
 pub fn read_feature_parquet(path: &Path) -> Result<(Vec<String>, Vec<Vec<f32>>)> {
-    use parquet::file::reader::FileReader;
-    use parquet::file::serialized_reader::SerializedFileReader;
-    use parquet::record::RowAccessor;
+    use arrow::array::{AsArray, Array};
+    use arrow::datatypes::*;
+    use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 
     let file = std::fs::File::open(path)
         .with_context(|| format!("Cannot open parquet: {}", path.display()))?;
-    let reader = SerializedFileReader::new(file)?;
 
-    let metadata = reader.metadata();
-    let schema = metadata.file_metadata().schema();
-    let n_cols = schema.get_fields().len();
+    let builder = ParquetRecordBatchReaderBuilder::try_new(file)?;
+    let schema = builder.schema().clone();
+    let n_cols = schema.fields().len();
+    let col_names: Vec<String> = schema.fields().iter().map(|f| f.name().clone()).collect();
 
-    // Get column names
-    let col_names: Vec<String> = schema
-        .get_fields()
-        .iter()
-        .map(|f| f.name().to_string())
-        .collect();
+    let reader = builder.build()?;
 
-    // Read all rows
+    // Read all batches and accumulate rows
     let mut rows: Vec<Vec<f32>> = Vec::new();
-    let iter = reader.get_row_iter(None)?;
-    for record in iter {
-        let record = record?;
-        let mut row = Vec::with_capacity(n_cols);
-        for i in 0..n_cols {
-            let val = match record.get_double(i) {
-                Ok(v) => v as f32,
-                Err(_) => match record.get_float(i) {
-                    Ok(v) => v,
-                    Err(_) => match record.get_long(i) {
-                        Ok(v) => v as f32,
-                        Err(_) => match record.get_int(i) {
-                            Ok(v) => v as f32,
-                            Err(_) => f32::NAN,
-                        },
-                    },
-                },
-            };
-            row.push(val);
+
+    for batch_result in reader {
+        let batch = batch_result?;
+        let n_rows = batch.num_rows();
+        let batch_start = rows.len();
+
+        // Extend rows for this batch
+        rows.resize_with(batch_start + n_rows, || vec![0.0f32; n_cols]);
+
+        // Read each column and fill into rows (columnar -> row-major)
+        for col_idx in 0..n_cols {
+            let col = batch.column(col_idx);
+
+            match col.data_type() {
+                DataType::Float32 => {
+                    let arr = col.as_primitive::<Float32Type>();
+                    for r in 0..n_rows {
+                        rows[batch_start + r][col_idx] = if arr.is_null(r) {
+                            f32::NAN
+                        } else {
+                            arr.value(r)
+                        };
+                    }
+                }
+                DataType::Float64 => {
+                    let arr = col.as_primitive::<Float64Type>();
+                    for r in 0..n_rows {
+                        rows[batch_start + r][col_idx] = if arr.is_null(r) {
+                            f32::NAN
+                        } else {
+                            arr.value(r) as f32
+                        };
+                    }
+                }
+                DataType::Int64 => {
+                    let arr = col.as_primitive::<Int64Type>();
+                    for r in 0..n_rows {
+                        rows[batch_start + r][col_idx] = if arr.is_null(r) {
+                            f32::NAN
+                        } else {
+                            arr.value(r) as f32
+                        };
+                    }
+                }
+                DataType::Int32 => {
+                    let arr = col.as_primitive::<Int32Type>();
+                    for r in 0..n_rows {
+                        rows[batch_start + r][col_idx] = if arr.is_null(r) {
+                            f32::NAN
+                        } else {
+                            arr.value(r) as f32
+                        };
+                    }
+                }
+                _ => {
+                    // Unknown type, fill with NaN
+                    for r in 0..n_rows {
+                        rows[batch_start + r][col_idx] = f32::NAN;
+                    }
+                }
+            }
         }
-        rows.push(row);
     }
 
     Ok((col_names, rows))
