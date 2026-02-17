@@ -82,3 +82,5 @@ models/final_mlp_pyv3/
 
 terrapulse/target/
 scripts/_check_feature_cols.py
+scripts/_tmp_check.py
+scripts/_tmp_check2.py
