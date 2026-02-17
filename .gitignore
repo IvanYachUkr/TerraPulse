@@ -29,7 +29,6 @@ research/
 venv/
 env/
 *.env
-*.agent
 
 # === IDE ===
 .vscode/
@@ -48,6 +47,7 @@ desktop.ini
 
 # === Rust ===
 rust_features/target/
+terrapulse/target/
 *.pyd
 
 # === Misc ===
@@ -70,6 +70,9 @@ _shap_cache.pkl
 
 # === Temp debug/verification scripts ===
 scripts/_tmp_*.py
+scripts/_scan_*.py
+_watcher.ps1
+_assignment_text.txt
 
 # === Model weights (large binary files) ===
 models/final_mlp_rust/
