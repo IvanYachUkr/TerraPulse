@@ -5,6 +5,7 @@ import MapView from './components/MapView.jsx';
 import CellInspector from './components/CellInspector.jsx';
 import ModelComparison from './components/ModelComparison.jsx';
 import EvaluationPanel from './components/EvaluationPanel.jsx';
+import DeployView from './components/DeployView.jsx';
 import { useApi } from './hooks/useApi.js';
 
 const CLASSES = ['tree_cover', 'grassland', 'cropland', 'built_up', 'bare_sparse', 'water'];
@@ -33,6 +34,7 @@ const LABEL_YEARS = [2020, 2021];
 const ALL_YEARS = [2020, 2021, 2022, 2023, 2024, 2025];
 
 export default function App() {
+    const [appMode, setAppMode] = useState('analytical');
     const [selectedModel, setSelectedModel] = useState('mlp');
     const [viewMode, setViewMode] = useState('labels');
     const [selectedYear, setSelectedYear] = useState(2021);
@@ -140,85 +142,91 @@ export default function App() {
                 onToggleComparison={() => setShowComparison(!showComparison)}
                 showEvaluation={showEvaluation}
                 onToggleEvaluation={() => setShowEvaluation(!showEvaluation)}
+                appMode={appMode}
+                onAppModeChange={setAppMode}
             />
-            <div className="app-layout">
-                {sidebarOpen && (
-                    <Sidebar
-                        models={models}
-                        selectedModel={selectedModel}
-                        onModelChange={setSelectedModel}
+            {appMode === 'deploy' ? (
+                <DeployView />
+            ) : (
+                <div className="app-layout">
+                    {sidebarOpen && (
+                        <Sidebar
+                            models={models}
+                            selectedModel={selectedModel}
+                            onModelChange={setSelectedModel}
+                            viewMode={viewMode}
+                            onViewModeChange={setViewMode}
+                            selectedYear={selectedYear}
+                            onYearChange={setSelectedYear}
+                            selectedClass={selectedClass}
+                            onClassChange={setSelectedClass}
+                            classes={CLASSES}
+                            classLabels={CLASS_LABELS}
+                            classColors={CLASS_COLORS}
+                            labelYears={LABEL_YEARS}
+                            allYears={ALL_YEARS}
+                            changeYearFrom={changeYearFrom}
+                            changeYearTo={changeYearTo}
+                            onChangeYearFrom={setChangeYearFrom}
+                            onChangeYearTo={setChangeYearTo}
+                            searchCellId={searchCellId}
+                            onSearchCellId={handleSearchCell}
+                        />
+                    )}
+                    <MapView
+                        grid={grid}
+                        viewData={getViewData()}
                         viewMode={viewMode}
-                        onViewModeChange={setViewMode}
                         selectedYear={selectedYear}
-                        onYearChange={setSelectedYear}
                         selectedClass={selectedClass}
-                        onClassChange={setSelectedClass}
+                        selectedModel={selectedModel}
+                        predictions={predictions}
+                        labels2020={labels2020}
+                        labels2021={labels2021}
+                        changeData={computedChangeData}
+                        splitData={splitData}
+                        classColors={CLASS_COLORS}
                         classes={CLASSES}
                         classLabels={CLASS_LABELS}
-                        classColors={CLASS_COLORS}
-                        labelYears={LABEL_YEARS}
-                        allYears={ALL_YEARS}
-                        changeYearFrom={changeYearFrom}
-                        changeYearTo={changeYearTo}
-                        onChangeYearFrom={setChangeYearFrom}
-                        onChangeYearTo={setChangeYearTo}
+                        loading={gridLoading}
+                        onCellClick={setSelectedCell}
+                        selectedCell={selectedCell}
+                        isFutureYear={false}
                         searchCellId={searchCellId}
-                        onSearchCellId={handleSearchCell}
                     />
-                )}
-                <MapView
-                    grid={grid}
-                    viewData={getViewData()}
-                    viewMode={viewMode}
-                    selectedYear={selectedYear}
-                    selectedClass={selectedClass}
-                    selectedModel={selectedModel}
-                    predictions={predictions}
-                    labels2020={labels2020}
-                    labels2021={labels2021}
-                    changeData={computedChangeData}
-                    splitData={splitData}
-                    classColors={CLASS_COLORS}
-                    classes={CLASSES}
-                    classLabels={CLASS_LABELS}
-                    loading={gridLoading}
-                    onCellClick={setSelectedCell}
-                    selectedCell={selectedCell}
-                    isFutureYear={false}
-                    searchCellId={searchCellId}
-                />
-                {showComparison && (
-                    <div className="comparison-panel">
-                        <div className="inspector-header">
-                            <span className="inspector-title">Model Comparison</span>
-                            <button className="inspector-close" onClick={() => setShowComparison(false)}>
-                                &times;
-                            </button>
+                    {showComparison && (
+                        <div className="comparison-panel">
+                            <div className="inspector-header">
+                                <span className="inspector-title">Model Comparison</span>
+                                <button className="inspector-close" onClick={() => setShowComparison(false)}>
+                                    &times;
+                                </button>
+                            </div>
+                            <ModelComparison models={models} evaluation={evaluationData} />
                         </div>
-                        <ModelComparison models={models} evaluation={evaluationData} />
-                    </div>
-                )}
-                {showEvaluation && (
-                    <EvaluationPanel
-                        evaluation={evaluationData}
-                        stressTests={stressTestsData}
-                        failureAnalysis={failureData}
-                        explainability={explainData}
-                        onClose={() => setShowEvaluation(false)}
+                    )}
+                    {showEvaluation && (
+                        <EvaluationPanel
+                            evaluation={evaluationData}
+                            stressTests={stressTestsData}
+                            failureAnalysis={failureData}
+                            explainability={explainData}
+                            onClose={() => setShowEvaluation(false)}
+                        />
+                    )}
+                    <CellInspector
+                        cellDetail={cellDetail}
+                        selectedCell={selectedCell}
+                        onClose={() => setSelectedCell(null)}
+                        classLabels={CLASS_LABELS}
+                        classColors={CLASS_COLORS}
+                        classes={CLASSES}
+                        models={models}
+                        selectedModel={selectedModel}
+                        conformal={conformal}
                     />
-                )}
-                <CellInspector
-                    cellDetail={cellDetail}
-                    selectedCell={selectedCell}
-                    onClose={() => setSelectedCell(null)}
-                    classLabels={CLASS_LABELS}
-                    classColors={CLASS_COLORS}
-                    classes={CLASSES}
-                    models={models}
-                    selectedModel={selectedModel}
-                    conformal={conformal}
-                />
-            </div>
+                </div>
+            )}
         </>
     );
 }

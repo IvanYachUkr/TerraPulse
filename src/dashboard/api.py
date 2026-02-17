@@ -16,6 +16,8 @@ from functools import lru_cache
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
+from typing import List
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -287,3 +289,72 @@ def meta():
             "water": "#0096c7",
         },
     }
+
+
+# ---------------------------------------------------------------------------
+# Deploy endpoints
+# ---------------------------------------------------------------------------
+from src.dashboard import deploy_runner
+
+
+class DeployRequest(BaseModel):
+    bbox: List[float]   # [west, south, east, north] WGS84
+    years: List[int]    # e.g. [2020, 2021, 2022, 2023, 2024, 2025]
+
+
+@app.post("/api/deploy")
+def deploy_submit(req: DeployRequest):
+    """Submit a new deploy job."""
+    if len(req.bbox) != 4:
+        raise HTTPException(400, "bbox must have 4 elements")
+    if not req.years:
+        raise HTTPException(400, "years must not be empty")
+    job_id = deploy_runner.submit_job(req.bbox, req.years)
+    return {"job_id": job_id}
+
+
+@app.get("/api/deploy/status/{job_id}")
+def deploy_status(job_id: str):
+    """Get deploy job status."""
+    job = deploy_runner.get_job(job_id)
+    if not job:
+        raise HTTPException(404, "Job not found")
+    return {
+        "job_id": job.job_id,
+        "status": job.status,
+        "progress": job.progress,
+        "stage": job.stage,
+        "messages": job.messages[-20:],
+        "error": job.error,
+        "grid_cells": job.grid_cells,
+        "result_years": sorted(job.result_years),
+        "bbox": job.bbox,
+        "epsg": job.epsg,
+    }
+
+
+@app.get("/api/deploy/results/{job_id}/{year}")
+def deploy_results(job_id: str, year: int):
+    """Get prediction results for a deployed region and year."""
+    result = deploy_runner.get_results(job_id, year)
+    if result is None:
+        raise HTTPException(404, "Results not found")
+    return result
+
+
+@app.get("/api/deploy/grid/{job_id}")
+def deploy_grid(job_id: str):
+    """Get grid GeoJSON for a deployed region."""
+    grid_data = deploy_runner.get_grid(job_id)
+    if grid_data is None:
+        raise HTTPException(404, "Grid not found")
+    return JSONResponse(content=grid_data, media_type="application/geo+json")
+
+
+@app.get("/api/deploy/labels/{job_id}/{year}")
+def deploy_labels(job_id: str, year: int):
+    """Get ground-truth labels for a deployed region and year."""
+    labels_data = deploy_runner.get_labels(job_id, year)
+    if labels_data is None:
+        raise HTTPException(404, "Labels not found")
+    return labels_data
