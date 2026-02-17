@@ -1,0 +1,41 @@
+{
+  "model_name": "T_512_256_128",
+  "architecture": "TaperedMLP (funnel)",
+  "shape": "1464 -> 512 -> 256 -> 128 -> 6",
+  "widths": [
+    512,
+    256,
+    128
+  ],
+  "n_params": 916870,
+  "activation": "silu",
+  "norm": "batchnorm",
+  "dropout": 0.15,
+  "input_dropout": 0.05,
+  "weight_decay": 0.0003,
+  "lr": 0.001,
+  "batch_size": 2048,
+  "seed_offset": 100,
+  "n_features": 1464,
+  "feature_set": "all (including edge, laplacian, morans_I)",
+  "training_cities": 14,
+  "val_city": "nuremberg",
+  "best_epoch": 23,
+  "total_epochs": 51,
+  "patience_steps": 5000,
+  "performance": {
+    "r2_overall": 0.8619,
+    "mae_pp": 2.43,
+    "per_class_r2": {
+      "tree_cover": 0.9668,
+      "grassland": 0.8613,
+      "cropland": 0.9281,
+      "built_up": 0.9657,
+      "bare_sparse": 0.5161,
+      "water": 0.9331
+    }
+  },
+  "training_time_s": 71,
+  "date": "2026-02-17",
+  "notes": "Best architecture from 12-config sweep (4 constant-width + 8 tapered). Uses all 1464 features including 36 previously-excluded spatial features."
+}
