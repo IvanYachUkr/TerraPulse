@@ -81,3 +81,4 @@ models/final_mlp_rust/
 models/final_mlp_pyv3/
 
 terrapulse/target/
+scripts/_check_feature_cols.py
