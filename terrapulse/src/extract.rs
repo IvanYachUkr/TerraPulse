@@ -5,6 +5,7 @@ use anyhow::Result;
 use std::path::{Path, PathBuf};
 
 use crate::features;
+use crate::sar_features;
 use crate::parquet_io;
 use crate::tif_reader;
 
@@ -156,7 +157,7 @@ pub fn extract_year_pair(
         }
     }
 
-    // Build row data [n_cells][n_features_total]
+    // Build row data [n_cells][n_features_total] from optical features
     let n_total_feats = n_seasons * features::N_FEAT;
     let mut rows: Vec<Vec<f32>> = Vec::with_capacity(n_cells);
     for ci in 0..n_cells {
@@ -170,6 +171,101 @@ pub fn extract_year_pair(
             }
         }
         rows.push(row);
+    }
+
+    // =========================================================================
+    // SAR feature extraction (optional — backward-compatible)
+    // =========================================================================
+    let mut has_sar = true;
+    let mut sar_spectral_list: Vec<Vec<f32>> = Vec::new();
+
+    for (actual_year, season) in jobs.iter() {
+        let sar_tif = raw_dir.join(format!("sentinel1_{region_name}_{actual_year}_{season}.tif"));
+        if !sar_tif.exists() {
+            has_sar = false;
+            break;
+        }
+    }
+
+    if has_sar {
+        println!("    SAR TIFs detected — extracting SAR features");
+        for (actual_year, season) in jobs.iter() {
+            let sar_tif = raw_dir.join(format!("sentinel1_{region_name}_{actual_year}_{season}.tif"));
+            let t_read = std::time::Instant::now();
+
+            let (nb, _h, _w, mut data, _vf) =
+                tif_reader::read_tif_bands_and_valid_fraction(&sar_tif, sar_features::N_SAR_BANDS)?;
+
+            assert!(nb >= sar_features::N_SAR_BANDS, "SAR TIF has {nb} bands, need {}", sar_features::N_SAR_BANDS);
+
+            // Replace NODATA with NaN
+            for v in data.iter_mut() {
+                if *v == NODATA {
+                    *v = f32::NAN;
+                }
+            }
+
+            // SAR data should already be in [0,1] after dB conversion + scaling in Python.
+            // But if raw linear power values are present, detect and convert.
+            let mut finite_sum = 0.0f64;
+            let mut finite_n = 0u64;
+            for &v in data.iter().take(10000) {
+                if v.is_finite() && v > 0.0 {
+                    finite_sum += v as f64;
+                    finite_n += 1;
+                }
+            }
+            if finite_n > 0 {
+                let mean_val = finite_sum / finite_n as f64;
+                if mean_val > 1.5 {
+                    // Likely raw linear power, convert to dB then scale to [0,1]
+                    println!("      SAR: converting from linear power (mean={mean_val:.3}) to [0,1]");
+                    for v in data.iter_mut() {
+                        if v.is_finite() && *v > 0.0 {
+                            let db = 10.0 * v.log10();
+                            // Clamp to [-30, 0] and scale to [0, 1]
+                            *v = (db.clamp(-30.0, 0.0) + 30.0) / 30.0;
+                        } else if v.is_finite() {
+                            *v = 0.0; // zero or negative power → 0
+                        }
+                    }
+                }
+            }
+
+            let read_ms = t_read.elapsed().as_millis();
+            println!("      Loaded SAR {actual_year}_{season} ({read_ms}ms)");
+            sar_spectral_list.push(data);
+        }
+
+        // Run SAR extraction
+        let t1 = std::time::Instant::now();
+        let sar_flat = sar_features::extract_all_sar_seasons(&sar_spectral_list, nr, nc);
+        let dt = t1.elapsed().as_secs_f64();
+        println!("    SAR extraction: {dt:.1}s for {} seasons", sar_spectral_list.len());
+        drop(sar_spectral_list);
+
+        // Add SAR column names
+        let sar_base_names = sar_features::sar_feature_names();
+        for suffix in &suffixes {
+            for name in &sar_base_names {
+                columns.push(format!("{name}_{suffix}"));
+            }
+        }
+
+        // Append SAR features to each row
+        let n_sar_total = n_seasons * sar_features::N_SAR_FEAT;
+        for ci in 0..n_cells {
+            let base = ci * n_sar_total;
+            let sar_row: Vec<f32> = sar_flat[base..base + n_sar_total]
+                .iter()
+                .map(|&v| if v.is_finite() { v } else { f32::NAN })
+                .collect();
+            rows[ci].extend_from_slice(&sar_row);
+        }
+
+        println!("    Added {} SAR columns per cell", n_sar_total);
+    } else {
+        println!("    No SAR TIFs found — optical-only mode (backward-compatible)");
     }
 
     // =========================================================================
@@ -258,7 +354,74 @@ pub fn extract_year_pair(
         }
 
         let n_pheno = all_offsets.len() * 4 * n_years;
-        println!("    Added {n_pheno} phenological features ({} signals × 4 pheno × {n_years} years)", all_offsets.len());
+        println!("    Added {n_pheno} optical phenological features ({} signals x 4 pheno x {n_years} years)", all_offsets.len());
+
+        // =====================================================================
+        // SAR Phenological cross-season features
+        // For each year's 3 SAR seasons, compute curvature/slope/amplitude/peak
+        // Applied to: VV_mean, VH_mean, CR_mean, RVI_mean = 4 signals per year
+        // =====================================================================
+        if has_sar {
+            // SAR feature offsets within N_SAR_FEAT (48):
+            // VV_mean = offset 0, VH_mean = offset 8
+            // CR_mean = offset 16, RVI_mean = offset 21
+            let sar_mean_offsets: Vec<usize> = vec![0, 8, 16, 21];
+            let sar_signal_names = ["SAR_VV", "SAR_VH", "SAR_CR", "SAR_RVI"];
+            let pheno_names_sar = ["curvature", "slope", "amplitude", "peak"];
+
+            // SAR features start after optical features in each row
+            let optical_per_season = features::N_FEAT;
+            let sar_per_season = sar_features::N_SAR_FEAT;
+            // In the row layout:
+            // [optical_season_0..optical_season_N | sar_season_0..sar_season_N | ...]
+            // Optical: n_seasons * N_FEAT columns from index 0
+            // SAR: n_seasons * N_SAR_FEAT columns from index (n_seasons * N_FEAT)
+            let sar_base_offset = n_seasons * optical_per_season;
+
+            for yr_idx in 0..n_years {
+                let spring_season = yr_idx * 3;
+                let summer_season = yr_idx * 3 + 1;
+                let autumn_season = yr_idx * 3 + 2;
+
+                let year_tag = &suffixes[spring_season];
+                let year_label = year_tag.split('_').next().unwrap_or("unknown");
+
+                for sig_name in &sar_signal_names {
+                    for pheno in &pheno_names_sar {
+                        columns.push(format!("{sig_name}_pheno_{pheno}_{year_label}"));
+                    }
+                }
+
+                for row in rows.iter_mut() {
+                    for &offset in &sar_mean_offsets {
+                        let spring_val = row[sar_base_offset + spring_season * sar_per_season + offset];
+                        let summer_val = row[sar_base_offset + summer_season * sar_per_season + offset];
+                        let autumn_val = row[sar_base_offset + autumn_season * sar_per_season + offset];
+
+                        let curvature = summer_val - (spring_val + autumn_val) / 2.0;
+                        let slope = (autumn_val - spring_val) / 2.0;
+                        let mx = spring_val.max(summer_val).max(autumn_val);
+                        let mn = spring_val.min(summer_val).min(autumn_val);
+                        let amplitude = mx - mn;
+                        let peak = if summer_val >= spring_val && summer_val >= autumn_val {
+                            1.0f32
+                        } else if autumn_val >= spring_val {
+                            2.0f32
+                        } else {
+                            0.0f32
+                        };
+
+                        row.push(curvature);
+                        row.push(slope);
+                        row.push(amplitude);
+                        row.push(peak);
+                    }
+                }
+            }
+
+            let n_sar_pheno = sar_mean_offsets.len() * 4 * n_years;
+            println!("    Added {n_sar_pheno} SAR phenological features ({} signals x 4 pheno x {n_years} years)", sar_mean_offsets.len());
+        }
     }
 
     // Impute NaN values with column medians (covers all features including pheno)

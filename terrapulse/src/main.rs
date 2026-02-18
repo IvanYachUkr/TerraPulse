@@ -4,6 +4,7 @@ mod extract;
 mod features;
 mod parquet_io;
 mod predict;
+mod sar_features;
 mod stac;
 mod tif_reader;
 

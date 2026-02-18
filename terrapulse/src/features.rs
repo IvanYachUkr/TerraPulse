@@ -6,11 +6,11 @@ use rayon::prelude::*;
 pub const GP: usize = 10;
 const N_PX: usize = GP * GP; // 100 pixels per cell
 pub const N_BANDS: usize = 10;
-const EPS: f32 = 1e-10;
+pub(crate) const EPS: f32 = 1e-10;
 
 // LBP parameters
 const LBP_P: usize = 8;
-const LBP_BINS: usize = LBP_P + 2; // 10 bins: 0..8 uniform, 9 non-uniform
+pub(crate) const LBP_BINS: usize = LBP_P + 2; // 10 bins: 0..8 uniform, 9 non-uniform
 
 // Band layout (must match Python's order)
 const B02: usize = 0;
@@ -66,7 +66,7 @@ fn reflect_index(mut i: isize, len: isize) -> isize {
 // LBP: uniform LUT + bilinear sampling
 // =====================================================================
 
-fn build_lbp_lut() -> [u8; 256] {
+pub(crate) fn build_lbp_lut() -> [u8; 256] {
     let mut lut = [0u8; 256];
     for val in 0u16..256 {
         let v = val as u8;
@@ -117,7 +117,7 @@ fn bilinear_constant_zero(img: &[f32], h: usize, w: usize, ry: f64, rx: f64) -> 
     (1.0 - dr) * top + dr * bottom
 }
 
-fn compute_lbp_raster(img: &[f32], h: usize, w: usize, lut: &[u8; 256]) -> Vec<u8> {
+pub(crate) fn compute_lbp_raster(img: &[f32], h: usize, w: usize, lut: &[u8; 256]) -> Vec<u8> {
     // skimage rounds offsets to 5 decimals: np.round(rr, 5)
     // Using 0.70711 instead of FRAC_1_SQRT_2 to match exactly.
     let s2: f64 = 0.70711;
@@ -184,7 +184,7 @@ fn bilinear_patch_constant_zero(patch: &[f32; N_PX], ry: f64, rx: f64) -> f64 {
 /// `raw_img` is the RAW band data (may contain NaN/non-finite).
 /// `clip_01` indicates whether to clip values to [0, 1] (true for spectral bands,
 ///   false for index images already in [0, 1]).
-fn compute_lbp_perpatch(
+pub(crate) fn compute_lbp_perpatch(
     raw_img: &[f32],
     h: usize,
     w: usize,
@@ -335,7 +335,7 @@ fn compute_laplacian(img: &[f32], h: usize, w: usize) -> Vec<f32> {
 // Image preparation helpers
 // =====================================================================
 
-fn clean_band_nan_fill(raw: &[f32], h: usize, w: usize) -> Vec<f32> {
+pub(crate) fn clean_band_nan_fill(raw: &[f32], h: usize, w: usize) -> Vec<f32> {
     let mut sum = 0.0f64;
     let mut n = 0u64;
     for &v in &raw[..h * w] {
@@ -383,7 +383,7 @@ fn safe_ratio(a: f32, b: f32) -> f32 {
 // =====================================================================
 
 #[inline(always)]
-fn percentile_linear(sorted: &[f32], q: f32) -> f32 {
+pub(crate) fn percentile_linear(sorted: &[f32], q: f32) -> f32 {
     let n = sorted.len();
     if n == 0 {
         return f32::NAN;
@@ -400,7 +400,7 @@ fn percentile_linear(sorted: &[f32], q: f32) -> f32 {
 
 /// 8 stats: mean, std, min, max, q25, median, q75, finite_frac
 /// Uses np.percentile-compatible linear interpolation on finite-only values.
-fn cell_stats_8(px: &[f32; N_PX]) -> [f32; 8] {
+pub(crate) fn cell_stats_8(px: &[f32; N_PX]) -> [f32; 8] {
     let mut vals = [0.0f32; N_PX];
     let mut n: usize = 0;
 
@@ -511,13 +511,13 @@ fn cell_stats_8_dyn(px: &[f32], total_size: usize) -> [f32; 8] {
 }
 
 #[inline(always)]
-fn cell_stats_5(px: &[f32; N_PX]) -> [f32; 5] {
+pub(crate) fn cell_stats_5(px: &[f32; N_PX]) -> [f32; 5] {
     let s = cell_stats_8(px);
     [s[0], s[1], s[4], s[5], s[6]]
 }
 
 #[inline(always)]
-fn extract_cell(img: &[f32], w: usize, cr: usize, cc: usize) -> [f32; N_PX] {
+pub(crate) fn extract_cell(img: &[f32], w: usize, cr: usize, cc: usize) -> [f32; N_PX] {
     let mut px = [0.0f32; N_PX];
     let r0 = cr * GP;
     let c0 = cc * GP;
@@ -528,7 +528,7 @@ fn extract_cell(img: &[f32], w: usize, cr: usize, cc: usize) -> [f32; N_PX] {
     px
 }
 
-fn cell_lbp_hist(lbp: &[u8], w: usize, cr: usize, cc: usize) -> [f32; LBP_BINS + 1] {
+pub(crate) fn cell_lbp_hist(lbp: &[u8], w: usize, cr: usize, cc: usize) -> [f32; LBP_BINS + 1] {
     let mut counts = [0u32; LBP_BINS];
     let r0 = cr * GP;
     let c0 = cc * GP;
