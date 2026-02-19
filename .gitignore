@@ -54,33 +54,24 @@ terrapulse/target/
 _pdf_extracted.txt
 cache/
 *.log
-
 catboost_info/
 
-# === Ad-hoc debug/verification scripts ===
-scripts/_compare_*.py
-scripts/_debug_*.py
-scripts/_verify_*.py
-scripts/_lbp_compare.py
-scripts/_root_cause.py
-scripts/_extract_v4_raster.py
+# === Ad-hoc debug/analysis scripts (underscore-prefixed) ===
+scripts/_*.py
+_check_*.py
+_compare_*.py
+_debug_*.py
 
 # Phase 10 SHAP cache (large)
 _shap_cache.pkl
 
-# === Temp debug/verification scripts ===
-scripts/_tmp_*.py
-scripts/_scan_*.py
+# === Temp files ===
 _watcher.ps1
 _assignment_text.txt
-_compare_*.py
-_debug_*.py
 
 # === Model weights (large binary files) ===
 models/final_mlp_rust/
 models/final_mlp_pyv3/
 
-terrapulse/target/
-scripts/_check_feature_cols.py
-scripts/_tmp_check.py
-scripts/_tmp_check2.py
+# === CSV results ===
+*.csv
