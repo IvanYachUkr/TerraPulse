@@ -10,7 +10,7 @@ use std::path::Path;
 
 use crate::cog::{self, PixelBbox};
 use crate::composite::AnchorRef;
-use crate::reproject::GeoTransform;
+use crate::reproject::{GeoTransform, bilinear_interp};
 use crate::stac;
 
 /// Maximum raw DN value for scaling S1 amplitudes to [0, 1].
@@ -18,60 +18,6 @@ const MAX_DN: f32 = 2000.0;
 
 /// SAR nodata value (matches Python: -9999).
 const SAR_NODATA: f32 = -9999.0;
-
-// ---- WGS84 → UTM forward projection ----
-
-/// Convert WGS84 (lon, lat) to UTM (easting, northing) given the zone number.
-/// Implements the exact UTM forward projection formulas.
-fn wgs84_to_utm(lon_deg: f64, lat_deg: f64, zone: u32) -> (f64, f64) {
-    use std::f64::consts::PI;
-
-    let a = 6378137.0; // WGS84 semi-major axis
-    let f = 1.0 / 298.257223563; // WGS84 flattening
-    let e2 = 2.0 * f - f * f; // eccentricity squared
-    let e_prime2 = e2 / (1.0 - e2);
-    let k0 = 0.9996; // UTM scale factor
-
-    let lon0 = ((zone as f64 - 1.0) * 6.0 - 180.0 + 3.0) * PI / 180.0;
-
-    let lat = lat_deg * PI / 180.0;
-    let lon = lon_deg * PI / 180.0;
-
-    let n = a / (1.0 - e2 * lat.sin().powi(2)).sqrt();
-    let t = lat.tan().powi(2);
-    let c = e_prime2 * lat.cos().powi(2);
-    let aa = (lon - lon0) * lat.cos();
-
-    let m = a * ((1.0 - e2 / 4.0 - 3.0 * e2.powi(2) / 64.0 - 5.0 * e2.powi(3) / 256.0) * lat
-        - (3.0 * e2 / 8.0 + 3.0 * e2.powi(2) / 32.0 + 45.0 * e2.powi(3) / 1024.0)
-            * (2.0 * lat).sin()
-        + (15.0 * e2.powi(2) / 256.0 + 45.0 * e2.powi(3) / 1024.0) * (4.0 * lat).sin()
-        - (35.0 * e2.powi(3) / 3072.0) * (6.0 * lat).sin());
-
-    let easting = k0
-        * n
-        * (aa
-            + (1.0 - t + c) * aa.powi(3) / 6.0
-            + (5.0 - 18.0 * t + t.powi(2) + 72.0 * c - 58.0 * e_prime2) * aa.powi(5) / 120.0)
-        + 500000.0; // false easting
-
-    let northing = k0
-        * (m
-            + n
-                * lat.tan()
-                * (aa.powi(2) / 2.0
-                    + (5.0 - t + 9.0 * c + 4.0 * c.powi(2)) * aa.powi(4) / 24.0
-                    + (61.0 - 58.0 * t + t.powi(2) + 600.0 * c - 330.0 * e_prime2) * aa.powi(6)
-                        / 720.0));
-
-    // Northern hemisphere: no false northing
-    (easting, northing)
-}
-
-/// Determine UTM zone from longitude.
-fn utm_zone_from_lon(lon: f64) -> u32 {
-    ((lon + 180.0) / 6.0).floor() as u32 + 1
-}
 
 // ---- GCP handling ----
 
@@ -258,8 +204,8 @@ fn inverse_bilinear(
 ///   [I, J, K, X, Y, Z, I, J, K, X, Y, Z, ...]
 /// where I,J = pixel coords and X,Y = geo coords.
 async fn read_gcps_from_cog(client: &Client, url: &str) -> Result<Vec<Gcp>> {
-    // Read the COG metadata (which parses tiepoint tags)
-    let meta = cog::read_cog_meta(client, url).await
+    // Read the COG metadata (to validate the URL is accessible)
+    let _meta = cog::read_cog_meta(client, url).await
         .context("Failed to read S1 COG metadata for GCPs")?;
 
     // For GCP-referenced TIFFs, the tiepoint array has more than 6 elements.
@@ -390,8 +336,6 @@ pub async fn download_sar_composite(
     let dst_h = anchor.height;
     let n_pixels = dst_w * dst_h;
     let gt = &anchor.geo_transform;
-    let center_x = gt.origin_x + dst_w as f64 * gt.pixel_size_x / 2.0;
-    // Convert UTM easting to approximate longitude for zone
     let utm_zone = utm_zone_from_epsg(anchor.epsg);
 
     let dst_gt = gt.clone();
@@ -674,8 +618,6 @@ fn resample_gcp_to_utm(
                 // 4. Bilinear interpolation
                 let x0 = sx.floor() as isize;
                 let y0 = sy.floor() as isize;
-                let x1 = x0 + 1;
-                let y1 = y0 + 1;
                 let fx = sx - x0 as f64;
                 let fy = sy - y0 as f64;
 
@@ -687,37 +629,11 @@ fn resample_gcp_to_utm(
                     if v.is_finite() && v > 0.0 { v as f64 } else { f64::NAN }
                 };
 
-                let v00 = sample(y0, x0);
-                let v10 = sample(y0, x1);
-                let v01 = sample(y1, x0);
-                let v11 = sample(y1, x1);
-
-                let val = if v00.is_finite() && v10.is_finite()
-                    && v01.is_finite() && v11.is_finite()
-                {
-                    let top = v00 * (1.0 - fx) + v10 * fx;
-                    let bot = v01 * (1.0 - fx) + v11 * fx;
-                    top * (1.0 - fy) + bot * fy
-                } else {
-                    // Fallback: weighted average of finite values
-                    let weights = [
-                        ((1.0 - fx) * (1.0 - fy), v00),
-                        (fx * (1.0 - fy), v10),
-                        ((1.0 - fx) * fy, v01),
-                        (fx * fy, v11),
-                    ];
-                    let mut wsum = 0.0;
-                    let mut vsum = 0.0;
-                    for &(w, v) in &weights {
-                        if v.is_finite() {
-                            wsum += w;
-                            vsum += w * v;
-                        }
-                    }
-                    if wsum > 0.0 { vsum / wsum } else { f64::NAN }
-                };
-
-                row[dx] = val as f32;
+                row[dx] = bilinear_interp(
+                    sample(y0, x0), sample(y0, x0 + 1),
+                    sample(y0 + 1, x0), sample(y0 + 1, x0 + 1),
+                    fx, fy,
+                );
             }
         });
 

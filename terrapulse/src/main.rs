@@ -293,12 +293,12 @@ fn run_predict(
         let mlp_indices: Vec<usize> = mlp_cols
             .iter()
             .map(|c| {
-                *col_index
+                col_index
                     .get(c.as_str())
+                    .copied()
                     .with_context(|| format!("MLP col '{}' not found in parquet", c))
-                    .unwrap()
             })
-            .collect();
+            .collect::<Result<Vec<_>>>()?;
 
         let mlp_features: Vec<Vec<f32>> = all_rows
             .iter()
@@ -348,7 +348,8 @@ async fn run_download(
 ) -> Result<()> {
     let t0 = Instant::now();
 
-    let bbox_arr: [f64; 4] = [bbox[0], bbox[1], bbox[2], bbox[3]];
+    let bbox_arr: [f64; 4] = <[f64; 4]>::try_from(&bbox[..])
+        .map_err(|_| anyhow::anyhow!("bbox must have exactly 4 values [west, south, east, north], got {}", bbox.len()))?;
 
     // Read anchor reference metadata (target grid definition)
     let anchor = composite::AnchorRef::from_tif(anchor_ref)

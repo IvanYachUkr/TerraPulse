@@ -11,7 +11,6 @@ use crate::features::{
     cell_stats_8,
     cell_stats_5,
     cell_lbp_hist,
-    clean_band_nan_fill,
     compute_lbp_perpatch,
 };
 
@@ -188,10 +187,6 @@ pub fn extract_all_sar_seasons(
             let band_slice = |b: usize| -> &[f32] {
                 &sar_slice[b * h * w..(b + 1) * h * w]
             };
-
-            // Clean bands for LBP (NaN-filled)
-            let _vv_clean = clean_band_nan_fill(band_slice(SAR_VV), h, w);
-            let _vh_clean = clean_band_nan_fill(band_slice(SAR_VH), h, w);
 
             // LBP on VV and VH (per-patch, with clipping to [0,1] since SAR is
             // already normalized to [0,1] after dB conversion + scaling)

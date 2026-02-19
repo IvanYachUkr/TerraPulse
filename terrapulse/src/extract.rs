@@ -551,9 +551,10 @@ pub fn extract_year_pair(
             vf_cells[ci] = if n > 0 { sum / n as f32 } else { 0.0 };
         }
         extra_cols.push("valid_fraction".to_string());
-        extra_data.push(vf_cells.clone());
         extra_cols.push("low_valid_fraction".to_string());
-        extra_data.push(vf_cells.iter().map(|&v| if v < min_valid_frac { 1.0 } else { 0.0 }).collect());
+        let low_vf: Vec<f32> = vf_cells.iter().map(|&v| if v < min_valid_frac { 1.0 } else { 0.0 }).collect();
+        extra_data.push(vf_cells);
+        extra_data.push(low_vf);
     }
 
     // Write parquet

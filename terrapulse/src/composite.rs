@@ -212,17 +212,6 @@ async fn download_one_scene(
     let src_y1 = ((tl_sy.max(br_sy).ceil() as u32 + 2).min(src_meta.height)).max(src_y0 + 1);
 
     let src_bbox = PixelBbox { x0: src_x0, y0: src_y0, x1: src_x1, y1: src_y1 };
-    let crop_w = (src_x1 - src_x0) as usize;
-    let crop_h = (src_y1 - src_y0) as usize;
-
-    // Adjust source geo-transform for the crop offset
-    let (crop_gx, crop_gy) = src_gt.pixel_to_geo(src_x0 as f64, src_y0 as f64);
-    let crop_gt = GeoTransform {
-        origin_x: crop_gx,
-        origin_y: crop_gy,
-        pixel_size_x: src_gt.pixel_size_x,
-        pixel_size_y: src_gt.pixel_size_y,
-    };
 
     // Download all bands + SCL concurrently
     let mut band_futures = Vec::new();
@@ -344,7 +333,7 @@ fn write_composite_tif(
     composite: &[f32],  // [n_bands * n_pixels], band-sequential
     valid_fraction: &[f32], // [n_pixels]
 ) -> Result<()> {
-    use std::io::{BufWriter, Write};
+    use std::io::BufWriter;
 
     let w = anchor.width as u32;
     let h = anchor.height as u32;
@@ -372,11 +361,7 @@ fn write_composite_tif(
         .with_context(|| format!("Cannot create {}", path.display()))?;
     let mut bw = BufWriter::new(file);
 
-    // Helper: write TIFF IFD entry
-    let pixel_data_offset: u32 = 8 + 2 + 15 * 12 + 4 + 6 * 8 + 3 * 8 + 100; // rough estimate; we'll fix
-    // Actually, let's compute it properly
-
-    // We'll use the tiff crate's encoder for simplicity
+    // We'll use a minimal manual TIFF writer for simplicity
     write_geotiff_manual(&mut bw, w, h, n_bands, &interleaved, anchor)?;
 
     Ok(())
@@ -395,7 +380,6 @@ fn write_geotiff_manual(
     // then IFD entries pointing to the strip.
     // Actually, simpler: header → IFD → tag data → pixel data.
 
-    let n_pixels = (width * height) as usize;
     let data_bytes = pixel_data.len();
 
     // TIFF header (classic, little-endian)
@@ -445,9 +429,9 @@ fn write_geotiff_manual(
     };
 
     // ImageWidth
-    write_entry(w, 256, 3, 1, width)?; // SHORT
+    write_entry(w, 256, 4, 1, width)?; // LONG — supports dimensions > 65535
     // ImageLength
-    write_entry(w, 257, 3, 1, height)?;
+    write_entry(w, 257, 4, 1, height)?;
     // BitsPerSample (offset to array)
     write_entry(w, 258, 3, n_bands as u32, bps_offset)?;
     // Compression = none

@@ -55,20 +55,6 @@ pub struct CogMeta {
 }
 
 impl CogMeta {
-    /// Geo-transform: pixel → geo coordinates.
-    pub fn pixel_to_geo(&self, px: f64, py: f64) -> (f64, f64) {
-        let gx = self.tiepoint[3] + (px - self.tiepoint[0]) * self.pixel_scale[0];
-        let gy = self.tiepoint[4] - (py - self.tiepoint[1]) * self.pixel_scale[1];
-        (gx, gy)
-    }
-
-    /// Inverse geo-transform: geo → pixel coordinates.
-    pub fn geo_to_pixel(&self, gx: f64, gy: f64) -> (f64, f64) {
-        let px = self.tiepoint[0] + (gx - self.tiepoint[3]) / self.pixel_scale[0];
-        let py = self.tiepoint[1] + (self.tiepoint[4] - gy) / self.pixel_scale[1];
-        (px, py)
-    }
-
     /// Number of tiles in X and Y.
     pub fn tiles_across(&self) -> (u32, u32) {
         let nx = (self.width + self.tile_width - 1) / self.tile_width;

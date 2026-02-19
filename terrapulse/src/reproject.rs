@@ -46,90 +46,36 @@ impl GeoTransform {
     }
 }
 
-/// Resample source raster to target grid using bilinear interpolation.
+/// NaN-aware bilinear interpolation from four corner samples.
 ///
-/// Both source and target must share the same CRS. If CRS differs and the
-/// difference is just a UTM zone shift, use `resample_with_offset` instead.
-///
-/// Returns a flat f32 buffer of size (dst_h × dst_w), with NaN for out-of-bounds.
-pub fn resample_bilinear(
-    src: &[f32],
-    src_w: usize,
-    src_h: usize,
-    src_gt: &GeoTransform,
-    dst_w: usize,
-    dst_h: usize,
-    dst_gt: &GeoTransform,
-) -> Vec<f32> {
-    let mut output = vec![f32::NAN; dst_h * dst_w];
-
-    for dy in 0..dst_h {
-        for dx in 0..dst_w {
-            // Target pixel center → geo coordinate
-            let (gx, gy) = dst_gt.pixel_to_geo(dx as f64 + 0.5, dy as f64 + 0.5);
-
-            // Geo → source pixel (fractional)
-            let (sx, sy) = src_gt.geo_to_pixel(gx, gy);
-
-            // Source pixel center offset (0.5 compensation)
-            let sx = sx - 0.5;
-            let sy = sy - 0.5;
-
-            // Bounds check
-            if sx < -0.5 || sy < -0.5 || sx >= src_w as f64 - 0.5 || sy >= src_h as f64 - 0.5 {
-                continue;
+/// `fx`, `fy` are fractional positions ∈ [0, 1) within the pixel cell.
+/// If all four corners are finite, standard bilinear blending is used.
+/// Otherwise, a weighted average of the finite neighbours is returned.
+/// Returns `f32::NAN` if no neighbours are finite.
+#[inline]
+pub fn bilinear_interp(v00: f64, v10: f64, v01: f64, v11: f64, fx: f64, fy: f64) -> f32 {
+    let val = if v00.is_finite() && v10.is_finite() && v01.is_finite() && v11.is_finite() {
+        let top = v00 * (1.0 - fx) + v10 * fx;
+        let bot = v01 * (1.0 - fx) + v11 * fx;
+        top * (1.0 - fy) + bot * fy
+    } else {
+        let weights = [
+            ((1.0 - fx) * (1.0 - fy), v00),
+            (fx * (1.0 - fy), v10),
+            ((1.0 - fx) * fy, v01),
+            (fx * fy, v11),
+        ];
+        let mut wsum = 0.0;
+        let mut vsum = 0.0;
+        for &(w, v) in &weights {
+            if v.is_finite() {
+                wsum += w;
+                vsum += w * v;
             }
-
-            // Bilinear interpolation
-            let x0 = sx.floor() as isize;
-            let y0 = sy.floor() as isize;
-            let x1 = x0 + 1;
-            let y1 = y0 + 1;
-            let fx = sx - x0 as f64;
-            let fy = sy - y0 as f64;
-
-            let sample = |r: isize, c: isize| -> f64 {
-                if r < 0 || c < 0 || r >= src_h as isize || c >= src_w as isize {
-                    return f64::NAN;
-                }
-                let v = src[r as usize * src_w + c as usize];
-                if v.is_finite() { v as f64 } else { f64::NAN }
-            };
-
-            let v00 = sample(y0, x0);
-            let v10 = sample(y0, x1);
-            let v01 = sample(y1, x0);
-            let v11 = sample(y1, x1);
-
-            // NaN-aware bilinear: if any neighbor is NaN, use nearest valid
-            let val = if v00.is_finite() && v10.is_finite() && v01.is_finite() && v11.is_finite() {
-                let top = v00 * (1.0 - fx) + v10 * fx;
-                let bot = v01 * (1.0 - fx) + v11 * fx;
-                top * (1.0 - fy) + bot * fy
-            } else {
-                // Fallback: weighted average of finite values
-                let weights = [
-                    ((1.0 - fx) * (1.0 - fy), v00),
-                    (fx * (1.0 - fy), v10),
-                    ((1.0 - fx) * fy, v01),
-                    (fx * fy, v11),
-                ];
-                let mut wsum = 0.0;
-                let mut vsum = 0.0;
-                for &(w, v) in &weights {
-                    if v.is_finite() {
-                        wsum += w;
-                        vsum += w * v;
-                    }
-                }
-                if wsum > 0.0 { vsum / wsum } else { f64::NAN }
-            };
-
-            output[dy * dst_w + dx] = val as f32;
         }
-    }
-
-    output
+        if wsum > 0.0 { vsum / wsum } else { f64::NAN }
+    };
+    val as f32
 }
 
 /// Resample source raster using parallel row processing (for large rasters).
@@ -161,8 +107,6 @@ pub fn resample_bilinear_par(
 
                 let x0 = sx.floor() as isize;
                 let y0 = sy.floor() as isize;
-                let x1 = x0 + 1;
-                let y1 = y0 + 1;
                 let fx = sx - x0 as f64;
                 let fy = sy - y0 as f64;
 
@@ -174,34 +118,11 @@ pub fn resample_bilinear_par(
                     if v.is_finite() { v as f64 } else { f64::NAN }
                 };
 
-                let v00 = sample(y0, x0);
-                let v10 = sample(y0, x1);
-                let v01 = sample(y1, x0);
-                let v11 = sample(y1, x1);
-
-                let val = if v00.is_finite() && v10.is_finite() && v01.is_finite() && v11.is_finite() {
-                    let top = v00 * (1.0 - fx) + v10 * fx;
-                    let bot = v01 * (1.0 - fx) + v11 * fx;
-                    top * (1.0 - fy) + bot * fy
-                } else {
-                    let weights = [
-                        ((1.0 - fx) * (1.0 - fy), v00),
-                        (fx * (1.0 - fy), v10),
-                        ((1.0 - fx) * fy, v01),
-                        (fx * fy, v11),
-                    ];
-                    let mut wsum = 0.0;
-                    let mut vsum = 0.0;
-                    for &(w, v) in &weights {
-                        if v.is_finite() {
-                            wsum += w;
-                            vsum += w * v;
-                        }
-                    }
-                    if wsum > 0.0 { vsum / wsum } else { f64::NAN }
-                };
-
-                row[dx] = val as f32;
+                row[dx] = bilinear_interp(
+                    sample(y0, x0), sample(y0, x0 + 1),
+                    sample(y0 + 1, x0), sample(y0 + 1, x0 + 1),
+                    fx, fy,
+                );
             }
         });
 
