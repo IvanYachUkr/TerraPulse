@@ -421,6 +421,73 @@ pub fn extract_year_pair(
 
             let n_sar_pheno = sar_mean_offsets.len() * 4 * n_years;
             println!("    Added {n_sar_pheno} SAR phenological features ({} signals x 4 pheno x {n_years} years)", sar_mean_offsets.len());
+
+            // =================================================================
+            // SAR Temporal Features (new cross-season statistics)
+            // 8 features per year:
+            //   3 summer-winter contrasts: VH, VV, CR (spring as winter proxy)
+            //   3 temporal_std: std(mean across 3 seasons) for VH, VV, CR
+            //   2 temporal_cv: temporal_std / temporal_mean for VH, VV
+            // =================================================================
+            // Offsets for VV_mean, VH_mean, CR_mean within N_SAR_FEAT
+            let temporal_offsets: Vec<usize> = vec![0, 8, 16]; // VV, VH, CR
+            let temporal_names = ["SAR_VV", "SAR_VH", "SAR_CR"];
+
+            for yr_idx in 0..n_years {
+                let spring_season = yr_idx * 3;
+                let summer_season = yr_idx * 3 + 1;
+                let _autumn_season = yr_idx * 3 + 2;
+
+                let year_tag = &suffixes[spring_season];
+                let year_label = year_tag.split('_').next().unwrap_or("unknown");
+
+                // Column names: summer_winter contrasts
+                for sig in &temporal_names {
+                    columns.push(format!("{sig}_summer_winter_{year_label}"));
+                }
+                // Column names: temporal_std
+                for sig in &temporal_names {
+                    columns.push(format!("{sig}_temporal_std_{year_label}"));
+                }
+                // Column names: temporal_cv (VV and VH only, not CR)
+                columns.push(format!("SAR_VV_temporal_cv_{year_label}"));
+                columns.push(format!("SAR_VH_temporal_cv_{year_label}"));
+
+                // Compute for each cell
+                for row in rows.iter_mut() {
+                    // Summer-winter contrasts (spring as winter proxy)
+                    for &offset in &temporal_offsets {
+                        let spring_val = row[sar_base_offset + spring_season * sar_per_season + offset];
+                        let summer_val = row[sar_base_offset + summer_season * sar_per_season + offset];
+                        row.push(summer_val - spring_val);
+                    }
+
+                    // Temporal std across 3 seasons
+                    for &offset in &temporal_offsets {
+                        let s0 = row[sar_base_offset + (yr_idx * 3)     * sar_per_season + offset];
+                        let s1 = row[sar_base_offset + (yr_idx * 3 + 1) * sar_per_season + offset];
+                        let s2 = row[sar_base_offset + (yr_idx * 3 + 2) * sar_per_season + offset];
+                        let mean = (s0 + s1 + s2) / 3.0;
+                        let var = ((s0 - mean).powi(2) + (s1 - mean).powi(2) + (s2 - mean).powi(2)) / 3.0;
+                        row.push(var.max(0.0).sqrt());
+                    }
+
+                    // Temporal CV for VV and VH only (offsets 0 and 8)
+                    for &offset in &[0usize, 8usize] {
+                        let s0 = row[sar_base_offset + (yr_idx * 3)     * sar_per_season + offset];
+                        let s1 = row[sar_base_offset + (yr_idx * 3 + 1) * sar_per_season + offset];
+                        let s2 = row[sar_base_offset + (yr_idx * 3 + 2) * sar_per_season + offset];
+                        let mean = (s0 + s1 + s2) / 3.0;
+                        let var = ((s0 - mean).powi(2) + (s1 - mean).powi(2) + (s2 - mean).powi(2)) / 3.0;
+                        let std = var.max(0.0).sqrt();
+                        let cv = if mean.abs() > 1e-10 { std / mean.abs() } else { 0.0 };
+                        row.push(cv);
+                    }
+                }
+            }
+
+            let n_sar_temporal = 8 * n_years;
+            println!("    Added {n_sar_temporal} SAR temporal features (8 x {n_years} years)");
         }
     }
 

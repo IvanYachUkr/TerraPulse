@@ -5,11 +5,13 @@ Composite helper for terrapulse Rust pipeline.
 Called by the Rust download module to handle reprojection + median compositing
 using rasterio, since Rust doesn't have mature reprojection libraries.
 
-Optimizations:
-  - GDAL HTTP timeouts set at OS-level BEFORE rasterio import
-  - Parallel band downloads (ThreadPoolExecutor)
+Optimizations (v2):
+  - GDAL HTTP tuning set BEFORE rasterio import
+  - Parallel SCENE downloads (ThreadPoolExecutor at scene level)
+  - Parallel band downloads within each scene
   - Hard per-scene timeout to prevent infinite hangs
   - Retries on failed band reads
+  - Vectorized cloud masking via np.isin()
 
 Usage:
     python composite.py \\
@@ -28,17 +30,18 @@ os.environ["GDAL_HTTP_MAX_RETRY"] = "3"
 os.environ["GDAL_HTTP_RETRY_DELAY"] = "2"
 os.environ["GDAL_DISABLE_READDIR_ON_OPEN"] = "EMPTY_DIR"
 os.environ["VSI_CACHE"] = "TRUE"
+os.environ["VSI_CACHE_SIZE"] = "67108864"  # 64 MB VSIL cache
 os.environ["CPL_VSIL_CURL_ALLOWED_EXTENSIONS"] = ".tif,.TIF"
 os.environ["GDAL_HTTP_MULTIPLEX"] = "YES"
 os.environ["GDAL_HTTP_MERGE_CONSECUTIVE_RANGES"] = "YES"
+os.environ["GDAL_HTTP_VERSION"] = "2"       # force HTTP/2 for multiplexing
 os.environ["CPL_CURL_VERBOSE"] = "NO"
 
 import argparse
 import json
 import sys
-import signal
 import warnings
-from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import numpy as np
 import rasterio
@@ -46,25 +49,39 @@ from rasterio.enums import Resampling
 from rasterio.vrt import WarpedVRT
 
 SENTINEL_BANDS = ["B02", "B03", "B04", "B05", "B06", "B07", "B08", "B8A", "B11", "B12"]
-SCL_EXCLUDE = {0, 1, 2, 3, 8, 9, 10, 11}
+# SCL classes to exclude: 0=nodata, 1=defective, 2=dark, 3=shadow,
+# 8=cloud_med, 9=cloud_high, 10=cirrus, 11=snow
+SCL_EXCLUDE = frozenset({0, 1, 2, 3, 8, 9, 10, 11})
+SCL_EXCLUDE_ARR = np.array(sorted(SCL_EXCLUDE), dtype=np.uint8)
 NODATA = -9999
-MAX_BAND_WORKERS = 6     # parallel band downloads per scene
-SCENE_TIMEOUT = 120      # hard timeout per scene (seconds)
+MAX_BAND_WORKERS = 10    # parallel band downloads per scene (was 6)
+MAX_SCENE_WORKERS = 4    # parallel scene downloads
+SCENE_TIMEOUT = 180      # hard timeout per scene (seconds, was 120)
+BAND_RETRIES = 2         # retries per band on failure
 
 
 def read_band_warped(href, dst_crs, dst_transform, dst_width, dst_height, is_scl=False):
     """Read a single band via WarpedVRT, reprojecting on-the-fly."""
-    with rasterio.open(href) as src:
-        with WarpedVRT(
-            src,
-            crs=dst_crs,
-            transform=dst_transform,
-            width=dst_width,
-            height=dst_height,
-            resampling=Resampling.nearest if is_scl else Resampling.bilinear,
-            dst_nodata=0 if is_scl else np.nan,
-        ) as vrt:
-            return vrt.read(1)
+    last_err = None
+    for attempt in range(1 + BAND_RETRIES):
+        try:
+            with rasterio.open(href) as src:
+                with WarpedVRT(
+                    src,
+                    crs=dst_crs,
+                    transform=dst_transform,
+                    width=dst_width,
+                    height=dst_height,
+                    resampling=Resampling.nearest if is_scl else Resampling.bilinear,
+                    dst_nodata=0 if is_scl else np.nan,
+                ) as vrt:
+                    return vrt.read(1)
+        except Exception as e:
+            last_err = e
+            if attempt < BAND_RETRIES:
+                import time
+                time.sleep(1.0 * (attempt + 1))
+    raise last_err
 
 
 def download_scene_inner(scene, dst_crs, dst_transform, dst_width, dst_height):
@@ -95,46 +112,71 @@ def download_scene_inner(scene, dst_crs, dst_transform, dst_width, dst_height):
     return spectral_stack, scl
 
 
+def _download_one_scene(args):
+    """Wrapper for scene-level parallelism. Returns (index, result_or_None)."""
+    idx, scene, dst_crs, dst_transform, dst_width, dst_height = args
+    try:
+        spectral_stack, scl = download_scene_inner(
+            scene, dst_crs, dst_transform, dst_width, dst_height)
+        print(f"    Scene {idx+1}: OK", file=sys.stderr)
+        return idx, spectral_stack, scl
+    except Exception as e:
+        print(f"    Scene {idx+1}: FAILED ({e})", file=sys.stderr)
+        return idx, None, None
+
+
 def process_scenes(scenes, dst_crs, dst_transform, dst_width, dst_height, year):
-    """Download, reproject, mask, and composite all scenes."""
+    """Download, reproject, mask, and composite all scenes — parallelized."""
+    n_scenes = len(scenes)
+    n_bands = len(SENTINEL_BANDS)
+
+    print(f"    Downloading {n_scenes} scenes ({MAX_SCENE_WORKERS} parallel)...",
+          file=sys.stderr, flush=True)
+
+    # ── Parallel scene downloads ──
+    args_list = [
+        (i, scene, dst_crs, dst_transform, dst_width, dst_height)
+        for i, scene in enumerate(scenes)
+    ]
+
     all_spectral = []
     all_scl = []
 
-    for i, scene in enumerate(scenes):
-        try:
-            spectral_stack, scl = download_scene_inner(
-                scene, dst_crs, dst_transform, dst_width, dst_height)
-            all_spectral.append(spectral_stack)
-            all_scl.append(scl)
-            print(f"    Scene {i+1}/{len(scenes)}: OK", file=sys.stderr)
-        except TimeoutError:
-            print(f"    Scene {i+1}/{len(scenes)}: TIMEOUT ({SCENE_TIMEOUT}s) - skipping", file=sys.stderr)
-            continue
-        except Exception as e:
-            print(f"    Scene {i+1}/{len(scenes)}: FAILED ({e})", file=sys.stderr)
-            continue
+    with ThreadPoolExecutor(max_workers=MAX_SCENE_WORKERS) as pool:
+        futures = {pool.submit(_download_one_scene, a): a[0] for a in args_list}
+        for future in as_completed(futures):
+            idx, spectral, scl = future.result()
+            if spectral is not None:
+                all_spectral.append(spectral)
+                all_scl.append(scl)
+
+    n_ok = len(all_spectral)
+    print(f"    {n_ok}/{n_scenes} scenes OK", file=sys.stderr, flush=True)
 
     if not all_spectral:
         return None, None
 
-    # Cloud masking
-    scl_stack = np.stack(all_scl)
-    valid_mask = np.ones_like(scl_stack, dtype=bool)
+    # ── Cloud masking (vectorized) ──
+    scl_stack = np.stack(all_scl)                       # (n_ok, H, W)
+    # Single vectorized call instead of per-class loop
+    valid_mask = ~np.isin(scl_stack, SCL_EXCLUDE_ARR)   # (n_ok, H, W)
     valid_mask &= (scl_stack > 0)
-    for cls in SCL_EXCLUDE:
-        valid_mask &= (scl_stack != cls)
 
     valid_frac = valid_mask.mean(axis=0).astype(np.float32)
 
-    # Mask invalid pixels
-    spectral_4d = np.stack(all_spectral).astype(np.float32)
-    for s in range(spectral_4d.shape[0]):
-        spectral_4d[s, :, ~valid_mask[s]] = np.nan
+    # ── Mask invalid pixels + median composite ──
+    spectral_4d = np.stack(all_spectral, dtype=np.float32)   # (n_ok, bands, H, W)
+    # Mask invalid pixels: valid_mask is (n_ok, H, W), broadcast across bands
+    # Use np.where for correct broadcasting over the band dimension
+    invalid = ~valid_mask[:, np.newaxis, :, :]               # (n_ok, 1, H, W)
+    spectral_4d = np.where(invalid, np.nan, spectral_4d)     # broadcasts correctly
 
-    # Median composite
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", RuntimeWarning)
-        composite = np.nanmedian(spectral_4d, axis=0)
+        composite = np.nanmedian(spectral_4d, axis=0)    # (bands, H, W)
+
+    # Free large arrays immediately
+    del spectral_4d, scl_stack, valid_mask, invalid
 
     # PB 04.00 offset correction (Jan 2022+)
     if year >= 2022:
