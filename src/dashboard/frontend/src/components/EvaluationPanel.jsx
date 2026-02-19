@@ -5,6 +5,7 @@ Chart.register(...registerables);
 
 const CLASS_LABELS = {
     tree_cover: 'Tree Cover',
+    shrubland: 'Shrubland',
     grassland: 'Grassland',
     cropland: 'Cropland',
     built_up: 'Built-up',
@@ -14,6 +15,7 @@ const CLASS_LABELS = {
 
 const CLASS_COLORS_HEX = {
     tree_cover: '#2d6a4f',
+    shrubland: '#6a994e',
     grassland: '#95d5b2',
     cropland: '#f4a261',
     built_up: '#e76f51',
@@ -70,7 +72,7 @@ function useChart(ref, chartRef, config) {
 function PerClassChart({ evaluation }) {
     const canvasRef = useRef(null);
     const chartRef = useRef(null);
-    const classes = ['tree_cover', 'grassland', 'cropland', 'built_up', 'bare_sparse', 'water'];
+    const classes = ['tree_cover', 'shrubland', 'grassland', 'cropland', 'built_up', 'bare_sparse', 'water'];
     const labels = classes.map((c) => CLASS_LABELS[c]);
 
     const config = evaluation ? {
@@ -311,9 +313,10 @@ function ShapChart({ explainability }) {
     const chartRef = useRef(null);
     const [shapModel, setShapModel] = useState('mlp');
 
-    const classKeys = ['tree_cover', 'grassland', 'cropland', 'built_up', 'bare_sparse', 'water'];
+    const classKeys = ['tree_cover', 'shrubland', 'grassland', 'cropland', 'built_up', 'bare_sparse', 'water'];
     const classColorsList = [
         { bg: '#2d6a4faa', border: '#2d6a4f' },
+        { bg: '#6a994eaa', border: '#6a994e' },
         { bg: '#95d5b2aa', border: '#95d5b2' },
         { bg: '#f4a261aa', border: '#f4a261' },
         { bg: '#e76f51aa', border: '#e76f51' },

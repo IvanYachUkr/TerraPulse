@@ -237,36 +237,24 @@ fn run_predict(
 
     let t0 = Instant::now();
 
-    // ---- Load column lists ----
-    let tree_cols: Vec<String> = {
-        let data = std::fs::read_to_string(models_dir.join("tree_cols.json"))?;
-        serde_json::from_str(&data)?
-    };
+    // ---- Load column list ----
     let mlp_cols: Vec<String> = {
         let data = std::fs::read_to_string(models_dir.join("mlp_cols.json"))?;
         serde_json::from_str(&data)?
     };
-    println!("Tree features: {}, MLP features: {}", tree_cols.len(), mlp_cols.len());
+    println!("MLP features: {}", mlp_cols.len());
 
-    // ---- Load models ----
-    println!("Loading tree models...");
+    // ---- Load model ----
+    println!("Loading MLP model...");
     let t_load = Instant::now();
-    let mut tree_ensemble = predict::OnnxEnsemble::load_trees(models_dir)?;
+    let mut mlp = predict::OnnxMlp::load(models_dir)?;
     println!("  Loaded in {:.1}s", t_load.elapsed().as_secs_f64());
 
-    println!("Loading MLP models...");
-    let t_load = Instant::now();
-    let mut mlp_ensemble = predict::OnnxEnsemble::load_mlps(models_dir)?;
-    println!("  Loaded in {:.1}s", t_load.elapsed().as_secs_f64());
-
-    // ---- Load scalers ----
-    let scalers: Vec<predict::ScalerParams> = (0..config::N_FOLDS)
-        .map(|i| {
-            let path = models_dir.join(format!("mlp_scaler_{i}.json"));
-            predict::ScalerParams::load(&path)
-        })
-        .collect::<Result<Vec<_>>>()?;
-    println!("Loaded {} scalers", scalers.len());
+    // ---- Load scaler ----
+    let scaler = predict::ScalerParams::load(
+        &models_dir.join("mlp_scaler_0.json")
+    )?;
+    println!("Loaded scaler ({} features)", scaler.mean.len());
 
     // ---- Process each year pair ----
     for yp in year_pairs {
@@ -297,30 +285,6 @@ fn run_predict(
             .map(|(i, name)| (name.as_str(), i))
             .collect();
 
-        // ---- Extract tree features ----
-        let tree_indices: Vec<usize> = tree_cols
-            .iter()
-            .map(|c| {
-                *col_index
-                    .get(c.as_str())
-                    .with_context(|| format!("Tree col '{}' not found in parquet", c))
-                    .unwrap()
-            })
-            .collect();
-
-        let tree_features: Vec<Vec<f32>> = all_rows
-            .iter()
-            .map(|row| {
-                tree_indices
-                    .iter()
-                    .map(|&i| {
-                        let v = row[i];
-                        if v.is_finite() { v } else { 0.0 }
-                    })
-                    .collect()
-            })
-            .collect();
-
         // ---- Extract MLP features + scale ----
         let mlp_indices: Vec<usize> = mlp_cols
             .iter()
@@ -332,54 +296,24 @@ fn run_predict(
             })
             .collect();
 
-        let mlp_features_raw: Vec<Vec<f32>> = all_rows
+        let mlp_features: Vec<Vec<f32>> = all_rows
             .iter()
             .map(|row| {
-                mlp_indices
+                let raw: Vec<f32> = mlp_indices
                     .iter()
                     .map(|&i| {
                         let v = row[i];
                         if v.is_finite() { v } else { 0.0 }
                     })
-                    .collect()
+                    .collect();
+                scaler.transform(&raw)
             })
             .collect();
 
-
-        // ---- Run tree prediction ----
-        println!("  Running tree inference...");
-        let t_pred = Instant::now();
-        let tree_preds = tree_ensemble.predict(&tree_features)?;
-        println!(
-            "  Tree done: {} cells in {:.2}s",
-            n_cells,
-            t_pred.elapsed().as_secs_f64()
-        );
-
-        // ---- Run MLP prediction (per-fold scaler, matching Python) ----
+        // ---- Run MLP prediction ----
         println!("  Running MLP inference...");
         let t_pred = Instant::now();
-        let n_classes = config::N_CLASSES;
-        let mut mlp_accum = vec![vec![0.0f64; n_classes]; n_cells];
-        for fold in 0..config::N_FOLDS {
-            // Apply this fold's scaler
-            let scaled: Vec<Vec<f32>> = mlp_features_raw
-                .iter()
-                .map(|row| scalers[fold].transform(row))
-                .collect();
-            // Run this fold's model
-            let fold_preds = mlp_ensemble.predict_single_fold(fold, &scaled)?;
-            for (ri, pred) in fold_preds.iter().enumerate() {
-                for ci in 0..n_classes {
-                    mlp_accum[ri][ci] += pred[ci] as f64;
-                }
-            }
-        }
-        let inv_folds = 1.0 / config::N_FOLDS as f64;
-        let mlp_preds: Vec<Vec<f32>> = mlp_accum
-            .into_iter()
-            .map(|row| row.into_iter().map(|v| (v * inv_folds) as f32).collect())
-            .collect();
+        let mlp_preds = mlp.predict(&mlp_features)?;
         println!(
             "  MLP done: {} cells in {:.2}s",
             n_cells,
@@ -387,10 +321,6 @@ fn run_predict(
         );
 
         // ---- Save predictions ----
-        let tree_out = output_dir.join(format!("pred_tree_{yp}.parquet"));
-        parquet_io::write_predictions_parquet(&tree_out, &CLASS_NAMES, &tree_preds, "tree")?;
-        println!("  Wrote {}", tree_out.display());
-
         let mlp_out = output_dir.join(format!("pred_mlp_{yp}.parquet"));
         parquet_io::write_predictions_parquet(&mlp_out, &CLASS_NAMES, &mlp_preds, "mlp")?;
         println!("  Wrote {}", mlp_out.display());

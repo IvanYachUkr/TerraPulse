@@ -38,14 +38,17 @@ TERRAPULSE_BIN = os.path.join(
     PROJECT_ROOT, "terrapulse", "target", "release", "terrapulse.exe"
 )
 
-CLASS_NAMES = ["tree_cover", "grassland", "cropland", "built_up",
-               "bare_sparse", "water"]
+CLASS_NAMES = ["tree_cover", "shrubland", "grassland", "cropland",
+               "built_up", "bare_sparse", "water"]
 N_CLASSES = len(CLASS_NAMES)
 GRID_PX = 10
 SENTINEL_RES = 10
 SENTINEL_NODATA = -9999
 
-WC_CLASS_MAP = {10: 0, 30: 1, 90: 1, 40: 2, 50: 3, 60: 4, 80: 5}
+# WorldCover ESA class codes → our class indices
+# 10=Tree, 20=Shrubland, 30=Grassland, 40=Cropland, 50=Built-up,
+# 60=Bare/sparse, 80=Water, 90=Herbaceous wetland → Grassland
+WC_CLASS_MAP = {10: 0, 20: 1, 30: 2, 90: 2, 40: 3, 50: 4, 60: 5, 80: 6}
 
 
 # ---------------------------------------------------------------------------

@@ -8,10 +8,11 @@ import EvaluationPanel from './components/EvaluationPanel.jsx';
 import DeployView from './components/DeployView.jsx';
 import { useApi } from './hooks/useApi.js';
 
-const CLASSES = ['tree_cover', 'grassland', 'cropland', 'built_up', 'bare_sparse', 'water'];
+const CLASSES = ['tree_cover', 'shrubland', 'grassland', 'cropland', 'built_up', 'bare_sparse', 'water'];
 
 const CLASS_COLORS = {
     tree_cover: [45, 106, 79],
+    shrubland: [106, 153, 78],
     grassland: [149, 213, 178],
     cropland: [244, 162, 97],
     built_up: [231, 111, 81],
@@ -21,6 +22,7 @@ const CLASS_COLORS = {
 
 const CLASS_LABELS = {
     tree_cover: 'Tree Cover',
+    shrubland: 'Shrubland',
     grassland: 'Grassland',
     cropland: 'Cropland',
     built_up: 'Built-up',

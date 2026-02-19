@@ -2,6 +2,7 @@ import { useState } from 'react';
 
 const CLASS_LABELS = {
     tree_cover: 'Tree Cover',
+    shrubland: 'Shrubland',
     grassland: 'Grassland',
     cropland: 'Cropland',
     built_up: 'Built-up',
@@ -9,10 +10,11 @@ const CLASS_LABELS = {
     water: 'Water',
 };
 
-const CLASSES = ['tree_cover', 'grassland', 'cropland', 'built_up', 'bare_sparse', 'water'];
+const CLASSES = ['tree_cover', 'shrubland', 'grassland', 'cropland', 'built_up', 'bare_sparse', 'water'];
 
 const CLASS_COLORS_HEX = {
     tree_cover: '#2d6a4f',
+    shrubland: '#6a994e',
     grassland: '#95d5b2',
     cropland: '#f4a261',
     built_up: '#e76f51',

@@ -25,7 +25,7 @@ from typing import List
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 
 MODELS = ["mlp", "tree", "ridge"]
-CLASSES = ["tree_cover", "grassland", "cropland", "built_up", "bare_sparse", "water"]
+CLASSES = ["tree_cover", "shrubland", "grassland", "cropland", "built_up", "bare_sparse", "water"]
 
 # ---------------------------------------------------------------------------
 # Data loading (cached at startup)
@@ -282,6 +282,7 @@ def meta():
         "aoi": "Nuremberg, Germany",
         "class_colors": {
             "tree_cover": "#2d6a4f",
+            "shrubland": "#6a994e",
             "grassland": "#95d5b2",
             "cropland": "#f4a261",
             "built_up": "#e76f51",
