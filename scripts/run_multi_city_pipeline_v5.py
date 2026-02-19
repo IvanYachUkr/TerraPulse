@@ -71,9 +71,10 @@ WC_YEARS = [2020, 2021]
 GRID_PX = 10  # pixels per 100m cell side
 GRID_SIZE_M = GRID_PX * SENTINEL_RES
 
-WC_CLASS_MAP = {10: 0, 30: 1, 90: 1, 40: 2, 50: 3, 60: 4, 80: 5}
-CLASS_NAMES = ["tree_cover", "grassland", "cropland", "built_up",
-               "bare_sparse", "water"]
+WC_CLASS_MAP = {10: 0, 20: 1, 30: 2, 90: 2, 40: 3, 50: 4,
+                60: 5, 70: 5, 100: 5, 80: 6}
+CLASS_NAMES = ["tree_cover", "shrubland", "grassland", "cropland",
+               "built_up", "bare_sparse", "water"]
 N_CLASSES = len(CLASS_NAMES)
 
 SEED = 42
@@ -745,10 +746,18 @@ def download_worldcover_tile(tile: str, year: int) -> str:
     return path
 
 
-def reproject_worldcover_to_anchor(wc_path: str, anchor_path: str):
-    """Reproject WorldCover from EPSG:4326 to city anchor grid."""
+def reproject_worldcover_to_anchor(wc_paths, anchor_path):
+    """Reproject WorldCover from EPSG:4326 to city anchor grid.
+
+    wc_paths can be a single path (str) or a list of paths.  When
+    multiple tiles are provided the results are merged by taking the
+    maximum (non-zero) pixel value per location.
+    """
     import rasterio
     from rasterio.warp import Resampling, reproject
+
+    if isinstance(wc_paths, str):
+        wc_paths = [wc_paths]
 
     with rasterio.open(anchor_path) as ref:
         anchor = {
@@ -757,14 +766,19 @@ def reproject_worldcover_to_anchor(wc_path: str, anchor_path: str):
         }
 
     dst_array = np.zeros((anchor["height"], anchor["width"]), dtype=np.uint8)
-    with rasterio.open(wc_path) as src:
-        reproject(
-            source=rasterio.band(src, 1), destination=dst_array,
-            src_transform=src.transform, src_crs=src.crs,
-            src_nodata=src.nodata,
-            dst_transform=anchor["transform"], dst_crs=anchor["crs"],
-            dst_nodata=0, resampling=Resampling.nearest,
-        )
+    for wc_path in wc_paths:
+        tmp = np.zeros_like(dst_array)
+        with rasterio.open(wc_path) as src:
+            reproject(
+                source=rasterio.band(src, 1), destination=tmp,
+                src_transform=src.transform, src_crs=src.crs,
+                src_nodata=src.nodata,
+                dst_transform=anchor["transform"], dst_crs=anchor["crs"],
+                dst_nodata=0, resampling=Resampling.nearest,
+            )
+        # Merge: keep non-zero pixels from each tile
+        mask = (dst_array == 0) & (tmp > 0)
+        dst_array[mask] = tmp[mask]
     return dst_array, anchor["width"] // GRID_PX, anchor["height"] // GRID_PX
 
 
@@ -785,6 +799,10 @@ def aggregate_labels(wc_array, n_cols, n_rows):
                 mapped += count
             if total_px > 0:
                 proportions /= total_px
+            # Normalize so rows sum to 1.0 (handles remaining unmapped pixels)
+            row_sum = proportions.sum()
+            if row_sum > 0:
+                proportions /= row_sum
             coverage = mapped / total_px if total_px > 0 else 0.0
             record = {
                 "cell_id": cell_id,
@@ -798,6 +816,40 @@ def aggregate_labels(wc_array, n_cols, n_rows):
     return pd.DataFrame(records)
 
 
+def _wc_tiles_for_bbox(bbox):
+    """Compute all ESA WorldCover 3°×3° tile IDs covering a WGS84 bbox.
+
+    ESA tile IDs use the LOWER-LEFT corner, e.g. N48E009 covers
+    lat [48,51), lon [9,12).  For negative longitudes the convention
+    is W with the absolute value of the lower-left corner.
+    """
+    import math
+    west, south, east, north = bbox
+    lat_lo = int(math.floor(south / 3.0)) * 3
+    lat_hi = int(math.floor(north / 3.0)) * 3
+    lon_lo = int(math.floor(west / 3.0)) * 3
+    lon_hi = int(math.floor(east / 3.0)) * 3
+    tiles = []
+    for lat in range(lat_lo, lat_hi + 1, 3):
+        for lon in range(lon_lo, lon_hi + 1, 3):
+            ns = "N" if lat >= 0 else "S"
+            ew = "E" if lon >= 0 else "W"
+            tile = f"{ns}{abs(lat):02d}{ew}{abs(lon):03d}"
+            tiles.append(tile)
+    return tiles
+
+
+def _get_wc_mosaic(city: CityConfig, year: int):
+    """Download all needed WC tiles for a city and return list of paths."""
+    tiles = _wc_tiles_for_bbox(city.bbox)
+    paths = []
+    for tile in tiles:
+        p = download_worldcover_tile(tile, year)
+        if p:
+            paths.append(p)
+    return paths
+
+
 def create_labels(city: CityConfig):
     """Create labels for a city from WorldCover tiles."""
     for year in WC_YEARS:
@@ -807,15 +859,15 @@ def create_labels(city: CityConfig):
             print(f"  [{city.name}/{year}] Labels exist ({len(df)} cells)")
             continue
 
-        wc_path = download_worldcover_tile(city.wc_tile, year)
-        if not wc_path:
+        wc_paths = _get_wc_mosaic(city, year)
+        if not wc_paths:
             print(f"  [{city.name}/{year}] WARNING: No WorldCover available")
             continue
 
         anchor = city_anchor_path(city)
-        print(f"  [{city.name}/{year}] Reprojecting WorldCover...")
+        print(f"  [{city.name}/{year}] Reprojecting WorldCover ({len(wc_paths)} tile(s))...")
         wc_array, n_cols, n_rows = reproject_worldcover_to_anchor(
-            wc_path, anchor)
+            wc_paths, anchor)
         print(f"  [{city.name}/{year}] Aggregating {n_cols}x{n_rows}"
               f"={n_cols*n_rows} cells...")
         labels_df = aggregate_labels(wc_array, n_cols, n_rows)
