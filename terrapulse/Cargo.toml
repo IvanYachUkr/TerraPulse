@@ -22,6 +22,7 @@ serde_json = "1"
 
 # Parallelism
 rayon = "1.10"
+futures = "0.3"
 
 # ONNX Runtime inference (dynamic loading to avoid MSVC static linking issues)
 ort = { version = "2.0.0-rc.9", default-features = false, features = ["std", "load-dynamic", "copy-dylibs", "download-binaries", "tls-native"] }
@@ -30,6 +31,7 @@ ort = { version = "2.0.0-rc.9", default-features = false, features = ["std", "lo
 parquet = { version = "53", features = ["arrow"] }
 arrow = { version = "53", features = ["ffi"] }
 tiff = "0.11"
+flate2 = "1.0"
 # Utilities
 anyhow = "1"
 indicatif = "0.17"  # progress bars

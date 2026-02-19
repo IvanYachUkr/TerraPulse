@@ -162,36 +162,43 @@ fn chrono_parse_expand(date_str: &str, days: i32) -> String {
 
 // ---- Token-based signing ----
 
-/// Get a SAS token for the sentinel-2-l2a collection (with retry on 429).
+/// Cached SAS token — shared across all concurrent downloads.
+static CACHED_TOKEN: tokio::sync::OnceCell<String> = tokio::sync::OnceCell::const_new();
+
+/// Get a SAS token for the sentinel-2-l2a collection (cached, with retry on 429).
 pub async fn get_collection_token(client: &Client) -> Result<String> {
-    let max_retries = 3;
-    let mut wait_secs = 5u64;
+    let token = CACHED_TOKEN.get_or_try_init(|| async {
+        let max_retries = 3;
+        let mut wait_secs = 5u64;
 
-    for attempt in 0..=max_retries {
-        let resp = client
-            .get(TOKEN_API)
-            .send()
-            .await
-            .context("Token request failed")?;
+        for attempt in 0..=max_retries {
+            let resp = client
+                .get(TOKEN_API)
+                .send()
+                .await
+                .context("Token request failed")?;
 
-        let status = resp.status();
-        if status.as_u16() == 429 && attempt < max_retries {
-            eprintln!("    Rate limited on token, waiting {wait_secs}s...");
-            tokio::time::sleep(std::time::Duration::from_secs(wait_secs)).await;
-            wait_secs *= 2;
-            continue;
+            let status = resp.status();
+            if status.as_u16() == 429 && attempt < max_retries {
+                eprintln!("    Rate limited on token, waiting {wait_secs}s...");
+                tokio::time::sleep(std::time::Duration::from_secs(wait_secs)).await;
+                wait_secs *= 2;
+                continue;
+            }
+
+            if !status.is_success() {
+                let text = resp.text().await.unwrap_or_default();
+                anyhow::bail!("Token API returned {status}: {text}");
+            }
+
+            let tr: TokenResponse = resp.json().await.context("Failed to parse token response")?;
+            return Ok(tr.token);
         }
 
-        if !status.is_success() {
-            let text = resp.text().await.unwrap_or_default();
-            anyhow::bail!("Token API returned {status}: {text}");
-        }
+        anyhow::bail!("get_collection_token exhausted retries")
+    }).await?;
 
-        let tr: TokenResponse = resp.json().await.context("Failed to parse token response")?;
-        return Ok(tr.token);
-    }
-
-    anyhow::bail!("get_collection_token exhausted retries");
+    Ok(token.clone())
 }
 
 /// Apply a SAS token to a blob URL.
@@ -201,6 +208,11 @@ fn apply_token(href: &str, token: &str) -> String {
     } else {
         format!("{href}?{token}")
     }
+}
+
+/// Public version of apply_token for cross-module use.
+pub fn apply_token_pub(href: &str, token: &str) -> String {
+    apply_token(href, token)
 }
 
 /// Sign all band asset URLs in a scene item using a pre-fetched token.
@@ -224,4 +236,114 @@ pub fn sign_scene_assets_with_token(
 /// Get bands + SCL for cloud masking.
 pub fn all_download_bands() -> Vec<&'static str> {
     vec!["B02", "B03", "B04", "B05", "B06", "B07", "B08", "B8A", "B11", "B12", "SCL"]
+}
+
+// ---- Sentinel-1 SAR ----
+
+const S1_TOKEN_API: &str = "https://planetarycomputer.microsoft.com/api/sas/v1/token/sentinel-1-grd";
+
+/// Cached SAS token for S1.
+static CACHED_S1_TOKEN: tokio::sync::OnceCell<String> = tokio::sync::OnceCell::const_new();
+
+/// Get a SAS token for sentinel-1-grd (cached).
+pub async fn get_s1_token(client: &Client) -> Result<String> {
+    let token = CACHED_S1_TOKEN.get_or_try_init(|| async {
+        let max_retries = 3;
+        let mut wait_secs = 5u64;
+
+        for attempt in 0..=max_retries {
+            let resp = client
+                .get(S1_TOKEN_API)
+                .send()
+                .await
+                .context("S1 token request failed")?;
+
+            let status = resp.status();
+            if status.as_u16() == 429 && attempt < max_retries {
+                eprintln!("    Rate limited on S1 token, waiting {wait_secs}s...");
+                tokio::time::sleep(std::time::Duration::from_secs(wait_secs)).await;
+                wait_secs *= 2;
+                continue;
+            }
+
+            if !status.is_success() {
+                let text = resp.text().await.unwrap_or_default();
+                anyhow::bail!("S1 token API returned {status}: {text}");
+            }
+
+            let tr: TokenResponse = resp.json().await.context("Failed to parse S1 token")?;
+            return Ok(tr.token);
+        }
+
+        anyhow::bail!("get_s1_token exhausted retries")
+    }).await?;
+
+    Ok(token.clone())
+}
+
+/// Search for Sentinel-1 IW GRD scenes.
+pub async fn search_sar_scenes(
+    client: &Client,
+    bbox: [f64; 4],
+    year: u32,
+    season: &str,
+) -> Result<Vec<StacItem>> {
+    let (start, end) = season_date_range(year, season);
+
+    // First try ascending orbit only
+    let body = StacSearchBody {
+        collections: vec!["sentinel-1-grd".to_string()],
+        bbox,
+        datetime: format!("{start}/{end}"),
+        query: Some(serde_json::json!({
+            "sar:instrument_mode": {"eq": "IW"},
+            "sat:orbit_state": {"eq": "ascending"}
+        })),
+        limit: 500,
+    };
+
+    let url = format!("{STAC_API}/search");
+    let resp = client.post(&url).json(&body).send().await
+        .context("S1 STAC search failed")?;
+    let status = resp.status();
+    if !status.is_success() {
+        let text = resp.text().await.unwrap_or_default();
+        anyhow::bail!("S1 STAC search returned {status}: {text}");
+    }
+    let fc: StacFeatureCollection = resp.json().await
+        .context("Failed to parse S1 STAC response")?;
+
+    if fc.features.len() >= 3 {
+        return Ok(fc.features);
+    }
+
+    // Fallback: any orbit
+    let body2 = StacSearchBody {
+        collections: vec!["sentinel-1-grd".to_string()],
+        bbox,
+        datetime: format!("{start}/{end}"),
+        query: Some(serde_json::json!({
+            "sar:instrument_mode": {"eq": "IW"}
+        })),
+        limit: 500,
+    };
+
+    let resp2 = client.post(&url).json(&body2).send().await
+        .context("S1 STAC fallback search failed")?;
+    if !resp2.status().is_success() {
+        return Ok(fc.features); // return whatever we had
+    }
+    let fc2: StacFeatureCollection = resp2.json().await
+        .context("Failed to parse S1 STAC fallback response")?;
+
+    if fc2.features.len() > fc.features.len() {
+        Ok(fc2.features)
+    } else {
+        Ok(fc.features)
+    }
+}
+
+/// SAR band names.
+pub fn sar_bands() -> Vec<&'static str> {
+    vec!["vv", "vh"]
 }

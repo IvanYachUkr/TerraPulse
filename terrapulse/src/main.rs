@@ -1,9 +1,13 @@
+mod cog;
+mod composite;
 mod config;
 mod download;
 mod extract;
 mod features;
 mod parquet_io;
 mod predict;
+mod reproject;
+mod sar_download;
 mod sar_features;
 mod stac;
 mod tif_reader;
@@ -344,43 +348,79 @@ async fn run_download(
 ) -> Result<()> {
     let t0 = Instant::now();
 
-    // Resolve the composite helper script (relative to the binary or provided)
-    let helper_script = find_helper_script()?;
-
     let bbox_arr: [f64; 4] = [bbox[0], bbox[1], bbox[2], bbox[3]];
 
-    // Build HTTP client with generous timeouts for large COG downloads
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(300))
-        .connect_timeout(std::time::Duration::from_secs(30))
-        .build()?;
-
-    println!("TerraPulse Download");
+    // Read anchor reference metadata (target grid definition)
+    let anchor = composite::AnchorRef::from_tif(anchor_ref)
+        .with_context(|| format!("Failed to read anchor ref: {}", anchor_ref.display()))?;
+    println!("TerraPulse Download (Pure Rust)");
     println!("  Region: {region}");
     println!("  BBOX: [{}, {}, {}, {}]", bbox[0], bbox[1], bbox[2], bbox[3]);
     println!("  EPSG: {epsg}");
+    println!("  Anchor: {}x{} EPSG:{}", anchor.width, anchor.height, anchor.epsg);
     println!("  Years: {:?}", years);
-    println!("  Helper: {}", helper_script.display());
+    println!("  Concurrency: all {} years × 3 seasons in parallel", years.len());
     println!();
 
-    for &year in years {
-        println!("--- Year: {year} ---");
-        download::download_year(
-            &client,
-            bbox_arr,
-            epsg,
-            year,
-            region,
-            raw_dir,
-            anchor_ref,
-            &helper_script,
-        )
-        .await?;
+    // Build HTTP client
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(60))
+        .connect_timeout(std::time::Duration::from_secs(15))
+        .pool_max_idle_per_host(20)
+        .build()?;
+
+    // Download ALL years concurrently (each year downloads 3 seasons concurrently)
+    let futures: Vec<_> = years.iter().map(|&year| {
+        let client = client.clone();
+        let raw = raw_dir.to_path_buf();
+        let reg = region.to_string();
+        let anch = anchor.clone();
+        async move {
+            println!("--- Year: {year} ---");
+            download::download_year(
+                &client, bbox_arr, epsg, year, &reg, &raw, &anch,
+            ).await
+        }
+    }).collect();
+
+    let results = futures::future::join_all(futures).await;
+    for r in results {
+        r?;
     }
 
     println!(
-        "\nTotal download time: {:.1}s",
+        "\nOptical download time: {:.1}s",
         t0.elapsed().as_secs_f64()
+    );
+
+    // Download SAR (Sentinel-1) for all years concurrently
+    println!("\n--- SAR (Sentinel-1) Download ---");
+    let t_sar = Instant::now();
+    let sar_futures: Vec<_> = years.iter().map(|&year| {
+        let client = client.clone();
+        let raw = raw_dir.to_path_buf();
+        let reg = region.to_string();
+        let anch = anchor.clone();
+        async move {
+            println!("--- SAR Year: {year} ---");
+            download::download_sar_year(
+                &client, bbox_arr, year, &reg, &raw, &anch,
+            ).await
+        }
+    }).collect();
+
+    let sar_results = futures::future::join_all(sar_futures).await;
+    for r in sar_results {
+        if let Err(e) = r {
+            eprintln!("  SAR download error (non-fatal): {e}");
+        }
+    }
+
+    println!(
+        "\nTotal download time: {:.1}s (optical: {:.1}s, SAR: {:.1}s)",
+        t0.elapsed().as_secs_f64(),
+        t0.elapsed().as_secs_f64() - t_sar.elapsed().as_secs_f64(),
+        t_sar.elapsed().as_secs_f64(),
     );
 
     Ok(())
@@ -462,39 +502,4 @@ async fn run_pipeline(
     println!("{sep}");
 
     Ok(())
-}
-
-/// Find the composite.py helper script.
-/// Looks for it relative to the executable, then in the terrapulse/helpers dir.
-fn find_helper_script() -> Result<PathBuf> {
-    // Try next to the executable
-    if let Ok(exe) = std::env::current_exe() {
-        let dir = exe.parent().unwrap_or(Path::new("."));
-        let candidate = dir.join("helpers").join("composite.py");
-        if candidate.exists() {
-            return Ok(candidate);
-        }
-        // Try sibling of target dir (source layout)
-        let candidate = dir
-            .parent()
-            .and_then(|p| p.parent())
-            .and_then(|p| p.parent())
-            .map(|p| p.join("helpers").join("composite.py"));
-        if let Some(p) = candidate {
-            if p.exists() {
-                return Ok(p);
-            }
-        }
-    }
-
-    // Try relative to CWD
-    let cwd_candidate = PathBuf::from("terrapulse/helpers/composite.py");
-    if cwd_candidate.exists() {
-        return Ok(cwd_candidate);
-    }
-
-    anyhow::bail!(
-        "Cannot find helpers/composite.py. \
-         Place it next to the terrapulse executable or run from the project root."
-    );
 }

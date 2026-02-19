@@ -24,8 +24,8 @@ Usage:
 import os
 
 # ── MUST be set before importing rasterio/GDAL ──
-os.environ["GDAL_HTTP_TIMEOUT"] = "60"
-os.environ["GDAL_HTTP_CONNECTTIMEOUT"] = "15"
+os.environ["GDAL_HTTP_TIMEOUT"] = "15"           # was 60 — fail fast, retry instead
+os.environ["GDAL_HTTP_CONNECTTIMEOUT"] = "8"       # was 15
 os.environ["GDAL_HTTP_MAX_RETRY"] = "3"
 os.environ["GDAL_HTTP_RETRY_DELAY"] = "2"
 os.environ["GDAL_DISABLE_READDIR_ON_OPEN"] = "EMPTY_DIR"
@@ -54,9 +54,9 @@ SENTINEL_BANDS = ["B02", "B03", "B04", "B05", "B06", "B07", "B08", "B8A", "B11",
 SCL_EXCLUDE = frozenset({0, 1, 2, 3, 8, 9, 10, 11})
 SCL_EXCLUDE_ARR = np.array(sorted(SCL_EXCLUDE), dtype=np.uint8)
 NODATA = -9999
-MAX_BAND_WORKERS = 10    # parallel band downloads per scene (was 6)
+MAX_BAND_WORKERS = 10    # parallel band downloads per scene
 MAX_SCENE_WORKERS = 4    # parallel scene downloads
-SCENE_TIMEOUT = 180      # hard timeout per scene (seconds, was 120)
+SCENE_TIMEOUT = 30       # hard timeout per scene (seconds) — was 120/180, caused 2min hangs
 BAND_RETRIES = 2         # retries per band on failure
 
 
