@@ -4,7 +4,7 @@ from src.dashboard.deploy_runner import submit_job, get_job, get_results, get_gr
 # A small bbox in Germany (e.g. around Nuremberg)
 # Longitude / Latitude
 BBOX = [11.0, 49.4, 11.1, 49.5]
-YEARS = [2020, 2021]
+YEARS = [2020, 2023, 2024, 2025]
 
 def main():
     print(f"Submitting deploy job for bbox={BBOX}, years={YEARS}")

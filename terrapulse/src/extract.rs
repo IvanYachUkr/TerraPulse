@@ -16,10 +16,23 @@ const NODATA: f32 = -9999.0;
 fn detect_scale(data: &[f32]) -> f32 {
     let mut sum = 0.0f64;
     let mut n = 0u64;
-    for &v in data.iter().take(10000) {
+    let step = (data.len() / 10000).max(1);
+    for &v in data.iter().step_by(step) {
         if v.is_finite() && v > 0.0 && v != NODATA {
             sum += v as f64;
             n += 1;
+        }
+    }
+    // Fallback if still no valid pixels found
+    if n == 0 {
+        for &v in data {
+            if v.is_finite() && v > 0.0 && v != NODATA {
+                sum += v as f64;
+                n += 1;
+                if n > 1000 {
+                    break;
+                }
+            }
         }
     }
     if n == 0 {
@@ -223,10 +236,22 @@ pub fn extract_year_pair(
             // But if raw linear power values are present, detect and convert.
             let mut finite_sum = 0.0f64;
             let mut finite_n = 0u64;
-            for &v in data.iter().take(10000) {
-                if v.is_finite() && v > 0.0 {
+            let step = (data.len() / 10000).max(1);
+            for &v in data.iter().step_by(step) {
+                if v.is_finite() && v > 0.0 && v != NODATA {
                     finite_sum += v as f64;
                     finite_n += 1;
+                }
+            }
+            if finite_n == 0 {
+                for &v in data.iter() {
+                    if v.is_finite() && v > 0.0 && v != NODATA {
+                        finite_sum += v as f64;
+                        finite_n += 1;
+                        if finite_n > 1000 {
+                            break;
+                        }
+                    }
                 }
             }
             if finite_n > 0 {

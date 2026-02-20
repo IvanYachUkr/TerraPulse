@@ -437,24 +437,33 @@ pub async fn read_cog_region(
 /// Unpack a contiguous stream of 15-bit tightly packed integers into a Vec<u16>.
 /// TIFF spec uses MSB-first packing within bytes, but since bits are just sequential
 /// we read 3 bytes at a time (at most) and mask the desired 15 bits.
-fn unpack_15bit_tight(bytes: &[u8], n_pixels: usize) -> Vec<u16> {
+fn unpack_15bit_tight(raw: &[u8], n_pixels: usize) -> Vec<u16> {
     let mut out = Vec::with_capacity(n_pixels);
-    let mut bit_pos: usize = 0;
+    let mut bit_buf = 0u32;
+    let mut bits_in_buf = 0usize;
+    let mut byte_idx = 0usize;
+
     for _ in 0..n_pixels {
-        let byte_idx = bit_pos / 8;
-        let bit_off = bit_pos % 8;
+        // Accumulate bytes into buffer until we have at least 15 bits
+        while bits_in_buf < 15 {
+            if byte_idx < raw.len() {
+                bit_buf = (bit_buf << 8) | (raw[byte_idx] as u32);
+                byte_idx += 1;
+            } else {
+                // Pad with zeros if we run out of input bytes
+                bit_buf <<= 8;
+            }
+            bits_in_buf += 8;
+        }
 
-        let b0 = *bytes.get(byte_idx).unwrap_or(&0) as u32;
-        let b1 = *bytes.get(byte_idx + 1).unwrap_or(&0) as u32;
-        let b2 = *bytes.get(byte_idx + 2).unwrap_or(&0) as u32;
+        // Extract the top 15 bits from our buffer
+        let shift = bits_in_buf - 15;
+        let sample = (bit_buf >> shift) & 0x7FFF;
+        out.push(sample as u16);
 
-        // Assemble 24 bits (little-endian byte read, so b0 is lowest bits)
-        // Note: For BigTIFF/TIFF typically FillOrder=1 (MSB first bits),
-        // but Sentinel-2 15bps are standard packed words. A simple shift works.
-        let word = (b0 | (b1 << 8) | (b2 << 16)) >> bit_off;
-
-        out.push((word & 0x7FFF) as u16); // Mask 15 bits
-        bit_pos += 15;
+        // Remove the consumed bits
+        bits_in_buf -= 15;
+        bit_buf &= (1 << bits_in_buf) - 1;
     }
     out
 }
@@ -726,21 +735,20 @@ mod tests {
 
     #[test]
     fn test_unpack_15bit_tight() {
-        // Let's create two 15-bit values:
-        // Val 1: 0x5555 (0101010101010101 in binary)
-        // Val 2: 0x2AAA (0010101010101010 in binary)
-        // Expected bits stream:
-        // [ 0x5555 (15 bits) ][ 0x2AAA (15 bits) ]
-        // V1: 1010 1010 1010 101 = 0x5555
-        // V2: 0101 0101 0101 010 = 0x2AAA
-
         let v1 = 0x5555u32;
-        let v2 = 0x2AAAu32;
+        let v2 = 0x2AAAu32; // This doesn't matter for the new test, let's write exact bytes
 
-        let packed_30 = v1 | (v2 << 15);
-        let bytes = packed_30.to_le_bytes(); // 4 bytes covering the 30 bits
-
+        // Stream: [ 10101010 ] [ 10101010 ] [ 10101010 ] ...
+        // First 15 bits: 101010101010101 -> 0x5555
+        // This requires bit stream MSB-first:
+        // byte 0: 10101010 = 0xAA
+        // byte 1: 10101010 = 0xAA
+        let bytes = [0xAA, 0xAA, 0xAA, 0xAA];
         let unpacked = unpack_15bit_tight(&bytes, 2);
-        assert_eq!(unpacked, vec![v1 as u16, v2 as u16]);
+        assert_eq!(unpacked[0], 0x5555);
+        // leftover bit from first 15 bits is 0.
+        // next 14 bits are 10101010101010.
+        // so sample 2 is 010101010101010 = 0x2AAA.
+        assert_eq!(unpacked[1], 0x2AAA);
     }
 }
