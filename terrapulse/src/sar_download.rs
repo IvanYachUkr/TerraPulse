@@ -629,11 +629,28 @@ fn resample_gcp_to_utm(
                     if v.is_finite() && v > 0.0 { v as f64 } else { f64::NAN }
                 };
 
-                row[dx] = bilinear_interp(
-                    sample(y0, x0), sample(y0, x0 + 1),
-                    sample(y0 + 1, x0), sample(y0 + 1, x0 + 1),
-                    fx, fy,
-                );
+                let v00 = sample(y0, x0);
+                let v10 = sample(y0, x0 + 1);
+                let v01 = sample(y0 + 1, x0);
+                let v11 = sample(y0 + 1, x0 + 1);
+
+                // Naive bilinear_interp fails completely if any of the 4 inputs is NaN.
+                // We use a NaN-resilient method that normalizes the weights of the valid pixels,
+                // matching rasterio/GDAL WarpedVRT behavior closely to prevent 42K missing edge pixels.
+                let w00 = (1.0 - fx) * (1.0 - fy);
+                let w10 = fx * (1.0 - fy);
+                let w01 = (1.0 - fx) * fy;
+                let w11 = fx * fy;
+                
+                let mut sum = 0.0;
+                let mut wsum = 0.0;
+                
+                if v00.is_finite() { sum += v00 * w00; wsum += w00; }
+                if v10.is_finite() { sum += v10 * w10; wsum += w10; }
+                if v01.is_finite() { sum += v01 * w01; wsum += w01; }
+                if v11.is_finite() { sum += v11 * w11; wsum += w11; }
+
+                row[dx] = if wsum > 1e-9 { (sum / wsum) as f32 } else { f32::NAN };
             }
         });
 

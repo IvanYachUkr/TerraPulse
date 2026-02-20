@@ -75,3 +75,7 @@ models/final_mlp_pyv3/
 
 # === CSV results ===
 *.csv
+
+# === Temporary scripts & logs ===
+terrapulse/check_s1_compression.py
+terrapulse/s1_tags.txt

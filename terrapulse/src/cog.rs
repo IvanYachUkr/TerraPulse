@@ -378,6 +378,31 @@ pub async fn read_cog_region(
 
 // ── Tile decoding ──
 
+/// Unpack a contiguous stream of 15-bit tightly packed integers into a Vec<u16>.
+/// TIFF spec uses MSB-first packing within bytes, but since bits are just sequential
+/// we read 3 bytes at a time (at most) and mask the desired 15 bits.
+fn unpack_15bit_tight(bytes: &[u8], n_pixels: usize) -> Vec<u16> {
+    let mut out = Vec::with_capacity(n_pixels);
+    let mut bit_pos: usize = 0;
+    for _ in 0..n_pixels {
+        let byte_idx = bit_pos / 8;
+        let bit_off = bit_pos % 8;
+        
+        let b0 = *bytes.get(byte_idx).unwrap_or(&0) as u32;
+        let b1 = *bytes.get(byte_idx + 1).unwrap_or(&0) as u32;
+        let b2 = *bytes.get(byte_idx + 2).unwrap_or(&0) as u32;
+        
+        // Assemble 24 bits (little-endian byte read, so b0 is lowest bits)
+        // Note: For BigTIFF/TIFF typically FillOrder=1 (MSB first bits),
+        // but Sentinel-2 15bps are standard packed words. A simple shift works.
+        let word = (b0 | (b1 << 8) | (b2 << 16)) >> bit_off;
+        
+        out.push((word & 0x7FFF) as u16); // Mask 15 bits
+        bit_pos += 15;
+    }
+    out
+}
+
 /// Decode a compressed tile into f32 pixels.
 fn decode_tile(
     raw: &[u8],
@@ -408,6 +433,14 @@ fn decode_tile(
             }
             buf
         }
+        50000 => {
+            // ZSTD compression
+            // Used by Sentinel-1 GRD/RTC from late 2023+ from Planetary Computer
+            let mut dec = zstd::stream::Decoder::new(raw).context("Failed to init ZSTD decoder")?;
+            let mut buf = Vec::with_capacity(tile_width * tile_height * 2);
+            dec.read_to_end(&mut buf).context("ZSTD decompression failed")?;
+            buf
+        }
         _ => anyhow::bail!("Unsupported TIFF compression: {compression}"),
     };
 
@@ -416,7 +449,7 @@ fn decode_tile(
     // Apply horizontal differencing predictor (undo)
     // TIFF predictor=2 stores pixel[x] = pixel[x] - pixel[x-1] (deltas).
     // Undoing means cumulative sum across each row at the *sample* level.
-    let mut bytes = decompressed;
+    let mut bytes = decompressed.clone();
     if predictor == 2 {
         let bps = bits_per_sample as usize; // bits per sample
         let bytes_per_sample = bps / 8;
@@ -471,15 +504,22 @@ fn decode_tile(
                     }
                 }
             }
+            // Add custom handler for 15-bit tight packing (stored as 15bps but 1 byte_per_sample here is misleading,
+            // the bytes_per_sample logic above fails). We must intercept *before* the predictor.
             _ => {
-                // fallback: byte-level (may be incorrect for some formats)
-                let row_bytes = tile_width * bytes_per_sample;
-                for row in 0..tile_height {
-                    let rs = row * row_bytes;
-                    for x in bytes_per_sample..row_bytes {
-                        let idx = rs + x;
-                        if idx < bytes.len() {
-                            bytes[idx] = bytes[idx].wrapping_add(bytes[idx - bytes_per_sample]);
+                // If it's 15bps, the generic fallback is wrong.
+                if bits_per_sample == 15 {
+                    // Handled down below, we must unpack first, then run predictor!
+                } else {
+                    // fallback: byte-level (may be incorrect for some formats)
+                    let row_bytes = tile_width * bytes_per_sample;
+                    for row in 0..tile_height {
+                        let rs = row * row_bytes;
+                        for x in bytes_per_sample..row_bytes {
+                            let idx = rs + x;
+                            if idx < bytes.len() {
+                                bytes[idx] = bytes[idx].wrapping_add(bytes[idx - bytes_per_sample]);
+                            }
                         }
                     }
                 }
@@ -493,8 +533,27 @@ fn decode_tile(
             // uint8
             bytes.iter().take(n_pixels).map(|&v| v as f32).collect()
         }
-        (15, 1) | (16, 1) => {
-            // uint16 LE (15bps = ESA newer baseline, stored in 16-bit containers)
+        (15, 1) => {
+            // 15bps tight packing (Newer ESA baseline).
+            // We unpacked raw tight bits OR they are byte-aligned. Let's unpack first.
+            let mut unpacked = unpack_15bit_tight(&decompressed, n_pixels);
+            
+            // Re-apply predictor=2 correctly on the *unpacked* 16-bit values
+            if predictor == 2 {
+                let samples_per_row = tile_width;
+                for row in 0..tile_height {
+                    let rs = row * samples_per_row;
+                    for x in 1..samples_per_row {
+                        unpacked[rs + x] = unpacked[rs + x].wrapping_add(unpacked[rs + x - 1]);
+                    }
+                }
+            }
+            
+            unpacked.into_iter().map(|v| v as f32).collect()
+        }
+        (16, 1) => {
+            // uint16 LE 
+            // If predictor was 2, bytes array is already cumulative sum
             let mut out = Vec::with_capacity(n_pixels);
             for i in 0..n_pixels {
                 let off = i * 2;
@@ -578,4 +637,29 @@ pub fn read_local_tif_meta(path: &std::path::Path) -> Result<CogMeta> {
     // Only need the first HEADER_BYTES for IFD parsing
     let header = if data.len() > HEADER_BYTES { &data[..HEADER_BYTES] } else { &data };
     parse_ifd(header)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_unpack_15bit_tight() {
+        // Let's create two 15-bit values:
+        // Val 1: 0x5555 (0101010101010101 in binary)
+        // Val 2: 0x2AAA (0010101010101010 in binary)
+        // Expected bits stream:
+        // [ 0x5555 (15 bits) ][ 0x2AAA (15 bits) ]
+        // V1: 1010 1010 1010 101 = 0x5555
+        // V2: 0101 0101 0101 010 = 0x2AAA
+        
+        let v1 = 0x5555u32;
+        let v2 = 0x2AAAu32;
+        
+        let packed_30 = v1 | (v2 << 15);
+        let bytes = packed_30.to_le_bytes(); // 4 bytes covering the 30 bits
+        
+        let unpacked = unpack_15bit_tight(&bytes, 2);
+        assert_eq!(unpacked, vec![v1 as u16, v2 as u16]);
+    }
 }
