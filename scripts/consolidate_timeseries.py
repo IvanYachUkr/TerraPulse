@@ -1,8 +1,8 @@
 """Consolidate multi-year Nuremberg predictions into shareable datasets + visualizations.
 
 Outputs:
-  data/nuremberg_timeseries/nuremberg_landcover_2018_2022.parquet
-  data/nuremberg_timeseries/nuremberg_landcover_2018_2022.csv
+  data/nuremberg_timeseries/nuremberg_landcover_2018_2025.parquet
+  data/nuremberg_timeseries/nuremberg_landcover_2018_2025.csv
   data/nuremberg_timeseries/nuremberg_summary_by_year.csv
   data/nuremberg_timeseries/viz_stacked_area.png
   data/nuremberg_timeseries/viz_per_class_trends.png
@@ -48,6 +48,9 @@ YEAR_PAIRS = [
     ("2019_2020", 2020),
     ("2020_2021", 2021),
     ("2021_2022", 2022),
+    ("2022_2023", 2023),
+    ("2023_2024", 2024),
+    ("2024_2025", 2025),
 ]
 
 # ── Step 1: Load all predictions ─────────────────────────────────────
@@ -104,12 +107,12 @@ result_df = pd.DataFrame(all_rows)
 result_df = result_df.sort_values(["year", "cell_id"]).reset_index(drop=True)
 
 # Save parquet
-pq_path = os.path.join(TS_DIR, "nuremberg_landcover_2018_2022.parquet")
+pq_path = os.path.join(TS_DIR, "nuremberg_landcover_2018_2025.parquet")
 result_df.to_parquet(pq_path, index=False)
 print(f"  Saved: {pq_path} ({os.path.getsize(pq_path)/1e6:.1f} MB)")
 
 # Save CSV
-csv_path = os.path.join(TS_DIR, "nuremberg_landcover_2018_2022.csv")
+csv_path = os.path.join(TS_DIR, "nuremberg_landcover_2018_2025.csv")
 result_df.to_csv(csv_path, index=False)
 print(f"  Saved: {csv_path} ({os.path.getsize(csv_path)/1e6:.1f} MB)")
 
@@ -153,7 +156,7 @@ ax.set_xlim(years[0], years[-1])
 ax.set_ylim(0, 1)
 ax.set_xlabel("Year", fontsize=12)
 ax.set_ylabel("Mean Land Cover Fraction", fontsize=12)
-ax.set_title("Nuremberg Land Cover Composition (2018-2022)", fontsize=14, fontweight="bold")
+ax.set_title("Nuremberg Land Cover Composition (2018-2025)", fontsize=14, fontweight="bold")
 ax.legend(loc="center left", bbox_to_anchor=(1, 0.5), fontsize=10)
 ax.set_xticks(years)
 ax.grid(axis="y", alpha=0.3)
@@ -189,7 +192,7 @@ axes[-1].axis("off")
 axes[-1].text(0.5, 0.5, "Black diamonds = WorldCover labels",
               ha="center", va="center", fontsize=10, transform=axes[-1].transAxes)
 
-fig.suptitle("Nuremberg Per-Class Land Cover Trends (2018-2022)", fontsize=14, fontweight="bold")
+fig.suptitle("Nuremberg Per-Class Land Cover Trends (2018-2025)", fontsize=14, fontweight="bold")
 plt.tight_layout()
 fig.savefig(os.path.join(TS_DIR, "viz_per_class_trends.png"), dpi=150, bbox_inches="tight")
 print("  Saved viz_per_class_trends.png")
@@ -198,7 +201,7 @@ plt.close(fig)
 # 5c. Dominant class change map (2018 vs 2022)
 fig, axes = plt.subplots(1, 3, figsize=(18, 6))
 
-for idx, (year, ax) in enumerate(zip([2018, 2022, None], axes)):
+for idx, (year, ax) in enumerate(zip([2018, 2025, None], axes)):
     if year is not None:
         yr_df = pred_df[pred_df["year"] == year].sort_values("cell_id")
         dom_class = yr_df[CLASS_NAMES].values.argmax(axis=1)
@@ -227,7 +230,7 @@ for idx, (year, ax) in enumerate(zip([2018, 2022, None], axes)):
     else:
         # Change map
         yr1 = pred_df[pred_df["year"] == 2018].sort_values("cell_id")
-        yr2 = pred_df[pred_df["year"] == 2022].sort_values("cell_id")
+        yr2 = pred_df[pred_df["year"] == 2025].sort_values("cell_id")
         dom1 = yr1[CLASS_NAMES].values.argmax(axis=1)
         dom2 = yr2[CLASS_NAMES].values.argmax(axis=1)
         changed = (dom1 != dom2).astype(int)
@@ -251,7 +254,7 @@ for idx, (year, ax) in enumerate(zip([2018, 2022, None], axes)):
         ax.set_title(f"Changed Cells: {n_changed} ({pct_changed:.1f}%)", fontsize=12, fontweight="bold")
         ax.axis("off")
 
-plt.suptitle("Nuremberg Dominant Land Cover: 2018 vs 2022", fontsize=14, fontweight="bold")
+plt.suptitle("Nuremberg Dominant Land Cover: 2018 vs 2025", fontsize=14, fontweight="bold")
 plt.tight_layout()
 fig.savefig(os.path.join(TS_DIR, "viz_dominant_class_change.png"), dpi=150, bbox_inches="tight")
 print("  Saved viz_dominant_class_change.png")
@@ -261,8 +264,8 @@ print("\n" + "=" * 60)
 print("DONE!")
 print("=" * 60)
 print(f"\nOutputs in: {TS_DIR}")
-print(f"  nuremberg_landcover_2018_2022.parquet  ({result_df.shape[0]} rows)")
-print(f"  nuremberg_landcover_2018_2022.csv")
+print(f"  nuremberg_landcover_2018_2025.parquet  ({result_df.shape[0]} rows)")
+print(f"  nuremberg_landcover_2018_2025.csv")
 print(f"  nuremberg_summary_by_year.csv")
 print(f"  viz_stacked_area.png")
 print(f"  viz_per_class_trends.png")
