@@ -5,6 +5,7 @@ use anyhow::{Context, Result};
 use reqwest::Client;
 use std::path::Path;
 use std::collections::HashMap;
+use rayon::prelude::*;
 
 use crate::cog::{self, PixelBbox};
 use crate::reproject::{self, GeoTransform};
@@ -164,23 +165,28 @@ pub async fn download_and_composite(
         }
     }
 
-    // Compute nanmedian composite
+    // Compute nanmedian composite using Rayon
     let mut composite = vec![NODATA_VAL; n_bands * n_pixels];
     let mut valid_fraction = vec![0.0f32; n_pixels];
 
-    for px in 0..n_pixels {
+    // Pre-allocate indices to distribute workload
+    let pixel_indices: Vec<usize> = (0..n_pixels).collect();
+
+    // Compute pixel values in parallel (embarrassingly parallel over all cores)
+    let results: Vec<(Vec<f32>, f32)> = pixel_indices.into_par_iter().map(|px| {
         let mut n_valid = 0u32;
         for scene in &scenes {
             if scene.valid_mask[px] {
                 n_valid += 1;
             }
         }
-        valid_fraction[px] = n_valid as f32 / scenes.len() as f32;
+        let valid_frac = n_valid as f32 / scenes.len() as f32;
 
         if n_valid == 0 {
-            continue;
+            return (Vec::new(), valid_frac);
         }
 
+        let mut medians = Vec::with_capacity(n_bands);
         for bi in 0..n_bands {
             let mut vals: Vec<f32> = Vec::with_capacity(n_valid as usize);
             for scene in &scenes {
@@ -198,7 +204,20 @@ pub async fn download_and_composite(
                 } else {
                     vals[vals.len() / 2]
                 };
-                composite[bi * n_pixels + px] = median;
+                medians.push(median);
+            } else {
+                medians.push(NODATA_VAL);
+            }
+        }
+        (medians, valid_frac)
+    }).collect();
+
+    // Write back computed values to continuous slices
+    for (px, (medians, frac)) in results.into_iter().enumerate() {
+        valid_fraction[px] = frac;
+        if !medians.is_empty() {
+            for bi in 0..n_bands {
+                composite[bi * n_pixels + px] = medians[bi];
             }
         }
     }

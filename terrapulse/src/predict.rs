@@ -76,11 +76,10 @@ impl OnnxMlp {
         let n_rows = features.len();
         let n_cols = features[0].len();
 
-        // Flatten to contiguous array
-        let mut flat: Vec<f32> = Vec::with_capacity(n_rows * n_cols);
-        for row in features {
-            flat.extend_from_slice(row);
-        }
+        // Flatten to contiguous array efficiently using flat_map
+        let flat: Vec<f32> = features.iter()
+            .flat_map(|row| row.iter().copied())
+            .collect();
 
         // Create ONNX tensor
         let input_tensor =
