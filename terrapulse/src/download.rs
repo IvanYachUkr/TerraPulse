@@ -59,6 +59,7 @@ pub async fn download_season(
         &signed_scenes,
         anchor,
         &out_path,
+        year,
     ).await?;
 
     if out_path.exists() {

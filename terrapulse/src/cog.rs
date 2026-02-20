@@ -493,8 +493,8 @@ fn decode_tile(
             // uint8
             bytes.iter().take(n_pixels).map(|&v| v as f32).collect()
         }
-        (16, 1) => {
-            // uint16 LE
+        (15, 1) | (16, 1) => {
+            // uint16 LE (15bps = ESA newer baseline, stored in 16-bit containers)
             let mut out = Vec::with_capacity(n_pixels);
             for i in 0..n_pixels {
                 let off = i * 2;

@@ -61,6 +61,7 @@ pub async fn download_and_composite(
     signed_urls: &[HashMap<String, String>],
     anchor: &AnchorRef,
     output_path: &Path,
+    year: u32,
 ) -> Result<()> {
     let n_scenes = items.len();
     let n_bands = SPECTRAL_BANDS.len();
@@ -126,13 +127,48 @@ pub async fn download_and_composite(
         anyhow::bail!("No scenes downloaded successfully");
     }
 
+    // ESA Processing Baseline 04.00 (effective Jan 25 2022) added a +1000
+    // BOA_ADD_OFFSET to Sentinel-2 L2A surface reflectance values.
+    // Detect per-scene: if B02 median > 900, subtract 1000 from spectral bands.
+    // This handles the 2022 transitional year where old/new baselines coexist.
+    if year >= 2022 {
+        let boa_offset = 1000.0f32;
+        let mut n_corrected = 0;
+        for scene in &mut scenes {
+            // B02 is band index 0 (first in SPECTRAL_BANDS)
+            let b02 = &scene.bands[0];
+            let mut valid_vals: Vec<f32> = b02.iter()
+                .zip(scene.valid_mask.iter())
+                .filter(|(&v, &m)| m && v.is_finite() && v > 0.0)
+                .map(|(&v, _)| v)
+                .collect();
+            if valid_vals.is_empty() { continue; }
+            valid_vals.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
+            let median = valid_vals[valid_vals.len() / 2];
+
+            if median > 900.0 {
+                // This scene has the BOA offset — subtract from all spectral bands
+                for bi in 0..n_bands {
+                    for px in 0..n_pixels {
+                        let v = scene.bands[bi][px];
+                        if v.is_finite() && v > 0.0 {
+                            scene.bands[bi][px] = (v - boa_offset).max(0.0);
+                        }
+                    }
+                }
+                n_corrected += 1;
+            }
+        }
+        if n_corrected > 0 {
+            eprintln!("    BOA_ADD_OFFSET: corrected {n_corrected}/{} scenes (year {year})", scenes.len());
+        }
+    }
+
     // Compute nanmedian composite
     let mut composite = vec![NODATA_VAL; n_bands * n_pixels];
     let mut valid_fraction = vec![0.0f32; n_pixels];
 
-    // For each pixel, collect valid values across scenes and take median
     for px in 0..n_pixels {
-        // Count valid scenes for this pixel
         let mut n_valid = 0u32;
         for scene in &scenes {
             if scene.valid_mask[px] {
@@ -142,10 +178,9 @@ pub async fn download_and_composite(
         valid_fraction[px] = n_valid as f32 / scenes.len() as f32;
 
         if n_valid == 0 {
-            continue; // all NODATA
+            continue;
         }
 
-        // For each band, collect valid values and take median
         for bi in 0..n_bands {
             let mut vals: Vec<f32> = Vec::with_capacity(n_valid as usize);
             for scene in &scenes {
