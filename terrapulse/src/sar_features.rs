@@ -4,14 +4,8 @@
 use rayon::prelude::*;
 
 use crate::features::{
-    GP,
-    EPS,
+    build_lbp_lut, cell_lbp_hist, cell_stats_5, cell_stats_8, compute_lbp_perpatch, EPS, GP,
     LBP_BINS,
-    build_lbp_lut,
-    cell_stats_8,
-    cell_stats_5,
-    cell_lbp_hist,
-    compute_lbp_perpatch,
 };
 
 const N_PX: usize = GP * GP; // 100 pixels per cell
@@ -26,9 +20,9 @@ pub const N_SAR_BANDS: usize = 2;
 //   CR (VH/VV) stats: 5, RVI stats: 5
 //   LBP(VV): 11, LBP(VH): 11
 //   Total: 48
-const N_SAR_BAND_STATS: usize = N_SAR_BANDS * 8;  // 16
-const N_SAR_IDX_STATS: usize = 2 * 5;              // 10 (CR + RVI, 5 stats each)
-const N_SAR_LBP: usize = 2 * (LBP_BINS + 1);      // 22 (VV + VH, 11 each)
+const N_SAR_BAND_STATS: usize = N_SAR_BANDS * 8; // 16
+const N_SAR_IDX_STATS: usize = 2 * 5; // 10 (CR + RVI, 5 stats each)
+const N_SAR_LBP: usize = 2 * (LBP_BINS + 1); // 22 (VV + VH, 11 each)
 pub const N_SAR_FEAT: usize = N_SAR_BAND_STATS + N_SAR_IDX_STATS + N_SAR_LBP; // 48
 
 /// Compute cross-polarization ratio = VH / VV
@@ -78,8 +72,7 @@ fn extract_sar_cell_features(
         for dr in 0..GP {
             let src_off = band_off + (r0 + dr) * w + c0;
             let dst_off = dr * GP;
-            band_px[b][dst_off..dst_off + GP]
-                .copy_from_slice(&sar_data[src_off..src_off + GP]);
+            band_px[b][dst_off..dst_off + GP].copy_from_slice(&sar_data[src_off..src_off + GP]);
         }
         let s = cell_stats_8(&band_px[b]);
         for v in s {
@@ -136,7 +129,16 @@ pub fn sar_feature_names() -> Vec<String> {
 
     // Band stats
     let bands = ["SAR_VV", "SAR_VH"];
-    let bst = ["mean", "std", "min", "max", "q25", "median", "q75", "finite_frac"];
+    let bst = [
+        "mean",
+        "std",
+        "min",
+        "max",
+        "q25",
+        "median",
+        "q75",
+        "finite_frac",
+    ];
     for bn in &bands {
         for sn in &bst {
             names.push(format!("{bn}_{sn}"));
@@ -168,11 +170,7 @@ pub fn sar_feature_names() -> Vec<String> {
 ///
 /// `season_data`: Vec of flat f32 arrays, each [N_SAR_BANDS * H * W].
 /// `n_rows`, `n_cols`: grid dimensions (H = n_rows * GP, W = n_cols * GP).
-pub fn extract_all_sar_seasons(
-    season_data: &[Vec<f32>],
-    n_rows: usize,
-    n_cols: usize,
-) -> Vec<f32> {
+pub fn extract_all_sar_seasons(season_data: &[Vec<f32>], n_rows: usize, n_cols: usize) -> Vec<f32> {
     let h = n_rows * GP;
     let w = n_cols * GP;
     let n_seasons = season_data.len();
@@ -184,25 +182,26 @@ pub fn extract_all_sar_seasons(
     let season_results: Vec<Vec<[f32; N_SAR_FEAT]>> = season_data
         .iter()
         .map(|sar_slice| {
-            let band_slice = |b: usize| -> &[f32] {
-                &sar_slice[b * h * w..(b + 1) * h * w]
-            };
+            let band_slice = |b: usize| -> &[f32] { &sar_slice[b * h * w..(b + 1) * h * w] };
 
             // LBP on VV and VH (per-patch, with clipping to [0,1] since SAR is
             // already normalized to [0,1] after dB conversion + scaling)
-            let lbp_vv = compute_lbp_perpatch(
-                band_slice(SAR_VV), h, w, n_rows, n_cols, &lbp_lut, true,
-            );
-            let lbp_vh = compute_lbp_perpatch(
-                band_slice(SAR_VH), h, w, n_rows, n_cols, &lbp_lut, true,
-            );
+            let lbp_vv =
+                compute_lbp_perpatch(band_slice(SAR_VV), h, w, n_rows, n_cols, &lbp_lut, true);
+            let lbp_vh =
+                compute_lbp_perpatch(band_slice(SAR_VH), h, w, n_rows, n_cols, &lbp_lut, true);
 
             (0..n_cells)
                 .into_par_iter()
                 .map(|ci| {
                     extract_sar_cell_features(
-                        sar_slice, h, w, ci / n_cols, ci % n_cols,
-                        &lbp_vv, &lbp_vh,
+                        sar_slice,
+                        h,
+                        w,
+                        ci / n_cols,
+                        ci % n_cols,
+                        &lbp_vv,
+                        &lbp_vh,
                     )
                 })
                 .collect::<Vec<_>>()
@@ -213,9 +212,9 @@ pub fn extract_all_sar_seasons(
     let mut flat = vec![0.0f32; total_feats];
     for ci in 0..n_cells {
         let cell_base = ci * n_seasons * N_SAR_FEAT;
-        for si in 0..n_seasons {
+        for (si, season) in season_results.iter().enumerate().take(n_seasons) {
             let dst = cell_base + si * N_SAR_FEAT;
-            flat[dst..dst + N_SAR_FEAT].copy_from_slice(&season_results[si][ci]);
+            flat[dst..dst + N_SAR_FEAT].copy_from_slice(&season[ci]);
         }
     }
 

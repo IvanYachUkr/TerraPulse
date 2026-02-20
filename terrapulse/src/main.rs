@@ -175,7 +175,13 @@ async fn main() -> Result<()> {
             features_dir,
             min_valid_frac,
         } => {
-            run_extract(&year_pairs, &region, &raw_dir, &features_dir, min_valid_frac)?;
+            run_extract(
+                &year_pairs,
+                &region,
+                &raw_dir,
+                &features_dir,
+                min_valid_frac,
+            )?;
         }
         Commands::Pipeline {
             bbox,
@@ -191,10 +197,19 @@ async fn main() -> Result<()> {
             skip_predict,
         } => {
             run_pipeline(
-                &bbox, epsg, &years, &region, &data_dir, &anchor_ref,
-                &models_dir, min_valid_frac,
-                skip_download, skip_extract, skip_predict,
-            ).await?;
+                &bbox,
+                epsg,
+                &years,
+                &region,
+                &data_dir,
+                &anchor_ref,
+                &models_dir,
+                min_valid_frac,
+                skip_download,
+                skip_extract,
+                skip_predict,
+            )
+            .await?;
         }
     }
 
@@ -223,11 +238,19 @@ fn run_extract(
 
         println!("\n--- Year pair: {prev_year}_{curr_year} ---");
         extract::extract_year_pair(
-            prev_year, curr_year, region, raw_dir, features_dir, min_valid_frac,
+            prev_year,
+            curr_year,
+            region,
+            raw_dir,
+            features_dir,
+            min_valid_frac,
         )?;
     }
 
-    println!("\nTotal extraction time: {:.1}s", t0.elapsed().as_secs_f64());
+    println!(
+        "\nTotal extraction time: {:.1}s",
+        t0.elapsed().as_secs_f64()
+    );
     Ok(())
 }
 
@@ -255,9 +278,7 @@ fn run_predict(
     println!("  Loaded in {:.1}s", t_load.elapsed().as_secs_f64());
 
     // ---- Load scaler ----
-    let scaler = predict::ScalerParams::load(
-        &models_dir.join("mlp_scaler_0.json")
-    )?;
+    let scaler = predict::ScalerParams::load(&models_dir.join("mlp_scaler_0.json"))?;
     println!("Loaded scaler ({} features)", scaler.mean.len());
 
     // ---- Process each year pair ----
@@ -307,7 +328,11 @@ fn run_predict(
                     .iter()
                     .map(|&i| {
                         let v = row[i];
-                        if v.is_finite() { v } else { 0.0 }
+                        if v.is_finite() {
+                            v
+                        } else {
+                            0.0
+                        }
                     })
                     .collect();
                 scaler.transform(&raw)
@@ -348,19 +373,32 @@ async fn run_download(
 ) -> Result<()> {
     let t0 = Instant::now();
 
-    let bbox_arr: [f64; 4] = <[f64; 4]>::try_from(&bbox[..])
-        .map_err(|_| anyhow::anyhow!("bbox must have exactly 4 values [west, south, east, north], got {}", bbox.len()))?;
+    let bbox_arr: [f64; 4] = <[f64; 4]>::try_from(bbox).map_err(|_| {
+        anyhow::anyhow!(
+            "bbox must have exactly 4 values [west, south, east, north], got {}",
+            bbox.len()
+        )
+    })?;
 
     // Read anchor reference metadata (target grid definition)
     let anchor = composite::AnchorRef::from_tif(anchor_ref)
         .with_context(|| format!("Failed to read anchor ref: {}", anchor_ref.display()))?;
     println!("TerraPulse Download (Pure Rust)");
     println!("  Region: {region}");
-    println!("  BBOX: [{}, {}, {}, {}]", bbox[0], bbox[1], bbox[2], bbox[3]);
+    println!(
+        "  BBOX: [{}, {}, {}, {}]",
+        bbox[0], bbox[1], bbox[2], bbox[3]
+    );
     println!("  EPSG: {epsg}");
-    println!("  Anchor: {}x{} EPSG:{}", anchor.width, anchor.height, anchor.epsg);
+    println!(
+        "  Anchor: {}x{} EPSG:{}",
+        anchor.width, anchor.height, anchor.epsg
+    );
     println!("  Years: {:?}", years);
-    println!("  Concurrency: all {} years × 3 seasons in parallel", years.len());
+    println!(
+        "  Concurrency: all {} years × 3 seasons in parallel",
+        years.len()
+    );
     println!();
 
     // Build HTTP client
@@ -371,18 +409,19 @@ async fn run_download(
         .build()?;
 
     // Download ALL years concurrently (each year downloads 3 seasons concurrently)
-    let futures: Vec<_> = years.iter().map(|&year| {
-        let client = client.clone();
-        let raw = raw_dir.to_path_buf();
-        let reg = region.to_string();
-        let anch = anchor.clone();
-        async move {
-            println!("--- Year: {year} ---");
-            download::download_year(
-                &client, bbox_arr, epsg, year, &reg, &raw, &anch,
-            ).await
-        }
-    }).collect();
+    let futures: Vec<_> = years
+        .iter()
+        .map(|&year| {
+            let client = client.clone();
+            let raw = raw_dir.to_path_buf();
+            let reg = region.to_string();
+            let anch = anchor.clone();
+            async move {
+                println!("--- Year: {year} ---");
+                download::download_year(&client, bbox_arr, epsg, year, &reg, &raw, &anch).await
+            }
+        })
+        .collect();
 
     let results = futures::future::join_all(futures).await;
     for r in results {
@@ -397,18 +436,19 @@ async fn run_download(
     // Download SAR (Sentinel-1) for all years concurrently
     println!("\n--- SAR (Sentinel-1) Download ---");
     let t_sar = Instant::now();
-    let sar_futures: Vec<_> = years.iter().map(|&year| {
-        let client = client.clone();
-        let raw = raw_dir.to_path_buf();
-        let reg = region.to_string();
-        let anch = anchor.clone();
-        async move {
-            println!("--- SAR Year: {year} ---");
-            download::download_sar_year(
-                &client, bbox_arr, year, &reg, &raw, &anch,
-            ).await
-        }
-    }).collect();
+    let sar_futures: Vec<_> = years
+        .iter()
+        .map(|&year| {
+            let client = client.clone();
+            let raw = raw_dir.to_path_buf();
+            let reg = region.to_string();
+            let anch = anchor.clone();
+            async move {
+                println!("--- SAR Year: {year} ---");
+                download::download_sar_year(&client, bbox_arr, year, &reg, &raw, &anch).await
+            }
+        })
+        .collect();
 
     let sar_results = futures::future::join_all(sar_futures).await;
     for r in sar_results {
