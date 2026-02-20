@@ -1,0 +1,338 @@
+{
+  "mlp": {
+    "model": "mlp",
+    "label": "MLP",
+    "classes": [
+      {
+        "class": "tree_cover",
+        "label": "Tree Cover",
+        "beeswarm": "beeswarm_mlp_tree_cover.png",
+        "dependence": [
+          {
+            "feature": "B02_min_2020_autumn",
+            "file": "dep_mlp_tree_cover_0.png"
+          },
+          {
+            "feature": "B02_min_2021_summer",
+            "file": "dep_mlp_tree_cover_1.png"
+          },
+          {
+            "feature": "B08_max_2021_autumn",
+            "file": "dep_mlp_tree_cover_2.png"
+          },
+          {
+            "feature": "TC_wet_std_2020_spring",
+            "file": "dep_mlp_tree_cover_3.png"
+          },
+          {
+            "feature": "NDRE1_median_2021_autumn",
+            "file": "dep_mlp_tree_cover_4.png"
+          }
+        ]
+      },
+      {
+        "class": "grassland",
+        "label": "Grassland",
+        "beeswarm": "beeswarm_mlp_grassland.png",
+        "dependence": [
+          {
+            "feature": "TC_wet_std_2020_spring",
+            "file": "dep_mlp_grassland_0.png"
+          },
+          {
+            "feature": "NDRE2_mean_2020_spring",
+            "file": "dep_mlp_grassland_1.png"
+          },
+          {
+            "feature": "NDRE2_q25_2020_spring",
+            "file": "dep_mlp_grassland_2.png"
+          },
+          {
+            "feature": "NDRE2_q25_2021_autumn",
+            "file": "dep_mlp_grassland_3.png"
+          },
+          {
+            "feature": "NDRE2_median_2020_spring",
+            "file": "dep_mlp_grassland_4.png"
+          }
+        ]
+      },
+      {
+        "class": "cropland",
+        "label": "Cropland",
+        "beeswarm": "beeswarm_mlp_cropland.png",
+        "dependence": [
+          {
+            "feature": "B8A_q25_2020_summer",
+            "file": "dep_mlp_cropland_0.png"
+          },
+          {
+            "feature": "B12_max_2021_spring",
+            "file": "dep_mlp_cropland_1.png"
+          },
+          {
+            "feature": "B12_q25_2021_spring",
+            "file": "dep_mlp_cropland_2.png"
+          },
+          {
+            "feature": "NDRE2_std_2020_autumn",
+            "file": "dep_mlp_cropland_3.png"
+          },
+          {
+            "feature": "NDRE2_q75_2020_autumn",
+            "file": "dep_mlp_cropland_4.png"
+          }
+        ]
+      },
+      {
+        "class": "built_up",
+        "label": "Built-up",
+        "beeswarm": "beeswarm_mlp_built_up.png",
+        "dependence": [
+          {
+            "feature": "NDRE2_q25_2020_spring",
+            "file": "dep_mlp_built_up_0.png"
+          },
+          {
+            "feature": "NDVI_q75_2020_autumn",
+            "file": "dep_mlp_built_up_1.png"
+          },
+          {
+            "feature": "NDRE2_median_2020_spring",
+            "file": "dep_mlp_built_up_2.png"
+          },
+          {
+            "feature": "NDRE2_std_2020_autumn",
+            "file": "dep_mlp_built_up_3.png"
+          },
+          {
+            "feature": "B12_mean_2021_summer",
+            "file": "dep_mlp_built_up_4.png"
+          }
+        ]
+      },
+      {
+        "class": "bare_sparse",
+        "label": "Bare/Sparse",
+        "beeswarm": "beeswarm_mlp_bare_sparse.png",
+        "dependence": [
+          {
+            "feature": "B05_q75_2021_spring",
+            "file": "dep_mlp_bare_sparse_0.png"
+          },
+          {
+            "feature": "TC_green_mean_2021_autumn",
+            "file": "dep_mlp_bare_sparse_1.png"
+          },
+          {
+            "feature": "B02_median_2021_summer",
+            "file": "dep_mlp_bare_sparse_2.png"
+          },
+          {
+            "feature": "B05_mean_2021_spring",
+            "file": "dep_mlp_bare_sparse_3.png"
+          },
+          {
+            "feature": "B05_q25_2021_spring",
+            "file": "dep_mlp_bare_sparse_4.png"
+          }
+        ]
+      },
+      {
+        "class": "water",
+        "label": "Water",
+        "beeswarm": "beeswarm_mlp_water.png",
+        "dependence": [
+          {
+            "feature": "B11_min_2021_spring",
+            "file": "dep_mlp_water_0.png"
+          },
+          {
+            "feature": "B11_min_2021_summer",
+            "file": "dep_mlp_water_1.png"
+          },
+          {
+            "feature": "B11_min_2020_spring",
+            "file": "dep_mlp_water_2.png"
+          },
+          {
+            "feature": "B08_min_2020_spring",
+            "file": "dep_mlp_water_3.png"
+          },
+          {
+            "feature": "B08_min_2021_summer",
+            "file": "dep_mlp_water_4.png"
+          }
+        ]
+      }
+    ]
+  },
+  "tree": {
+    "model": "tree",
+    "label": "LightGBM",
+    "classes": [
+      {
+        "class": "tree_cover",
+        "label": "Tree Cover",
+        "beeswarm": "beeswarm_tree_tree_cover.png",
+        "dependence": [
+          {
+            "feature": "CRI1_q75_2021_autumn",
+            "file": "dep_tree_tree_cover_0.png"
+          },
+          {
+            "feature": "CRI1_q75_2020_autumn",
+            "file": "dep_tree_tree_cover_1.png"
+          },
+          {
+            "feature": "B05_q75_2021_summer",
+            "file": "dep_tree_tree_cover_2.png"
+          },
+          {
+            "feature": "CRI1_q75_2021_summer",
+            "file": "dep_tree_tree_cover_3.png"
+          },
+          {
+            "feature": "B05_q75_2021_autumn",
+            "file": "dep_tree_tree_cover_4.png"
+          }
+        ]
+      },
+      {
+        "class": "grassland",
+        "label": "Grassland",
+        "beeswarm": "beeswarm_tree_grassland.png",
+        "dependence": [
+          {
+            "feature": "TC_wet_mean_2020_autumn",
+            "file": "dep_tree_grassland_0.png"
+          },
+          {
+            "feature": "B06_q75_2021_spring",
+            "file": "dep_tree_grassland_1.png"
+          },
+          {
+            "feature": "B8A_q75_2020_spring",
+            "file": "dep_tree_grassland_2.png"
+          },
+          {
+            "feature": "TC_wet_mean_2021_summer",
+            "file": "dep_tree_grassland_3.png"
+          },
+          {
+            "feature": "B06_median_2021_summer",
+            "file": "dep_tree_grassland_4.png"
+          }
+        ]
+      },
+      {
+        "class": "cropland",
+        "label": "Cropland",
+        "beeswarm": "beeswarm_tree_cropland.png",
+        "dependence": [
+          {
+            "feature": "TC_wet_mean_2020_autumn",
+            "file": "dep_tree_cropland_0.png"
+          },
+          {
+            "feature": "CRI1_std_2020_autumn",
+            "file": "dep_tree_cropland_1.png"
+          },
+          {
+            "feature": "TC_wet_mean_2021_autumn",
+            "file": "dep_tree_cropland_2.png"
+          },
+          {
+            "feature": "CRI1_q75_2020_autumn",
+            "file": "dep_tree_cropland_3.png"
+          },
+          {
+            "feature": "CRI1_std_2021_summer",
+            "file": "dep_tree_cropland_4.png"
+          }
+        ]
+      },
+      {
+        "class": "built_up",
+        "label": "Built-up",
+        "beeswarm": "beeswarm_tree_built_up.png",
+        "dependence": [
+          {
+            "feature": "NDRE2_q25_2021_summer",
+            "file": "dep_tree_built_up_0.png"
+          },
+          {
+            "feature": "CRI1_q25_2021_summer",
+            "file": "dep_tree_built_up_1.png"
+          },
+          {
+            "feature": "IRECI_q75_2020_autumn",
+            "file": "dep_tree_built_up_2.png"
+          },
+          {
+            "feature": "NDTI_q25_2021_summer",
+            "file": "dep_tree_built_up_3.png"
+          },
+          {
+            "feature": "TC_green_std_2021_summer",
+            "file": "dep_tree_built_up_4.png"
+          }
+        ]
+      },
+      {
+        "class": "bare_sparse",
+        "label": "Bare/Sparse",
+        "beeswarm": "beeswarm_tree_bare_sparse.png",
+        "dependence": [
+          {
+            "feature": "B05_q75_2021_spring",
+            "file": "dep_tree_bare_sparse_0.png"
+          },
+          {
+            "feature": "B05_max_2020_autumn",
+            "file": "dep_tree_bare_sparse_1.png"
+          },
+          {
+            "feature": "TC_bright_mean_2021_spring",
+            "file": "dep_tree_bare_sparse_2.png"
+          },
+          {
+            "feature": "B05_mean_2021_spring",
+            "file": "dep_tree_bare_sparse_3.png"
+          },
+          {
+            "feature": "NDVI_q25_2021_summer",
+            "file": "dep_tree_bare_sparse_4.png"
+          }
+        ]
+      },
+      {
+        "class": "water",
+        "label": "Water",
+        "beeswarm": "beeswarm_tree_water.png",
+        "dependence": [
+          {
+            "feature": "B06_min_2020_spring",
+            "file": "dep_tree_water_0.png"
+          },
+          {
+            "feature": "B06_min_2020_summer",
+            "file": "dep_tree_water_1.png"
+          },
+          {
+            "feature": "B06_min_2021_summer",
+            "file": "dep_tree_water_2.png"
+          },
+          {
+            "feature": "NDRE2_std_2020_spring",
+            "file": "dep_tree_water_3.png"
+          },
+          {
+            "feature": "B8A_min_2021_spring",
+            "file": "dep_tree_water_4.png"
+          }
+        ]
+      }
+    ]
+  }
+}
