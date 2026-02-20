@@ -26,7 +26,11 @@ impl ScalerParams {
             .map(|(i, &v)| {
                 let m = self.mean[i] as f32;
                 let s = self.scale[i] as f32;
-                if s.abs() < 1e-12 { 0.0 } else { (v - m) / s }
+                if s.abs() < 1e-12 {
+                    0.0
+                } else {
+                    (v - m) / s
+                }
             })
             .collect()
     }
@@ -77,13 +81,13 @@ impl OnnxMlp {
         let n_cols = features[0].len();
 
         // Flatten to contiguous array efficiently using flat_map
-        let flat: Vec<f32> = features.iter()
+        let flat: Vec<f32> = features
+            .iter()
             .flat_map(|row| row.iter().copied())
             .collect();
 
         // Create ONNX tensor
-        let input_tensor =
-            ort::value::Tensor::from_array(([n_rows, n_cols], flat))?;
+        let input_tensor = ort::value::Tensor::from_array(([n_rows, n_cols], flat))?;
 
         let outputs = self.session.run(ort::inputs!["X" => input_tensor])?;
 
@@ -91,8 +95,16 @@ impl OnnxMlp {
         let output = &outputs[0];
         let (tensor_shape, tensor_data) = output.try_extract_tensor::<f32>()?;
 
-        let out_cols = if tensor_shape.len() > 1 { tensor_shape[1] as usize } else { 1 };
-        assert_eq!(out_cols, N_CLASSES, "ONNX output has {} cols, expected {}", out_cols, N_CLASSES);
+        let out_cols = if tensor_shape.len() > 1 {
+            tensor_shape[1] as usize
+        } else {
+            1
+        };
+        assert_eq!(
+            out_cols, N_CLASSES,
+            "ONNX output has {} cols, expected {}",
+            out_cols, N_CLASSES
+        );
 
         let mut result = Vec::with_capacity(n_rows);
         for i in 0..n_rows {

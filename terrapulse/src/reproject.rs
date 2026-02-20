@@ -73,7 +73,11 @@ pub fn bilinear_interp(v00: f64, v10: f64, v01: f64, v11: f64, fx: f64, fy: f64)
                 vsum += w * v;
             }
         }
-        if wsum > 0.0 { vsum / wsum } else { f64::NAN }
+        if wsum > 0.0 {
+            vsum / wsum
+        } else {
+            f64::NAN
+        }
     };
     val as f32
 }
@@ -92,7 +96,8 @@ pub fn resample_bilinear_par(
 
     let mut output = vec![f32::NAN; dst_h * dst_w];
 
-    output.par_chunks_mut(dst_w)
+    output
+        .par_chunks_mut(dst_w)
         .enumerate()
         .for_each(|(dy, row)| {
             for dx in 0..dst_w {
@@ -115,13 +120,20 @@ pub fn resample_bilinear_par(
                         return f64::NAN;
                     }
                     let v = src[r as usize * src_w + c as usize];
-                    if v.is_finite() { v as f64 } else { f64::NAN }
+                    if v.is_finite() {
+                        v as f64
+                    } else {
+                        f64::NAN
+                    }
                 };
 
                 row[dx] = bilinear_interp(
-                    sample(y0, x0), sample(y0, x0 + 1),
-                    sample(y0 + 1, x0), sample(y0 + 1, x0 + 1),
-                    fx, fy,
+                    sample(y0, x0),
+                    sample(y0, x0 + 1),
+                    sample(y0 + 1, x0),
+                    sample(y0 + 1, x0 + 1),
+                    fx,
+                    fy,
                 );
             }
         });
@@ -146,7 +158,8 @@ pub fn resample_nearest_par(
 
     let mut output = vec![f32::NAN; dst_h * dst_w];
 
-    output.par_chunks_mut(dst_w)
+    output
+        .par_chunks_mut(dst_w)
         .enumerate()
         .for_each(|(dy, row)| {
             for dx in 0..dst_w {

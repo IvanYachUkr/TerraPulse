@@ -10,7 +10,7 @@ use std::path::Path;
 
 use crate::cog::{self, PixelBbox};
 use crate::composite::AnchorRef;
-use crate::reproject::{GeoTransform, bilinear_interp};
+use crate::reproject::{bilinear_interp, GeoTransform};
 use crate::stac;
 
 /// Maximum raw DN value for scaling S1 amplitudes to [0, 1].
@@ -116,9 +116,9 @@ impl GcpGrid {
                 }
 
                 // Try inverse bilinear
-                if let Some((u, v)) =
-                    inverse_bilinear(lon, lat, lon00, lat00, lon10, lat10, lon01, lat01, lon11, lat11)
-                {
+                if let Some((u, v)) = inverse_bilinear(
+                    lon, lat, lon00, lat00, lon10, lat10, lon01, lat01, lon11, lat11,
+                ) {
                     if u >= -0.01 && u <= 1.01 && v >= -0.01 && v <= 1.01 {
                         let px = self.col_positions[ci]
                             + u * (self.col_positions[ci + 1] - self.col_positions[ci]);
@@ -141,11 +141,16 @@ impl GcpGrid {
 ///
 /// Uses Newton's method for the general case.
 fn inverse_bilinear(
-    x: f64, y: f64,
-    x00: f64, y00: f64,
-    x10: f64, y10: f64,
-    x01: f64, y01: f64,
-    x11: f64, y11: f64,
+    x: f64,
+    y: f64,
+    x00: f64,
+    y00: f64,
+    x10: f64,
+    y10: f64,
+    x01: f64,
+    y01: f64,
+    x11: f64,
+    y11: f64,
 ) -> Option<(f64, f64)> {
     // Bilinear: P(u,v) = (1-u)(1-v)*P00 + u(1-v)*P10 + (1-u)v*P01 + uv*P11
     // Rearrange: P = P00 + u(P10-P00) + v(P01-P00) + uv(P00-P10-P01+P11)
@@ -205,7 +210,8 @@ fn inverse_bilinear(
 /// where I,J = pixel coords and X,Y = geo coords.
 async fn read_gcps_from_cog(client: &Client, url: &str) -> Result<Vec<Gcp>> {
     // Read the COG metadata (to validate the URL is accessible)
-    let _meta = cog::read_cog_meta(client, url).await
+    let _meta = cog::read_cog_meta(client, url)
+        .await
         .context("Failed to read S1 COG metadata for GCPs")?;
 
     // For GCP-referenced TIFFs, the tiepoint array has more than 6 elements.
@@ -359,7 +365,12 @@ pub async fn download_sar_composite(
 
             for attempt in 0..=max_retries {
                 if attempt > 0 {
-                    eprintln!("    SAR scene {}: retry {}/{}...", si + 1, attempt, max_retries);
+                    eprintln!(
+                        "    SAR scene {}: retry {}/{}...",
+                        si + 1,
+                        attempt,
+                        max_retries
+                    );
                     tokio::time::sleep(std::time::Duration::from_secs(3 * attempt as u64)).await;
                 }
                 match download_one_sar_scene(&client, &item, &token, dw, dh, &dst_gt, utm_z).await {
@@ -398,8 +409,13 @@ pub async fn download_sar_composite(
         }
     }
 
-    eprintln!("    {}/{} SAR scenes OK, {} skipped, {} failed",
-        scenes.len(), scenes.len() + n_skipped + n_failed, n_skipped, n_failed);
+    eprintln!(
+        "    {}/{} SAR scenes OK, {} skipped, {} failed",
+        scenes.len(),
+        scenes.len() + n_skipped + n_failed,
+        n_skipped,
+        n_failed
+    );
 
     if scenes.is_empty() {
         anyhow::bail!("All SAR scenes failed");
@@ -411,11 +427,13 @@ pub async fn download_sar_composite(
 
     for px in 0..n_pixels {
         // Collect finite values
-        let mut vv_vals: Vec<f32> = scenes.iter()
+        let mut vv_vals: Vec<f32> = scenes
+            .iter()
             .map(|(vv, _)| vv[px])
             .filter(|v| v.is_finite() && *v > 0.0)
             .collect();
-        let mut vh_vals: Vec<f32> = scenes.iter()
+        let mut vh_vals: Vec<f32> = scenes
+            .iter()
             .map(|(_, vh)| vh[px])
             .filter(|v| v.is_finite() && *v > 0.0)
             .collect();
@@ -451,7 +469,9 @@ pub async fn download_sar_composite(
 
 fn median_sorted(sorted: &[f32]) -> f32 {
     let n = sorted.len();
-    if n == 0 { return f32::NAN; }
+    if n == 0 {
+        return f32::NAN;
+    }
     if n % 2 == 1 {
         sorted[n / 2]
     } else {
@@ -470,10 +490,8 @@ async fn download_one_sar_scene(
     dst_gt: &GeoTransform,
     utm_zone: u32,
 ) -> Result<Option<(Vec<f32>, Vec<f32>)>> {
-    let vv_asset = item.assets.get("vv")
-        .context("Missing VV asset")?;
-    let vh_asset = item.assets.get("vh")
-        .context("Missing VH asset")?;
+    let vv_asset = item.assets.get("vv").context("Missing VV asset")?;
+    let vh_asset = item.assets.get("vh").context("Missing VH asset")?;
 
     let vv_url = stac::apply_token_pub(&vv_asset.href, token);
     let vh_url = stac::apply_token_pub(&vh_asset.href, token);
@@ -489,9 +507,11 @@ async fn download_one_sar_scene(
     // Check overlap: use GCP grid to verify the target area corners map to valid source pixels.
     // If none of the target area corners fall within the GCP grid, the scene doesn't cover the area.
     let corners = [
-        (0.0, 0.0), (dst_w as f64, 0.0),
-        (0.0, dst_h as f64), (dst_w as f64, dst_h as f64),
-        (dst_w as f64 / 2.0, dst_h as f64 / 2.0),  // center point too
+        (0.0, 0.0),
+        (dst_w as f64, 0.0),
+        (0.0, dst_h as f64),
+        (dst_w as f64, dst_h as f64),
+        (dst_w as f64 / 2.0, dst_h as f64 / 2.0), // center point too
     ];
 
     let mut has_overlap = false;
@@ -540,7 +560,12 @@ async fn download_one_sar_scene(
         return Ok(None);
     }
 
-    let bbox = PixelBbox { x0: src_x0, y0: src_y0, x1: src_x1, y1: src_y1 };
+    let bbox = PixelBbox {
+        x0: src_x0,
+        y0: src_y0,
+        x1: src_x1,
+        y1: src_y1,
+    };
     let crop_w = (src_x1 - src_x0) as usize;
     let crop_h = (src_y1 - src_y0) as usize;
 
@@ -554,12 +579,10 @@ async fn download_one_sar_scene(
 
     // Resample from GCP-referenced pixel space to target UTM grid
     let vv_resampled = resample_gcp_to_utm(
-        &vv_pixels, crop_w, crop_h, src_x0, src_y0,
-        &gcp_grid, dst_w, dst_h, dst_gt, utm_zone,
+        &vv_pixels, crop_w, crop_h, src_x0, src_y0, &gcp_grid, dst_w, dst_h, dst_gt, utm_zone,
     );
     let vh_resampled = resample_gcp_to_utm(
-        &vh_pixels, crop_w, crop_h, src_x0, src_y0,
-        &gcp_grid, dst_w, dst_h, dst_gt, utm_zone,
+        &vh_pixels, crop_w, crop_h, src_x0, src_y0, &gcp_grid, dst_w, dst_h, dst_gt, utm_zone,
     );
 
     Ok(Some((vv_resampled, vh_resampled)))
@@ -587,7 +610,8 @@ fn resample_gcp_to_utm(
 
     let mut output = vec![f32::NAN; dst_w * dst_h];
 
-    output.par_chunks_mut(dst_w)
+    output
+        .par_chunks_mut(dst_w)
         .enumerate()
         .for_each(|(dy, row)| {
             for dx in 0..dst_w {
@@ -608,10 +632,7 @@ fn resample_gcp_to_utm(
                 let sy = src_py - src_y_offset as f64 - 0.5;
 
                 // Bounds check
-                if sx < -0.5 || sy < -0.5
-                    || sx >= src_w as f64 - 0.5
-                    || sy >= src_h as f64 - 0.5
-                {
+                if sx < -0.5 || sy < -0.5 || sx >= src_w as f64 - 0.5 || sy >= src_h as f64 - 0.5 {
                     continue;
                 }
 
@@ -626,7 +647,11 @@ fn resample_gcp_to_utm(
                         return f64::NAN;
                     }
                     let v = src[r as usize * src_w + c as usize];
-                    if v.is_finite() && v > 0.0 { v as f64 } else { f64::NAN }
+                    if v.is_finite() && v > 0.0 {
+                        v as f64
+                    } else {
+                        f64::NAN
+                    }
                 };
 
                 let v00 = sample(y0, x0);
@@ -641,16 +666,32 @@ fn resample_gcp_to_utm(
                 let w10 = fx * (1.0 - fy);
                 let w01 = (1.0 - fx) * fy;
                 let w11 = fx * fy;
-                
+
                 let mut sum = 0.0;
                 let mut wsum = 0.0;
-                
-                if v00.is_finite() { sum += v00 * w00; wsum += w00; }
-                if v10.is_finite() { sum += v10 * w10; wsum += w10; }
-                if v01.is_finite() { sum += v01 * w01; wsum += w01; }
-                if v11.is_finite() { sum += v11 * w11; wsum += w11; }
 
-                row[dx] = if wsum > 1e-9 { (sum / wsum) as f32 } else { f32::NAN };
+                if v00.is_finite() {
+                    sum += v00 * w00;
+                    wsum += w00;
+                }
+                if v10.is_finite() {
+                    sum += v10 * w10;
+                    wsum += w10;
+                }
+                if v01.is_finite() {
+                    sum += v01 * w01;
+                    wsum += w01;
+                }
+                if v11.is_finite() {
+                    sum += v11 * w11;
+                    wsum += w11;
+                }
+
+                row[dx] = if wsum > 1e-9 {
+                    (sum / wsum) as f32
+                } else {
+                    f32::NAN
+                };
             }
         });
 
@@ -690,18 +731,17 @@ fn utm_to_wgs84(easting: f64, northing: f64, zone: u32) -> (f64, f64) {
     let lat = phi1
         - (n1 * phi1.tan() / r1)
             * (d.powi(2) / 2.0
-                - (5.0 + 3.0 * t1 + 10.0 * c1 - 4.0 * c1.powi(2) - 9.0 * e_prime2)
-                    * d.powi(4)
+                - (5.0 + 3.0 * t1 + 10.0 * c1 - 4.0 * c1.powi(2) - 9.0 * e_prime2) * d.powi(4)
                     / 24.0
-                + (61.0 + 90.0 * t1 + 298.0 * c1 + 45.0 * t1.powi(2) - 252.0 * e_prime2
+                + (61.0 + 90.0 * t1 + 298.0 * c1 + 45.0 * t1.powi(2)
+                    - 252.0 * e_prime2
                     - 3.0 * c1.powi(2))
                     * d.powi(6)
                     / 720.0);
 
     let lon = lon0
         + (d - (1.0 + 2.0 * t1 + c1) * d.powi(3) / 6.0
-            + (5.0 - 2.0 * c1 + 28.0 * t1 - 3.0 * c1.powi(2) + 8.0 * e_prime2
-                + 24.0 * t1.powi(2))
+            + (5.0 - 2.0 * c1 + 28.0 * t1 - 3.0 * c1.powi(2) + 8.0 * e_prime2 + 24.0 * t1.powi(2))
                 * d.powi(5)
                 / 120.0)
             / phi1.cos();
@@ -759,10 +799,22 @@ fn write_sar_tif(
 
     // GeoKeys for UTM
     let geo_key_data: [u16; 16] = [
-        1, 1, 0, 3,           // KeyDirectoryVersion, KeyRevision, MinorRevision, NumberOfKeys
-        1024, 0, 1, 1,        // GTModelTypeGeoKey = ModelTypeProjected
-        1025, 0, 1, 1,        // GTRasterTypeGeoKey = RasterPixelIsArea
-        3072, 0, 1, epsg as u16, // ProjectedCSTypeGeoKey
+        1,
+        1,
+        0,
+        3, // KeyDirectoryVersion, KeyRevision, MinorRevision, NumberOfKeys
+        1024,
+        0,
+        1,
+        1, // GTModelTypeGeoKey = ModelTypeProjected
+        1025,
+        0,
+        1,
+        1, // GTRasterTypeGeoKey = RasterPixelIsArea
+        3072,
+        0,
+        1,
+        epsg as u16, // ProjectedCSTypeGeoKey
     ];
 
     let nodata_str = b"-9999\0";
@@ -784,20 +836,20 @@ fn write_sar_tif(
     // Write IFD entries (must be sorted by tag number!)
     // Using PlanarConfiguration=1 (CHUNKY) with interleaved pixel data
     let ifd_entries: Vec<(u16, u16, u32, u32)> = vec![
-        (256, 3, 1, width as u32),             // ImageWidth
-        (257, 3, 1, height as u32),            // ImageLength
-        (258, 3, 2, bps_inline),               // BitsPerSample = [32, 32] inline
-        (259, 3, 1, 1),                         // Compression = None
-        (262, 3, 1, 1),                         // PhotometricInterpretation = MinIsBlack
-        (273, 4, 1, strip_data_off),            // StripOffsets (1 strip)
-        (277, 3, 1, n_bands as u32),            // SamplesPerPixel = 2
-        (278, 4, 1, height as u32),             // RowsPerStrip
-        (279, 4, 1, total_data_bytes),          // StripByteCounts
-        (284, 3, 1, 1),                         // PlanarConfiguration = Chunky (interleaved)
-        (339, 3, 2, sf_inline),                 // SampleFormat = [IEEEFP, IEEEFP] inline
-        (33550, 12, 3, pixel_scale_off),        // ModelPixelScaleTag
-        (33922, 12, 6, tiepoint_off),           // ModelTiepointTag
-        (34735, 3, 16, geo_key_off),            // GeoKeyDirectoryTag
+        (256, 3, 1, width as u32),                       // ImageWidth
+        (257, 3, 1, height as u32),                      // ImageLength
+        (258, 3, 2, bps_inline),                         // BitsPerSample = [32, 32] inline
+        (259, 3, 1, 1),                                  // Compression = None
+        (262, 3, 1, 1),                                  // PhotometricInterpretation = MinIsBlack
+        (273, 4, 1, strip_data_off),                     // StripOffsets (1 strip)
+        (277, 3, 1, n_bands as u32),                     // SamplesPerPixel = 2
+        (278, 4, 1, height as u32),                      // RowsPerStrip
+        (279, 4, 1, total_data_bytes),                   // StripByteCounts
+        (284, 3, 1, 1),                  // PlanarConfiguration = Chunky (interleaved)
+        (339, 3, 2, sf_inline),          // SampleFormat = [IEEEFP, IEEEFP] inline
+        (33550, 12, 3, pixel_scale_off), // ModelPixelScaleTag
+        (33922, 12, 6, tiepoint_off),    // ModelTiepointTag
+        (34735, 3, 16, geo_key_off),     // GeoKeyDirectoryTag
         (42113, 2, nodata_str.len() as u32, nodata_off), // GDAL_NODATA
     ];
 

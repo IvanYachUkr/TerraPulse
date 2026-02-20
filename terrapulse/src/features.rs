@@ -27,17 +27,23 @@ const B12: usize = 9;
 // Sentinel-2 Tasseled Cap coefficients (Nedkov, 2017) — 10 bands
 // Order: B02, B03, B04, B05, B06, B07, B08, B8A, B11, B12
 // Must match Python's TC_BRIGHTNESS / TC_GREENNESS / TC_WETNESS exactly
-const TC10_B: [f32; 10] = [0.3510, 0.3813, 0.3437, 0.7196, 0.2396, 0.1949, 0.1822, 0.0031, 0.1112, 0.0825];
-const TC10_G: [f32; 10] = [-0.3599, -0.3533, -0.4734, 0.6633, 0.0087, -0.0469, -0.0322, -0.0015, -0.0693, -0.0180];
-const TC10_W: [f32; 10] = [0.2578, 0.2305, 0.0883, 0.1071, -0.7611, 0.0882, 0.4572, -0.0021, -0.4064, 0.0117];
+const TC10_B: [f32; 10] = [
+    0.3510, 0.3813, 0.3437, 0.7196, 0.2396, 0.1949, 0.1822, 0.0031, 0.1112, 0.0825,
+];
+const TC10_G: [f32; 10] = [
+    -0.3599, -0.3533, -0.4734, 0.6633, 0.0087, -0.0469, -0.0322, -0.0015, -0.0693, -0.0180,
+];
+const TC10_W: [f32; 10] = [
+    0.2578, 0.2305, 0.0883, 0.1071, -0.7611, 0.0882, 0.4572, -0.0021, -0.4064, 0.0117,
+];
 
 // 20m bands that need block-reduce (factor=2) before stats, matching original Python
 const BANDS_20M: [usize; 6] = [B05, B06, B07, B8A, B11, B12];
 
 // Feature counts
 const N_BAND_STATS: usize = N_BANDS * 8; // 80
-const N_IDX_STATS: usize = 15 * 5;       // 75
-const N_TC: usize = 6;                   // 3 components * (mean,std)
+const N_IDX_STATS: usize = 15 * 5; // 75
+const N_TC: usize = 6; // 3 components * (mean,std)
 const N_SPATIAL: usize = 8;
 const N_LBP: usize = 5 * (LBP_BINS + 1); // 55 (10 bins + entropy) * 5
 pub const N_FEAT: usize = N_BAND_STATS + N_IDX_STATS + N_TC + N_SPATIAL + N_LBP; // 224
@@ -125,23 +131,21 @@ pub(crate) fn compute_lbp_raster(img: &[f32], h: usize, w: usize, lut: &[u8; 256
     let dc: [f64; 8] = [1.0, s2, 0.0, -s2, -1.0, -s2, 0.0, s2];
 
     let mut out = vec![0u8; h * w];
-    out.par_chunks_mut(w)
-        .enumerate()
-        .for_each(|(r, row)| {
-            let rf = r as f64;
-            for c in 0..w {
-                let cf = c as f64;
-                let center = img[r * w + c] as f64;
-                let mut code: u8 = 0;
-                for k in 0..8 {
-                    let val = bilinear_constant_zero(img, h, w, rf + dr[k], cf + dc[k]);
-                    if val >= center {
-                        code |= 1 << k;
-                    }
+    out.par_chunks_mut(w).enumerate().for_each(|(r, row)| {
+        let rf = r as f64;
+        for c in 0..w {
+            let cf = c as f64;
+            let center = img[r * w + c] as f64;
+            let mut code: u8 = 0;
+            for k in 0..8 {
+                let val = bilinear_constant_zero(img, h, w, rf + dr[k], cf + dc[k]);
+                if val >= center {
+                    code |= 1 << k;
                 }
-                row[c] = lut[code as usize];
             }
-        });
+            row[c] = lut[code as usize];
+        }
+    });
     out
 }
 
@@ -231,7 +235,9 @@ pub(crate) fn compute_lbp_perpatch(
             // Apply NaN fill + clip
             for v in patch.iter_mut() {
                 if v.is_finite() {
-                    if clip_01 { *v = v.clamp(0.0, 1.0); }
+                    if clip_01 {
+                        *v = v.clamp(0.0, 1.0);
+                    }
                 } else {
                     *v = fill;
                 }
@@ -243,7 +249,11 @@ pub(crate) fn compute_lbp_perpatch(
                     let center = patch[r * GP + c] as f64;
                     let mut code: u8 = 0;
                     for k in 0..8 {
-                        let val = bilinear_patch_constant_zero(&patch, r as f64 + dr[k], c as f64 + dc[k]);
+                        let val = bilinear_patch_constant_zero(
+                            &patch,
+                            r as f64 + dr[k],
+                            c as f64 + dc[k],
+                        );
                         if val >= center {
                             code |= 1 << k;
                         }
@@ -275,59 +285,52 @@ pub(crate) fn compute_lbp_perpatch(
 
 fn compute_sobel_mag(img: &[f32], h: usize, w: usize) -> Vec<f32> {
     let mut out = vec![0.0f32; h * w];
-    out.par_chunks_mut(w)
-        .enumerate()
-        .for_each(|(r, row)| {
-            let hh = h as isize;
-            let ww = w as isize;
-            let rr = r as isize;
+    out.par_chunks_mut(w).enumerate().for_each(|(r, row)| {
+        let hh = h as isize;
+        let ww = w as isize;
+        let rr = r as isize;
 
-            for c in 0..w {
-                let cc = c as isize;
+        for c in 0..w {
+            let cc = c as isize;
 
-                let g = |dr: isize, dc: isize| -> f64 {
-                    let r2 = reflect_index(rr + dr, hh) as usize;
-                    let c2 = reflect_index(cc + dc, ww) as usize;
-                    img[r2 * w + c2] as f64
-                };
+            let g = |dr: isize, dc: isize| -> f64 {
+                let r2 = reflect_index(rr + dr, hh) as usize;
+                let c2 = reflect_index(cc + dc, ww) as usize;
+                img[r2 * w + c2] as f64
+            };
 
-                // Classic 3x3 Sobel kernels
-                let gx = -g(-1, -1) + g(-1, 1)
-                    - 2.0 * g(0, -1) + 2.0 * g(0, 1)
-                    - g(1, -1) + g(1, 1);
+            // Classic 3x3 Sobel kernels
+            let gx = -g(-1, -1) + g(-1, 1) - 2.0 * g(0, -1) + 2.0 * g(0, 1) - g(1, -1) + g(1, 1);
 
-                let gy = -g(-1, -1) - 2.0 * g(-1, 0) - g(-1, 1)
-                    + g(1, -1) + 2.0 * g(1, 0) + g(1, 1);
+            let gy = -g(-1, -1) - 2.0 * g(-1, 0) - g(-1, 1) + g(1, -1) + 2.0 * g(1, 0) + g(1, 1);
 
-                row[c] = ((gx * gx + gy * gy).sqrt()) as f32;
-            }
-        });
+            row[c] = ((gx * gx + gy * gy).sqrt()) as f32;
+        }
+    });
     out
 }
 
 fn compute_laplacian(img: &[f32], h: usize, w: usize) -> Vec<f32> {
     let mut out = vec![0.0f32; h * w];
-    out.par_chunks_mut(w)
-        .enumerate()
-        .for_each(|(r, row)| {
-            let hh = h as isize;
-            let ww = w as isize;
-            let rr = r as isize;
+    out.par_chunks_mut(w).enumerate().for_each(|(r, row)| {
+        let hh = h as isize;
+        let ww = w as isize;
+        let rr = r as isize;
 
-            for c in 0..w {
-                let cc = c as isize;
+        for c in 0..w {
+            let cc = c as isize;
 
-                let g = |dr: isize, dc: isize| -> f64 {
-                    let r2 = reflect_index(rr + dr, hh) as usize;
-                    let c2 = reflect_index(cc + dc, ww) as usize;
-                    img[r2 * w + c2] as f64
-                };
+            let g = |dr: isize, dc: isize| -> f64 {
+                let r2 = reflect_index(rr + dr, hh) as usize;
+                let c2 = reflect_index(cc + dc, ww) as usize;
+                img[r2 * w + c2] as f64
+            };
 
-                // 4-neighbor Laplacian: [0 1 0; 1 -4 1; 0 1 0]
-                let v = g(-1, 0) + g(1, 0) + g(0, -1) + g(0, 1) - 4.0 * g(0, 0);
-                row[c] = v as f32;
-            }
-        });
+            // 4-neighbor Laplacian: [0 1 0; 1 -4 1; 0 1 0]
+            let v = g(-1, 0) + g(1, 0) + g(0, -1) + g(0, 1) - 4.0 * g(0, 0);
+            row[c] = v as f32;
+        }
+    });
     out
 }
 
@@ -365,7 +368,13 @@ fn clean_band_nan_fill_clipped(raw: &[f32], h: usize, w: usize) -> Vec<f32> {
     let fill = if n > 0 { (sum / n as f64) as f32 } else { 0.0 };
     raw[..h * w]
         .iter()
-        .map(|&v| if v.is_finite() { v.clamp(0.0, 1.0) } else { fill })
+        .map(|&v| {
+            if v.is_finite() {
+                v.clamp(0.0, 1.0)
+            } else {
+                fill
+            }
+        })
         .collect()
 }
 
@@ -413,14 +422,27 @@ pub(crate) fn cell_stats_8(px: &[f32; N_PX]) -> [f32; 8] {
             vals[n] = v;
             n += 1;
             sum += v as f64;
-            if v < mn { mn = v; }
-            if v > mx { mx = v; }
+            if v < mn {
+                mn = v;
+            }
+            if v > mx {
+                mx = v;
+            }
         }
     }
 
     let finite_frac = n as f32 / N_PX as f32;
     if n == 0 {
-        return [f32::NAN, f32::NAN, f32::NAN, f32::NAN, f32::NAN, f32::NAN, f32::NAN, 0.0];
+        return [
+            f32::NAN,
+            f32::NAN,
+            f32::NAN,
+            f32::NAN,
+            f32::NAN,
+            f32::NAN,
+            f32::NAN,
+            0.0,
+        ];
     }
 
     let mean = (sum / n as f64) as f32;
@@ -483,15 +505,28 @@ fn cell_stats_8_dyn(px: &[f32], total_size: usize) -> [f32; 8] {
         if v.is_finite() {
             vals.push(v);
             sum += v as f64;
-            if v < mn { mn = v; }
-            if v > mx { mx = v; }
+            if v < mn {
+                mn = v;
+            }
+            if v > mx {
+                mx = v;
+            }
         }
     }
 
     let n = vals.len();
     let finite_frac = n as f32 / total_size as f32;
     if n == 0 {
-        return [f32::NAN, f32::NAN, f32::NAN, f32::NAN, f32::NAN, f32::NAN, f32::NAN, 0.0];
+        return [
+            f32::NAN,
+            f32::NAN,
+            f32::NAN,
+            f32::NAN,
+            f32::NAN,
+            f32::NAN,
+            f32::NAN,
+            0.0,
+        ];
     }
 
     let mean = (sum / n as f64) as f32;
@@ -675,7 +710,10 @@ fn cell_lap_stats(img: &[f32], w: usize, cr: usize, cc: usize) -> [f32; 2] {
         }
     }
 
-    [(abs_sum / N_PX as f64) as f32, ((var / N_PX as f64).max(0.0)).sqrt() as f32]
+    [
+        (abs_sum / N_PX as f64) as f32,
+        ((var / N_PX as f64).max(0.0)).sqrt() as f32,
+    ]
 }
 
 // =====================================================================
@@ -783,7 +821,11 @@ fn extract_cell_features(
 
     // BSI
     for i in 0..N_PX {
-        idx_px[i] = if swir1[i].is_finite() && red[i].is_finite() && nir[i].is_finite() && blue[i].is_finite() {
+        idx_px[i] = if swir1[i].is_finite()
+            && red[i].is_finite()
+            && nir[i].is_finite()
+            && blue[i].is_finite()
+        {
             let num = (swir1[i] + red[i]) - (nir[i] + blue[i]);
             num / ((swir1[i] + red[i]) + (nir[i] + blue[i]) + EPS)
         } else {
@@ -810,11 +852,13 @@ fn extract_cell_features(
 
     // IRECI
     for i in 0..N_PX {
-        idx_px[i] = if re3[i].is_finite() && red[i].is_finite() && re1[i].is_finite() && re2[i].is_finite() {
-            (re3[i] - red[i]) / (re1[i] / (re2[i] + EPS) + EPS)
-        } else {
-            f32::NAN
-        };
+        idx_px[i] =
+            if re3[i].is_finite() && red[i].is_finite() && re1[i].is_finite() && re2[i].is_finite()
+            {
+                (re3[i] - red[i]) / (re1[i] / (re2[i] + EPS) + EPS)
+            } else {
+                f32::NAN
+            };
     }
     for v in cell_stats_5(&idx_px) {
         out[fi] = v;
@@ -823,7 +867,8 @@ fn extract_cell_features(
 
     // CRI1
     for i in 0..N_PX {
-        idx_px[i] = if green[i].is_finite() && re1[i].is_finite() && green[i] > EPS && re1[i] > EPS {
+        idx_px[i] = if green[i].is_finite() && re1[i].is_finite() && green[i] > EPS && re1[i] > EPS
+        {
             (1.0 / green[i]) - (1.0 / re1[i])
         } else {
             f32::NAN
@@ -882,20 +927,28 @@ fn extract_cell_features(
 
     // 4) Spatial (8)
     let e = cell_agg_3(sobel, w, cr, cc);
-    out[fi] = e[0]; fi += 1;
-    out[fi] = e[1]; fi += 1;
-    out[fi] = e[2]; fi += 1;
+    out[fi] = e[0];
+    fi += 1;
+    out[fi] = e[1];
+    fi += 1;
+    out[fi] = e[2];
+    fi += 1;
 
     let l = cell_lap_stats(lap, w, cr, cc);
-    out[fi] = l[0]; fi += 1;
-    out[fi] = l[1]; fi += 1;
+    out[fi] = l[0];
+    fi += 1;
+    out[fi] = l[1];
+    fi += 1;
 
     let nir_px = extract_cell(nir_clean, w, cr, cc);
-    out[fi] = cell_morans_i(&nir_px); fi += 1;
+    out[fi] = cell_morans_i(&nir_px);
+    fi += 1;
 
     let ndvi_s = cell_stats_8(&ndvi_px);
-    out[fi] = ndvi_s[3] - ndvi_s[2]; fi += 1; // range
-    out[fi] = ndvi_s[6] - ndvi_s[4]; fi += 1; // IQR
+    out[fi] = ndvi_s[3] - ndvi_s[2];
+    fi += 1; // range
+    out[fi] = ndvi_s[6] - ndvi_s[4];
+    fi += 1; // IQR
 
     // 5) Multi-band LBP (55)
     let lbp_imgs = [lbp_nir, lbp_ndvi, lbp_evi2, lbp_swir1, lbp_ndti];
@@ -914,8 +967,19 @@ fn extract_cell_features(
 pub fn feature_names() -> Vec<String> {
     let mut names = Vec::with_capacity(N_FEAT);
 
-    let bands = ["B02","B03","B04","B05","B06","B07","B08","B8A","B11","B12"];
-    let bst = ["mean","std","min","max","q25","median","q75","finite_frac"];
+    let bands = [
+        "B02", "B03", "B04", "B05", "B06", "B07", "B08", "B8A", "B11", "B12",
+    ];
+    let bst = [
+        "mean",
+        "std",
+        "min",
+        "max",
+        "q25",
+        "median",
+        "q75",
+        "finite_frac",
+    ];
     for bn in &bands {
         for sn in &bst {
             names.push(format!("{bn}_{sn}"));
@@ -923,25 +987,34 @@ pub fn feature_names() -> Vec<String> {
     }
 
     let idxs = [
-        "NDVI","NDWI","NDBI","NDMI","NBR","NDRE1","NDRE2",
-        "MNDWI","GNDVI","NDTI","SAVI","BSI","EVI2","IRECI","CRI1"
+        "NDVI", "NDWI", "NDBI", "NDMI", "NBR", "NDRE1", "NDRE2", "MNDWI", "GNDVI", "NDTI", "SAVI",
+        "BSI", "EVI2", "IRECI", "CRI1",
     ];
-    let ist = ["mean","std","q25","median","q75"];
+    let ist = ["mean", "std", "q25", "median", "q75"];
     for idn in &idxs {
         for sn in &ist {
             names.push(format!("{idn}_{sn}"));
         }
     }
 
-    for tc in &["TC_bright","TC_green","TC_wet"] {
+    for tc in &["TC_bright", "TC_green", "TC_wet"] {
         names.push(format!("{tc}_mean"));
         names.push(format!("{tc}_std"));
     }
 
     names.extend(
-        ["edge_mean","edge_std","edge_max","lap_abs_mean","lap_std","morans_I_NIR","NDVI_range","NDVI_iqr"]
-            .iter()
-            .map(|s| s.to_string()),
+        [
+            "edge_mean",
+            "edge_std",
+            "edge_max",
+            "lap_abs_mean",
+            "lap_std",
+            "morans_I_NIR",
+            "NDVI_range",
+            "NDVI_iqr",
+        ]
+        .iter()
+        .map(|s| s.to_string()),
     );
 
     // NIR LBP: use "LBP_u8_X" to match Python V10 naming exactly
@@ -950,7 +1023,7 @@ pub fn feature_names() -> Vec<String> {
     }
     names.push("LBP_entropy".to_string());
     // Other LBP bands keep their band-prefixed names
-    for lb in &["NDVI","EVI2","SWIR1","NDTI"] {
+    for lb in &["NDVI", "EVI2", "SWIR1", "NDTI"] {
         for b in 0..LBP_BINS {
             names.push(format!("LBP_{lb}_u{LBP_P}_{b}"));
         }
@@ -965,11 +1038,7 @@ pub fn feature_names() -> Vec<String> {
 ///
 /// `season_data`: Vec of flat f32 arrays, each [N_BANDS * H * W] in band-interleaved order.
 /// `n_rows`, `n_cols`: grid dimensions (H = n_rows * GP, W = n_cols * GP).
-pub fn extract_all_seasons(
-    season_data: &[Vec<f32>],
-    n_rows: usize,
-    n_cols: usize,
-) -> Vec<f32> {
+pub fn extract_all_seasons(season_data: &[Vec<f32>], n_rows: usize, n_cols: usize) -> Vec<f32> {
     let h = n_rows * GP;
     let w = n_cols * GP;
     let n_seasons = season_data.len();
@@ -1004,7 +1073,8 @@ pub fn extract_all_seasons(
             let evi2_img: Vec<f32> = (0..h * w)
                 .into_par_iter()
                 .map(|i| {
-                    let e = 2.5 * (nir_clean[i] - red_clean[i]) / (nir_clean[i] + 2.4 * red_clean[i] + 1.0 + EPS);
+                    let e = 2.5 * (nir_clean[i] - red_clean[i])
+                        / (nir_clean[i] + 2.4 * red_clean[i] + 1.0 + EPS);
                     ((e + 0.5) / 1.5).clamp(0.0, 1.0)
                 })
                 .collect();
@@ -1012,12 +1082,14 @@ pub fn extract_all_seasons(
             let ndti_img: Vec<f32> = (0..h * w)
                 .into_par_iter()
                 .map(|i| {
-                    let v = (swir1_clean[i] - swir2_clean[i]) / (swir1_clean[i] + swir2_clean[i] + EPS);
+                    let v =
+                        (swir1_clean[i] - swir2_clean[i]) / (swir1_clean[i] + swir2_clean[i] + EPS);
                     ((v + 1.0) * 0.5).clamp(0.0, 1.0)
                 })
                 .collect();
 
-            let lbp_nir = compute_lbp_perpatch(band_slice(B08), h, w, n_rows, n_cols, &lbp_lut, true);
+            let lbp_nir =
+                compute_lbp_perpatch(band_slice(B08), h, w, n_rows, n_cols, &lbp_lut, true);
             let lbp_ndvi = compute_lbp_raster(&ndvi_img, h, w, &lbp_lut);
             let lbp_evi2 = compute_lbp_raster(&evi2_img, h, w, &lbp_lut);
             let lbp_swir1 = compute_lbp_raster(&swir1_lbp, h, w, &lbp_lut);
@@ -1027,9 +1099,19 @@ pub fn extract_all_seasons(
                 .into_par_iter()
                 .map(|ci| {
                     extract_cell_features(
-                        spec_slice, h, w, ci / n_cols, ci % n_cols,
-                        &sobel, &laplacian, &nir_clean,
-                        &lbp_nir, &lbp_ndvi, &lbp_evi2, &lbp_swir1, &lbp_ndti,
+                        spec_slice,
+                        h,
+                        w,
+                        ci / n_cols,
+                        ci % n_cols,
+                        &sobel,
+                        &laplacian,
+                        &nir_clean,
+                        &lbp_nir,
+                        &lbp_ndvi,
+                        &lbp_evi2,
+                        &lbp_swir1,
+                        &lbp_ndti,
                     )
                 })
                 .collect::<Vec<_>>()

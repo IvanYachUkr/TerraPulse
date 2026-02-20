@@ -2,10 +2,10 @@
 //! and produce a nanmedian composite. Pure Rust replacement for composite.py.
 
 use anyhow::{Context, Result};
-use reqwest::Client;
-use std::path::Path;
-use std::collections::HashMap;
 use rayon::prelude::*;
+use reqwest::Client;
+use std::collections::HashMap;
+use std::path::Path;
 
 use crate::cog::{self, PixelBbox};
 use crate::reproject::{self, GeoTransform};
@@ -68,47 +68,65 @@ pub async fn download_and_composite(
     let n_bands = SPECTRAL_BANDS.len();
     let n_pixels = anchor.width * anchor.height;
 
-    eprintln!("  Compositing {n_scenes} scenes -> {}x{} ...", anchor.width, anchor.height);
+    eprintln!(
+        "  Compositing {n_scenes} scenes -> {}x{} ...",
+        anchor.width, anchor.height
+    );
     eprintln!("    Downloading {n_scenes} scenes (all parallel)...");
 
     // Download all scenes concurrently, with per-scene retry
-    let scene_futures: Vec<_> = signed_urls.iter().enumerate().map(|(si, band_urls)| {
-        let client = client.clone();
-        let urls = band_urls.clone();
-        let anchor_w = anchor.width;
-        let anchor_h = anchor.height;
-        let anchor_gt = anchor.geo_transform;
-        let anchor_epsg = anchor.epsg;
-        async move {
-            let max_retries = 2u32;
-            let mut last_err = String::new();
-            for attempt in 0..=max_retries {
-                if attempt > 0 {
-                    eprintln!("    Scene {}: retry {attempt}/{max_retries}...", si + 1);
-                    tokio::time::sleep(std::time::Duration::from_secs(3 * attempt as u64)).await;
-                }
-                match download_one_scene(
-                    &client, &urls, anchor_w, anchor_h, &anchor_gt, anchor_epsg,
-                ).await {
-                    Ok(data) => {
-                        if attempt > 0 {
-                            eprintln!("    Scene {}: OK (after {attempt} retries)", si + 1);
-                        } else {
-                            eprintln!("    Scene {}: OK", si + 1);
-                        }
-                        return Ok(data);
+    let scene_futures: Vec<_> = signed_urls
+        .iter()
+        .enumerate()
+        .map(|(si, band_urls)| {
+            let client = client.clone();
+            let urls = band_urls.clone();
+            let anchor_w = anchor.width;
+            let anchor_h = anchor.height;
+            let anchor_gt = anchor.geo_transform;
+            let anchor_epsg = anchor.epsg;
+            async move {
+                let max_retries = 2u32;
+                let mut last_err = String::new();
+                for attempt in 0..=max_retries {
+                    if attempt > 0 {
+                        eprintln!("    Scene {}: retry {attempt}/{max_retries}...", si + 1);
+                        tokio::time::sleep(std::time::Duration::from_secs(3 * attempt as u64))
+                            .await;
                     }
-                    Err(e) => {
-                        last_err = format!("{e:#}");
-                        if attempt == max_retries {
-                            eprintln!("    Scene {}: FAILED after {max_retries} retries - {last_err}", si + 1);
+                    match download_one_scene(
+                        &client,
+                        &urls,
+                        anchor_w,
+                        anchor_h,
+                        &anchor_gt,
+                        anchor_epsg,
+                    )
+                    .await
+                    {
+                        Ok(data) => {
+                            if attempt > 0 {
+                                eprintln!("    Scene {}: OK (after {attempt} retries)", si + 1);
+                            } else {
+                                eprintln!("    Scene {}: OK", si + 1);
+                            }
+                            return Ok(data);
+                        }
+                        Err(e) => {
+                            last_err = format!("{e:#}");
+                            if attempt == max_retries {
+                                eprintln!(
+                                    "    Scene {}: FAILED after {max_retries} retries - {last_err}",
+                                    si + 1
+                                );
+                            }
                         }
                     }
                 }
+                Err(anyhow::anyhow!("Scene {} failed: {}", si + 1, last_err))
             }
-            Err(anyhow::anyhow!("Scene {} failed: {}", si + 1, last_err))
-        }
-    }).collect();
+        })
+        .collect();
 
     let results = futures::future::join_all(scene_futures).await;
 
@@ -118,8 +136,13 @@ pub async fn download_and_composite(
     let mut n_fail = 0;
     for r in results {
         match r {
-            Ok(sd) => { scenes.push(sd); n_ok += 1; }
-            Err(_) => { n_fail += 1; }
+            Ok(sd) => {
+                scenes.push(sd);
+                n_ok += 1;
+            }
+            Err(_) => {
+                n_fail += 1;
+            }
         }
     }
     eprintln!("    {n_ok}/{n_scenes} scenes OK, {n_fail} failed");
@@ -138,12 +161,15 @@ pub async fn download_and_composite(
         for scene in &mut scenes {
             // B02 is band index 0 (first in SPECTRAL_BANDS)
             let b02 = &scene.bands[0];
-            let mut valid_vals: Vec<f32> = b02.iter()
+            let mut valid_vals: Vec<f32> = b02
+                .iter()
                 .zip(scene.valid_mask.iter())
                 .filter(|(&v, &m)| m && v.is_finite() && v > 0.0)
                 .map(|(&v, _)| v)
                 .collect();
-            if valid_vals.is_empty() { continue; }
+            if valid_vals.is_empty() {
+                continue;
+            }
             valid_vals.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
             let median = valid_vals[valid_vals.len() / 2];
 
@@ -161,7 +187,10 @@ pub async fn download_and_composite(
             }
         }
         if n_corrected > 0 {
-            eprintln!("    BOA_ADD_OFFSET: corrected {n_corrected}/{} scenes (year {year})", scenes.len());
+            eprintln!(
+                "    BOA_ADD_OFFSET: corrected {n_corrected}/{} scenes (year {year})",
+                scenes.len()
+            );
         }
     }
 
@@ -173,44 +202,47 @@ pub async fn download_and_composite(
     let pixel_indices: Vec<usize> = (0..n_pixels).collect();
 
     // Compute pixel values in parallel (embarrassingly parallel over all cores)
-    let results: Vec<(Vec<f32>, f32)> = pixel_indices.into_par_iter().map(|px| {
-        let mut n_valid = 0u32;
-        for scene in &scenes {
-            if scene.valid_mask[px] {
-                n_valid += 1;
-            }
-        }
-        let valid_frac = n_valid as f32 / scenes.len() as f32;
-
-        if n_valid == 0 {
-            return (Vec::new(), valid_frac);
-        }
-
-        let mut medians = Vec::with_capacity(n_bands);
-        for bi in 0..n_bands {
-            let mut vals: Vec<f32> = Vec::with_capacity(n_valid as usize);
+    let results: Vec<(Vec<f32>, f32)> = pixel_indices
+        .into_par_iter()
+        .map(|px| {
+            let mut n_valid = 0u32;
             for scene in &scenes {
                 if scene.valid_mask[px] {
-                    let v = scene.bands[bi][px];
-                    if v.is_finite() {
-                        vals.push(v);
-                    }
+                    n_valid += 1;
                 }
             }
-            if !vals.is_empty() {
-                vals.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
-                let median = if vals.len() % 2 == 0 {
-                    (vals[vals.len() / 2 - 1] + vals[vals.len() / 2]) / 2.0
-                } else {
-                    vals[vals.len() / 2]
-                };
-                medians.push(median);
-            } else {
-                medians.push(NODATA_VAL);
+            let valid_frac = n_valid as f32 / scenes.len() as f32;
+
+            if n_valid == 0 {
+                return (Vec::new(), valid_frac);
             }
-        }
-        (medians, valid_frac)
-    }).collect();
+
+            let mut medians = Vec::with_capacity(n_bands);
+            for bi in 0..n_bands {
+                let mut vals: Vec<f32> = Vec::with_capacity(n_valid as usize);
+                for scene in &scenes {
+                    if scene.valid_mask[px] {
+                        let v = scene.bands[bi][px];
+                        if v.is_finite() {
+                            vals.push(v);
+                        }
+                    }
+                }
+                if !vals.is_empty() {
+                    vals.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
+                    let median = if vals.len() % 2 == 0 {
+                        (vals[vals.len() / 2 - 1] + vals[vals.len() / 2]) / 2.0
+                    } else {
+                        vals[vals.len() / 2]
+                    };
+                    medians.push(median);
+                } else {
+                    medians.push(NODATA_VAL);
+                }
+            }
+            (medians, valid_frac)
+        })
+        .collect();
 
     // Write back computed values to continuous slices
     for (px, (medians, frac)) in results.into_iter().enumerate() {
@@ -240,9 +272,9 @@ async fn download_one_scene(
     let n_bands = SPECTRAL_BANDS.len();
 
     // First, read one band's metadata to get source dimensions and transform
-    let first_band_url = band_urls.get("B02")
-        .context("Missing B02 in signed URLs")?;
-    let src_meta = cog::read_cog_meta(client, first_band_url).await
+    let first_band_url = band_urls.get("B02").context("Missing B02 in signed URLs")?;
+    let src_meta = cog::read_cog_meta(client, first_band_url)
+        .await
         .context("Failed to read COG metadata")?;
 
     let src_gt = GeoTransform::from_cog(&src_meta.pixel_scale, &src_meta.tiepoint);
@@ -250,7 +282,11 @@ async fn download_one_scene(
     // Verify CRS match (or close enough)
     if src_meta.epsg != 0 && dst_epsg != 0 && src_meta.epsg != dst_epsg {
         // For now, skip scenes with different CRS (rare in same-zone scenes)
-        anyhow::bail!("CRS mismatch: source EPSG:{} != target EPSG:{}", src_meta.epsg, dst_epsg);
+        anyhow::bail!(
+            "CRS mismatch: source EPSG:{} != target EPSG:{}",
+            src_meta.epsg,
+            dst_epsg
+        );
     }
 
     // Calculate which source pixels we need (target bbox in source pixel coords)
@@ -265,12 +301,18 @@ async fn download_one_scene(
     let src_x1 = ((tl_sx.max(br_sx).ceil() as u32 + 2).min(src_meta.width)).max(src_x0 + 1);
     let src_y1 = ((tl_sy.max(br_sy).ceil() as u32 + 2).min(src_meta.height)).max(src_y0 + 1);
 
-    let src_bbox = PixelBbox { x0: src_x0, y0: src_y0, x1: src_x1, y1: src_y1 };
+    let src_bbox = PixelBbox {
+        x0: src_x0,
+        y0: src_y0,
+        x1: src_x1,
+        y1: src_y1,
+    };
 
     // Download all bands + SCL concurrently
     let mut band_futures = Vec::new();
     for bname in SPECTRAL_BANDS.iter().chain(std::iter::once(&"SCL")) {
-        let url = band_urls.get(*bname)
+        let url = band_urls
+            .get(*bname)
             .with_context(|| format!("Missing band {bname} in signed URLs"))?
             .clone();
         let client = client.clone();
@@ -282,8 +324,10 @@ async fn download_one_scene(
             let band_gt = GeoTransform::from_cog(&band_meta.pixel_scale, &band_meta.tiepoint);
 
             // Calculate bbox in this band's pixel coordinates
-            let (bl_gx, bl_gy) = src_gt.pixel_to_geo(src_bbox_copy.x0 as f64, src_bbox_copy.y0 as f64);
-            let (br2_gx, br2_gy) = src_gt.pixel_to_geo(src_bbox_copy.x1 as f64, src_bbox_copy.y1 as f64);
+            let (bl_gx, bl_gy) =
+                src_gt.pixel_to_geo(src_bbox_copy.x0 as f64, src_bbox_copy.y0 as f64);
+            let (br2_gx, br2_gy) =
+                src_gt.pixel_to_geo(src_bbox_copy.x1 as f64, src_bbox_copy.y1 as f64);
 
             let (b_x0, b_y0) = band_gt.geo_to_pixel(bl_gx, bl_gy);
             let (b_x1, b_y1) = band_gt.geo_to_pixel(br2_gx, br2_gy);
@@ -294,7 +338,12 @@ async fn download_one_scene(
             let bx1 = ((b_x0.max(b_x1).ceil() as u32 + 3).min(band_meta.width)).max(bx0 + 1);
             let by1 = ((b_y0.max(b_y1).ceil() as u32 + 3).min(band_meta.height)).max(by0 + 1);
 
-            let band_bbox = PixelBbox { x0: bx0, y0: by0, x1: bx1, y1: by1 };
+            let band_bbox = PixelBbox {
+                x0: bx0,
+                y0: by0,
+                x1: bx1,
+                y1: by1,
+            };
 
             // Download the tiles for this region
             let raw_pixels = cog::read_cog_region(&client, &url, &band_meta, band_bbox).await?;
@@ -319,7 +368,11 @@ async fn download_one_scene(
     // Collect all results, bail on first error
     let mut band_data: Vec<(Vec<f32>, usize, usize, GeoTransform)> = Vec::new();
     for (i, result) in band_results.into_iter().enumerate() {
-        let label = if i < n_bands { SPECTRAL_BANDS[i] } else { "SCL" };
+        let label = if i < n_bands {
+            SPECTRAL_BANDS[i]
+        } else {
+            "SCL"
+        };
         let data = result.with_context(|| format!("Band {label} download failed"))?;
         band_data.push(data);
     }
@@ -332,8 +385,7 @@ async fn download_one_scene(
         let (ref raw_pixels, raw_w, raw_h, ref raw_gt) = band_data[bi];
 
         let mut resampled = reproject::resample_bilinear_par(
-            raw_pixels, raw_w, raw_h, raw_gt,
-            dst_w, dst_h, dst_gt,
+            raw_pixels, raw_w, raw_h, raw_gt, dst_w, dst_h, dst_gt,
         );
         // Mask Sentinel-2 nodata (0) to NaN — S2 L2A uses 0 for missing/edge pixels
         for v in resampled.iter_mut() {
@@ -350,10 +402,7 @@ async fn download_one_scene(
     let scl_resampled = {
         let (ref raw_pixels, raw_w, raw_h, ref raw_gt) = band_data[n_bands];
 
-        reproject::resample_nearest_par(
-            raw_pixels, raw_w, raw_h, raw_gt,
-            dst_w, dst_h, dst_gt,
-        )
+        reproject::resample_nearest_par(raw_pixels, raw_w, raw_h, raw_gt, dst_w, dst_h, dst_gt)
     };
 
     // Build cloud mask from SCL
@@ -384,7 +433,7 @@ async fn download_one_scene(
 fn write_composite_tif(
     path: &Path,
     anchor: &AnchorRef,
-    composite: &[f32],  // [n_bands * n_pixels], band-sequential
+    composite: &[f32],      // [n_bands * n_pixels], band-sequential
     valid_fraction: &[f32], // [n_pixels]
 ) -> Result<()> {
     use std::io::BufWriter;
@@ -411,8 +460,8 @@ fn write_composite_tif(
 
     // Build a minimal classic TIFF with GeoTIFF tags
     // This is a simplified TIFF writer — just enough for tif_reader.rs to decode.
-    let file = std::fs::File::create(path)
-        .with_context(|| format!("Cannot create {}", path.display()))?;
+    let file =
+        std::fs::File::create(path).with_context(|| format!("Cannot create {}", path.display()))?;
     let mut bw = BufWriter::new(file);
 
     // We'll use a minimal manual TIFF writer for simplicity
@@ -474,17 +523,18 @@ fn write_geotiff_manual(
     let strip_offset = extra_off;
 
     // == Write IFD entries ==
-    let write_entry = |w: &mut dyn std::io::Write, tag: u16, typ: u16, count: u32, value: u32| -> Result<()> {
-        w.write_all(&tag.to_le_bytes())?;
-        w.write_all(&typ.to_le_bytes())?;
-        w.write_all(&count.to_le_bytes())?;
-        w.write_all(&value.to_le_bytes())?;
-        Ok(())
-    };
+    let write_entry =
+        |w: &mut dyn std::io::Write, tag: u16, typ: u16, count: u32, value: u32| -> Result<()> {
+            w.write_all(&tag.to_le_bytes())?;
+            w.write_all(&typ.to_le_bytes())?;
+            w.write_all(&count.to_le_bytes())?;
+            w.write_all(&value.to_le_bytes())?;
+            Ok(())
+        };
 
     // ImageWidth
     write_entry(w, 256, 4, 1, width)?; // LONG — supports dimensions > 65535
-    // ImageLength
+                                       // ImageLength
     write_entry(w, 257, 4, 1, height)?;
     // BitsPerSample (offset to array)
     write_entry(w, 258, 3, n_bands as u32, bps_offset)?;
@@ -494,7 +544,7 @@ fn write_geotiff_manual(
     write_entry(w, 262, 3, 1, 1)?;
     // StripOffsets
     write_entry(w, 273, 4, 1, strip_offset)?; // LONG
-    // SamplesPerPixel
+                                              // SamplesPerPixel
     write_entry(w, 277, 3, 1, n_bands as u32)?;
     // RowsPerStrip = height (single strip)
     write_entry(w, 278, 3, 1, height)?;
@@ -506,7 +556,7 @@ fn write_geotiff_manual(
     write_entry(w, 339, 3, n_bands as u32, sf_offset)?;
     // ModelPixelScaleTag
     write_entry(w, 33550, 12, 3, mps_offset)?; // DOUBLE
-    // ModelTiepointTag
+                                               // ModelTiepointTag
     write_entry(w, 33922, 12, 6, mtp_offset)?;
     // GeoKeyDirectoryTag
     write_entry(w, 34735, 3, 8, gkd_offset)?; // SHORT
@@ -535,14 +585,14 @@ fn write_geotiff_manual(
     w.write_all(&anchor.geo_transform.origin_x.to_le_bytes())?; // geo X
     w.write_all(&anchor.geo_transform.origin_y.to_le_bytes())?; // geo Y
     w.write_all(&0.0f64.to_le_bytes())?; // geo Z
-    // GeoKeyDirectory
-    w.write_all(&1u16.to_le_bytes())?;   // KeyDirectoryVersion
-    w.write_all(&1u16.to_le_bytes())?;   // KeyRevision
-    w.write_all(&0u16.to_le_bytes())?;   // MinorRevision
-    w.write_all(&1u16.to_le_bytes())?;   // NumberOfKeys
+                                         // GeoKeyDirectory
+    w.write_all(&1u16.to_le_bytes())?; // KeyDirectoryVersion
+    w.write_all(&1u16.to_le_bytes())?; // KeyRevision
+    w.write_all(&0u16.to_le_bytes())?; // MinorRevision
+    w.write_all(&1u16.to_le_bytes())?; // NumberOfKeys
     w.write_all(&3072u16.to_le_bytes())?; // ProjectedCSTypeGeoKey
-    w.write_all(&0u16.to_le_bytes())?;    // TIFFTagLocation (value inline)
-    w.write_all(&1u16.to_le_bytes())?;    // Count
+    w.write_all(&0u16.to_le_bytes())?; // TIFFTagLocation (value inline)
+    w.write_all(&1u16.to_le_bytes())?; // Count
     w.write_all(&(anchor.epsg as u16).to_le_bytes())?; // Value
 
     // == Write pixel data ==

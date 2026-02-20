@@ -38,7 +38,10 @@ pub async fn download_season(
         eprintln!("  [{year}/{season}] WARNING: No scenes found -- skipping!");
         return Ok(None);
     }
-    eprintln!("  [{year}/{season}] Found {} scenes, signing...", items.len());
+    eprintln!(
+        "  [{year}/{season}] Found {} scenes, signing...",
+        items.len()
+    );
 
     // 2. Get collection SAS token and sign all URLs
     let all_bands = stac::all_download_bands();
@@ -53,14 +56,8 @@ pub async fn download_season(
 
     // 3. Download, reproject, composite in pure Rust
     eprintln!("  [{year}/{season}] Downloading and compositing (pure Rust)...");
-    composite::download_and_composite(
-        client,
-        &items,
-        &signed_scenes,
-        anchor,
-        &out_path,
-        year,
-    ).await?;
+    composite::download_and_composite(client, &items, &signed_scenes, anchor, &out_path, year)
+        .await?;
 
     if out_path.exists() {
         let mb = std::fs::metadata(&out_path)?.len() as f64 / (1024.0 * 1024.0);
@@ -82,9 +79,36 @@ pub async fn download_year(
     anchor: &AnchorRef,
 ) -> Result<()> {
     let (r1, r2, r3) = tokio::join!(
-        download_season(client, bbox, epsg, year, "spring", region_name, raw_dir, anchor),
-        download_season(client, bbox, epsg, year, "summer", region_name, raw_dir, anchor),
-        download_season(client, bbox, epsg, year, "autumn", region_name, raw_dir, anchor),
+        download_season(
+            client,
+            bbox,
+            epsg,
+            year,
+            "spring",
+            region_name,
+            raw_dir,
+            anchor
+        ),
+        download_season(
+            client,
+            bbox,
+            epsg,
+            year,
+            "summer",
+            region_name,
+            raw_dir,
+            anchor
+        ),
+        download_season(
+            client,
+            bbox,
+            epsg,
+            year,
+            "autumn",
+            region_name,
+            raw_dir,
+            anchor
+        ),
     );
     r1?;
     r2?;
@@ -120,19 +144,16 @@ pub async fn download_sar_season(
         eprintln!("  [SAR {year}/{season}] WARNING: No S1 scenes found -- skipping!");
         return Ok(None);
     }
-    eprintln!("  [SAR {year}/{season}] Found {} scenes, downloading...", items.len());
+    eprintln!(
+        "  [SAR {year}/{season}] Found {} scenes, downloading...",
+        items.len()
+    );
 
     // 2. Get S1 SAS token
     let token = stac::get_s1_token(client).await?;
 
     // 3. Download, resample, composite in pure Rust
-    crate::sar_download::download_sar_composite(
-        client,
-        &items,
-        &token,
-        anchor,
-        &out_path,
-    ).await?;
+    crate::sar_download::download_sar_composite(client, &items, &token, anchor, &out_path).await?;
 
     if out_path.exists() {
         let mb = std::fs::metadata(&out_path)?.len() as f64 / (1024.0 * 1024.0);

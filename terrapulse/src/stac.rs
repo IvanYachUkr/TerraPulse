@@ -139,7 +139,13 @@ fn chrono_parse_expand(date_str: &str, days: i32) -> String {
         match m {
             1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
             4 | 6 | 9 | 11 => 30,
-            2 => if y % 4 == 0 && (y % 100 != 0 || y % 400 == 0) { 29 } else { 28 },
+            2 => {
+                if y % 4 == 0 && (y % 100 != 0 || y % 400 == 0) {
+                    29
+                } else {
+                    28
+                }
+            }
             _ => 30,
         }
     };
@@ -201,7 +207,10 @@ async fn fetch_token(client: &Client, api_url: &str) -> Result<String> {
             anyhow::bail!("Token API {api_url} returned {status}: {text}");
         }
 
-        let tr: TokenResponse = resp.json().await.context("Failed to parse token response")?;
+        let tr: TokenResponse = resp
+            .json()
+            .await
+            .context("Failed to parse token response")?;
         return Ok(tr.token);
     }
 
@@ -256,12 +265,15 @@ pub fn sign_scene_assets_with_token(
 
 /// Get bands + SCL for cloud masking.
 pub fn all_download_bands() -> Vec<&'static str> {
-    vec!["B02", "B03", "B04", "B05", "B06", "B07", "B08", "B8A", "B11", "B12", "SCL"]
+    vec![
+        "B02", "B03", "B04", "B05", "B06", "B07", "B08", "B8A", "B11", "B12", "SCL",
+    ]
 }
 
 // ---- Sentinel-1 SAR ----
 
-const S1_TOKEN_API: &str = "https://planetarycomputer.microsoft.com/api/sas/v1/token/sentinel-1-grd";
+const S1_TOKEN_API: &str =
+    "https://planetarycomputer.microsoft.com/api/sas/v1/token/sentinel-1-grd";
 
 /// Cached SAS token for S1 with auto-refresh.
 static CACHED_S1_TOKEN: tokio::sync::Mutex<Option<(String, std::time::Instant)>> =
@@ -303,14 +315,20 @@ pub async fn search_sar_scenes(
     };
 
     let url = format!("{STAC_API}/search");
-    let resp = client.post(&url).json(&body).send().await
+    let resp = client
+        .post(&url)
+        .json(&body)
+        .send()
+        .await
         .context("S1 STAC search failed")?;
     let status = resp.status();
     if !status.is_success() {
         let text = resp.text().await.unwrap_or_default();
         anyhow::bail!("S1 STAC search returned {status}: {text}");
     }
-    let fc: StacFeatureCollection = resp.json().await
+    let fc: StacFeatureCollection = resp
+        .json()
+        .await
         .context("Failed to parse S1 STAC response")?;
 
     if fc.features.len() >= 3 {
@@ -328,12 +346,18 @@ pub async fn search_sar_scenes(
         limit: 500,
     };
 
-    let resp2 = client.post(&url).json(&body2).send().await
+    let resp2 = client
+        .post(&url)
+        .json(&body2)
+        .send()
+        .await
         .context("S1 STAC fallback search failed")?;
     if !resp2.status().is_success() {
         return Ok(fc.features); // return whatever we had
     }
-    let fc2: StacFeatureCollection = resp2.json().await
+    let fc2: StacFeatureCollection = resp2
+        .json()
+        .await
         .context("Failed to parse S1 STAC fallback response")?;
 
     if fc2.features.len() > fc.features.len() {
@@ -342,4 +366,3 @@ pub async fn search_sar_scenes(
         Ok(fc.features)
     }
 }
-

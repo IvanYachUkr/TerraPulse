@@ -6,7 +6,7 @@ use std::path::Path;
 ///
 /// Uses Arrow RecordBatch reader for columnar access (much faster than row iteration).
 pub fn read_feature_parquet(path: &Path) -> Result<(Vec<String>, Vec<Vec<f32>>)> {
-    use arrow::array::{AsArray, Array};
+    use arrow::array::{Array, AsArray};
     use arrow::datatypes::*;
     use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 

@@ -5,8 +5,8 @@ use anyhow::Result;
 use std::path::{Path, PathBuf};
 
 use crate::features;
-use crate::sar_features;
 use crate::parquet_io;
+use crate::sar_features;
 use crate::tif_reader;
 
 const SEASONS: [&str; 3] = ["spring", "summer", "autumn"];
@@ -61,7 +61,9 @@ pub fn extract_year_pair(
     let mut jobs = Vec::new();
     for &(actual_year, _model_year) in &year_map {
         for season in SEASONS {
-            let tif = raw_dir.join(format!("sentinel2_{region_name}_{actual_year}_{season}.tif"));
+            let tif = raw_dir.join(format!(
+                "sentinel2_{region_name}_{actual_year}_{season}.tif"
+            ));
             if !tif.exists() {
                 println!("  [{tag}] WARNING: Missing {} -- skip", tif.display());
                 return Ok(None);
@@ -81,7 +83,9 @@ pub fn extract_year_pair(
 
     for (actual_year, season) in jobs.iter() {
         let model_year = year_map.iter().find(|(a, _)| a == actual_year).unwrap().1;
-        let tif = raw_dir.join(format!("sentinel2_{region_name}_{actual_year}_{season}.tif"));
+        let tif = raw_dir.join(format!(
+            "sentinel2_{region_name}_{actual_year}_{season}.tif"
+        ));
 
         let t_read = std::time::Instant::now();
 
@@ -98,23 +102,25 @@ pub fn extract_year_pair(
         if let Some(vf_data) = vf {
             vf_min = Some(match vf_min {
                 None => vf_data,
-                Some(prev) => {
-                    prev.iter().zip(vf_data.iter())
-                        .map(|(&a, &b)| {
-                            match (a.is_finite(), b.is_finite()) {
-                                (true, true) => a.min(b),
-                                (true, false) => a,
-                                (false, true) => b,
-                                (false, false) => f32::NAN,
-                            }
-                        })
-                        .collect()
-                }
+                Some(prev) => prev
+                    .iter()
+                    .zip(vf_data.iter())
+                    .map(|(&a, &b)| match (a.is_finite(), b.is_finite()) {
+                        (true, true) => a.min(b),
+                        (true, false) => a,
+                        (false, true) => b,
+                        (false, false) => f32::NAN,
+                    })
+                    .collect(),
             });
         }
 
         let read_ms = t_read.elapsed().as_millis();
-        assert!(nb >= features::N_BANDS, "TIF has {nb} bands, need {}", features::N_BANDS);
+        assert!(
+            nb >= features::N_BANDS,
+            "TIF has {nb} bands, need {}",
+            features::N_BANDS
+        );
 
         // Normalize to [0,1] if in DN scale
         let scale = detect_scale(&data);
@@ -180,7 +186,9 @@ pub fn extract_year_pair(
     let mut sar_spectral_list: Vec<Vec<f32>> = Vec::new();
 
     for (actual_year, season) in jobs.iter() {
-        let sar_tif = raw_dir.join(format!("sentinel1_{region_name}_{actual_year}_{season}.tif"));
+        let sar_tif = raw_dir.join(format!(
+            "sentinel1_{region_name}_{actual_year}_{season}.tif"
+        ));
         if !sar_tif.exists() {
             has_sar = false;
             break;
@@ -190,13 +198,19 @@ pub fn extract_year_pair(
     if has_sar {
         println!("    SAR TIFs detected — extracting SAR features");
         for (actual_year, season) in jobs.iter() {
-            let sar_tif = raw_dir.join(format!("sentinel1_{region_name}_{actual_year}_{season}.tif"));
+            let sar_tif = raw_dir.join(format!(
+                "sentinel1_{region_name}_{actual_year}_{season}.tif"
+            ));
             let t_read = std::time::Instant::now();
 
             let (nb, _h, _w, mut data, _vf) =
                 tif_reader::read_tif_bands_and_valid_fraction(&sar_tif, sar_features::N_SAR_BANDS)?;
 
-            assert!(nb >= sar_features::N_SAR_BANDS, "SAR TIF has {nb} bands, need {}", sar_features::N_SAR_BANDS);
+            assert!(
+                nb >= sar_features::N_SAR_BANDS,
+                "SAR TIF has {nb} bands, need {}",
+                sar_features::N_SAR_BANDS
+            );
 
             // Replace NODATA with NaN
             for v in data.iter_mut() {
@@ -219,7 +233,9 @@ pub fn extract_year_pair(
                 let mean_val = finite_sum / finite_n as f64;
                 if mean_val > 1.5 {
                     // Likely raw linear power, convert to dB then scale to [0,1]
-                    println!("      SAR: converting from linear power (mean={mean_val:.3}) to [0,1]");
+                    println!(
+                        "      SAR: converting from linear power (mean={mean_val:.3}) to [0,1]"
+                    );
                     for v in data.iter_mut() {
                         if v.is_finite() && *v > 0.0 {
                             let db = 10.0 * v.log10();
@@ -241,7 +257,10 @@ pub fn extract_year_pair(
         let t1 = std::time::Instant::now();
         let sar_flat = sar_features::extract_all_sar_seasons(&sar_spectral_list, nr, nc);
         let dt = t1.elapsed().as_secs_f64();
-        println!("    SAR extraction: {dt:.1}s for {} seasons", sar_spectral_list.len());
+        println!(
+            "    SAR extraction: {dt:.1}s for {} seasons",
+            sar_spectral_list.len()
+        );
         drop(sar_spectral_list);
 
         // Add SAR column names
@@ -282,24 +301,25 @@ pub fn extract_year_pair(
         // Bands: mean is at offset 0, 8, 16, ..., 72 (10 bands × 8 stats, mean is first)
         // Indices: mean is at offset 80, 85, 90, ..., 150 (15 indices × 5 stats, mean is first)
         // We use 10 bands + 5 key indices (NDVI, NDWI, NDBI, BSI, EVI2)
-        let band_mean_offsets: Vec<usize> = (0..10).map(|b| b * 8).collect();  // 0,8,16,...,72
-        // NDVI=0, NDWI=1, NDBI=2, BSI=11, EVI2=12 within the 15 indices
+        let band_mean_offsets: Vec<usize> = (0..10).map(|b| b * 8).collect(); // 0,8,16,...,72
+                                                                              // NDVI=0, NDWI=1, NDBI=2, BSI=11, EVI2=12 within the 15 indices
         let idx_mean_offsets: Vec<usize> = vec![
-            80 + 0 * 5,   // NDVI mean
-            80 + 1 * 5,   // NDWI mean
-            80 + 2 * 5,   // NDBI mean
-            80 + 11 * 5,  // BSI mean
-            80 + 12 * 5,  // EVI2 mean
+            80 + 0 * 5,  // NDVI mean
+            80 + 1 * 5,  // NDWI mean
+            80 + 2 * 5,  // NDBI mean
+            80 + 11 * 5, // BSI mean
+            80 + 12 * 5, // EVI2 mean
         ];
 
-        let all_offsets: Vec<usize> = band_mean_offsets.iter()
+        let all_offsets: Vec<usize> = band_mean_offsets
+            .iter()
             .chain(idx_mean_offsets.iter())
             .copied()
             .collect();
 
         let signal_names = [
-            "B02", "B03", "B04", "B05", "B06", "B07", "B08", "B8A", "B11", "B12",
-            "NDVI", "NDWI", "NDBI", "BSI", "EVI2",
+            "B02", "B03", "B04", "B05", "B06", "B07", "B08", "B8A", "B11", "B12", "NDVI", "NDWI",
+            "NDBI", "BSI", "EVI2",
         ];
 
         let pheno_names = ["curvature", "slope", "amplitude", "peak"];
@@ -307,9 +327,9 @@ pub fn extract_year_pair(
         // Process each year separately (seasons come in groups of 3)
         let n_years = n_seasons / 3;
         for yr_idx in 0..n_years {
-            let spring_season = yr_idx * 3;      // index 0 or 3
-            let summer_season = yr_idx * 3 + 1;  // index 1 or 4
-            let autumn_season = yr_idx * 3 + 2;  // index 2 or 5
+            let spring_season = yr_idx * 3; // index 0 or 3
+            let summer_season = yr_idx * 3 + 1; // index 1 or 4
+            let autumn_season = yr_idx * 3 + 2; // index 2 or 5
 
             let year_tag = &suffixes[spring_season]; // e.g. "2020_spring"
             let year_label = year_tag.split('_').next().unwrap_or("unknown");
@@ -394,9 +414,12 @@ pub fn extract_year_pair(
 
                 for row in rows.iter_mut() {
                     for &offset in &sar_mean_offsets {
-                        let spring_val = row[sar_base_offset + spring_season * sar_per_season + offset];
-                        let summer_val = row[sar_base_offset + summer_season * sar_per_season + offset];
-                        let autumn_val = row[sar_base_offset + autumn_season * sar_per_season + offset];
+                        let spring_val =
+                            row[sar_base_offset + spring_season * sar_per_season + offset];
+                        let summer_val =
+                            row[sar_base_offset + summer_season * sar_per_season + offset];
+                        let autumn_val =
+                            row[sar_base_offset + autumn_season * sar_per_season + offset];
 
                         let curvature = summer_val - (spring_val + autumn_val) / 2.0;
                         let slope = (autumn_val - spring_val) / 2.0;
@@ -457,30 +480,38 @@ pub fn extract_year_pair(
                 for row in rows.iter_mut() {
                     // Summer-winter contrasts (spring as winter proxy)
                     for &offset in &temporal_offsets {
-                        let spring_val = row[sar_base_offset + spring_season * sar_per_season + offset];
-                        let summer_val = row[sar_base_offset + summer_season * sar_per_season + offset];
+                        let spring_val =
+                            row[sar_base_offset + spring_season * sar_per_season + offset];
+                        let summer_val =
+                            row[sar_base_offset + summer_season * sar_per_season + offset];
                         row.push(summer_val - spring_val);
                     }
 
                     // Temporal std across 3 seasons
                     for &offset in &temporal_offsets {
-                        let s0 = row[sar_base_offset + (yr_idx * 3)     * sar_per_season + offset];
+                        let s0 = row[sar_base_offset + (yr_idx * 3) * sar_per_season + offset];
                         let s1 = row[sar_base_offset + (yr_idx * 3 + 1) * sar_per_season + offset];
                         let s2 = row[sar_base_offset + (yr_idx * 3 + 2) * sar_per_season + offset];
                         let mean = (s0 + s1 + s2) / 3.0;
-                        let var = ((s0 - mean).powi(2) + (s1 - mean).powi(2) + (s2 - mean).powi(2)) / 3.0;
+                        let var =
+                            ((s0 - mean).powi(2) + (s1 - mean).powi(2) + (s2 - mean).powi(2)) / 3.0;
                         row.push(var.max(0.0).sqrt());
                     }
 
                     // Temporal CV for VV and VH only (offsets 0 and 8)
                     for &offset in &[0usize, 8usize] {
-                        let s0 = row[sar_base_offset + (yr_idx * 3)     * sar_per_season + offset];
+                        let s0 = row[sar_base_offset + (yr_idx * 3) * sar_per_season + offset];
                         let s1 = row[sar_base_offset + (yr_idx * 3 + 1) * sar_per_season + offset];
                         let s2 = row[sar_base_offset + (yr_idx * 3 + 2) * sar_per_season + offset];
                         let mean = (s0 + s1 + s2) / 3.0;
-                        let var = ((s0 - mean).powi(2) + (s1 - mean).powi(2) + (s2 - mean).powi(2)) / 3.0;
+                        let var =
+                            ((s0 - mean).powi(2) + (s1 - mean).powi(2) + (s2 - mean).powi(2)) / 3.0;
                         let std = var.max(0.0).sqrt();
-                        let cv = if mean.abs() > 1e-10 { std / mean.abs() } else { 0.0 };
+                        let cv = if mean.abs() > 1e-10 {
+                            std / mean.abs()
+                        } else {
+                            0.0
+                        };
                         row.push(cv);
                     }
                 }
@@ -496,7 +527,8 @@ pub fn extract_year_pair(
     let mut nan_count = 0u64;
     for col in 0..n_all_cols {
         // Collect finite values for this column
-        let mut vals: Vec<f32> = rows.iter()
+        let mut vals: Vec<f32> = rows
+            .iter()
             .map(|row| row[col])
             .filter(|v| v.is_finite())
             .collect();
@@ -552,7 +584,10 @@ pub fn extract_year_pair(
         }
         extra_cols.push("valid_fraction".to_string());
         extra_cols.push("low_valid_fraction".to_string());
-        let low_vf: Vec<f32> = vf_cells.iter().map(|&v| if v < min_valid_frac { 1.0 } else { 0.0 }).collect();
+        let low_vf: Vec<f32> = vf_cells
+            .iter()
+            .map(|&v| if v < min_valid_frac { 1.0 } else { 0.0 })
+            .collect();
         extra_data.push(vf_cells);
         extra_data.push(low_vf);
     }
@@ -562,6 +597,9 @@ pub fn extract_year_pair(
 
     let elapsed = t0.elapsed().as_secs_f64();
     let mb = std::fs::metadata(&out_path)?.len() as f64 / (1024.0 * 1024.0);
-    println!("  [{tag}] Done: {} cols, {mb:.1} MB, {elapsed:.0}s", columns.len() + extra_cols.len());
+    println!(
+        "  [{tag}] Done: {} cols, {mb:.1} MB, {elapsed:.0}s",
+        columns.len() + extra_cols.len()
+    );
     Ok(Some(out_path))
 }

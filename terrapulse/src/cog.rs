@@ -49,9 +49,9 @@ pub struct CogMeta {
     pub sample_format: u16,   // 1 = uint, 3 = float
     pub predictor: u16,       // 1 = none, 2 = horizontal diff
     pub samples_per_pixel: u16,
-    pub pixel_scale: [f64; 3],  // from ModelPixelScaleTag
-    pub tiepoint: [f64; 6],     // from ModelTiepointTag
-    pub epsg: u32,              // from GeoKeyDirectory
+    pub pixel_scale: [f64; 3], // from ModelPixelScaleTag
+    pub tiepoint: [f64; 6],    // from ModelTiepointTag
+    pub epsg: u32,             // from GeoKeyDirectory
 }
 
 impl CogMeta {
@@ -83,7 +83,8 @@ pub struct PixelBbox {
 /// Download the first HEADER_BYTES of a COG and parse its IFD.
 pub async fn read_cog_meta(client: &Client, url: &str) -> Result<CogMeta> {
     // Download header
-    let header = download_range(client, url, 0, HEADER_BYTES).await
+    let header = download_range(client, url, 0, HEADER_BYTES)
+        .await
         .context("Failed to download COG header")?;
 
     parse_ifd(&header)
@@ -118,11 +119,19 @@ fn parse_ifd(buf: &[u8]) -> Result<CogMeta> {
     };
     let ru64 = |off: usize| -> u64 {
         let b: [u8; 8] = buf[off..off + 8].try_into().unwrap();
-        if le { u64::from_le_bytes(b) } else { u64::from_be_bytes(b) }
+        if le {
+            u64::from_le_bytes(b)
+        } else {
+            u64::from_be_bytes(b)
+        }
     };
     let rf64 = |off: usize| -> f64 {
         let b: [u8; 8] = buf[off..off + 8].try_into().unwrap();
-        if le { f64::from_le_bytes(b) } else { f64::from_be_bytes(b) }
+        if le {
+            f64::from_le_bytes(b)
+        } else {
+            f64::from_be_bytes(b)
+        }
     };
 
     let magic = ru16(2);
@@ -142,25 +151,44 @@ fn parse_ifd(buf: &[u8]) -> Result<CogMeta> {
         ru16(ifd_offset) as usize
     };
 
-    let entry_start = if is_bigtiff { ifd_offset + 8 } else { ifd_offset + 2 };
+    let entry_start = if is_bigtiff {
+        ifd_offset + 8
+    } else {
+        ifd_offset + 2
+    };
     let entry_size = if is_bigtiff { 20 } else { 12 };
 
     // Collect raw IFD entries
     let mut meta = CogMeta {
-        width: 0, height: 0, tile_width: 256, tile_height: 256,
-        tile_offsets: Vec::new(), tile_byte_counts: Vec::new(),
-        compression: 1, bits_per_sample: 16, sample_format: 1,
-        predictor: 1, samples_per_pixel: 1,
-        pixel_scale: [0.0; 3], tiepoint: [0.0; 6], epsg: 0,
+        width: 0,
+        height: 0,
+        tile_width: 256,
+        tile_height: 256,
+        tile_offsets: Vec::new(),
+        tile_byte_counts: Vec::new(),
+        compression: 1,
+        bits_per_sample: 16,
+        sample_format: 1,
+        predictor: 1,
+        samples_per_pixel: 1,
+        pixel_scale: [0.0; 3],
+        tiepoint: [0.0; 6],
+        epsg: 0,
     };
 
     for i in 0..n_entries {
         let eoff = entry_start + i * entry_size;
-        if eoff + entry_size > buf.len() { break; }
+        if eoff + entry_size > buf.len() {
+            break;
+        }
 
         let tag = ru16(eoff);
         let field_type = ru16(eoff + 2);
-        let count = if is_bigtiff { ru64(eoff + 4) as u32 } else { ru32(eoff + 4) };
+        let count = if is_bigtiff {
+            ru64(eoff + 4) as u32
+        } else {
+            ru32(eoff + 4)
+        };
         let value_offset = if is_bigtiff { eoff + 12 } else { eoff + 8 };
 
         // Helper: read a single u32/u16 value (inline or from offset)
@@ -224,10 +252,16 @@ fn parse_ifd(buf: &[u8]) -> Result<CogMeta> {
                 let off = data_off();
                 // GeoKeyDirectory: array of u16 [KeyDirectoryVersion, Revision, MinorRevision, NumberOfKeys, ...]
                 // Key 2048 = GeographicTypeGeoKey, Key 3072 = ProjectedCSTypeGeoKey
-                let n_keys = if off + 6 < buf.len() { ru16(off + 6) as usize } else { 0 };
+                let n_keys = if off + 6 < buf.len() {
+                    ru16(off + 6) as usize
+                } else {
+                    0
+                };
                 for k in 0..n_keys {
                     let koff = off + 8 + k * 8;
-                    if koff + 8 > buf.len() { break; }
+                    if koff + 8 > buf.len() {
+                        break;
+                    }
                     let key_id = ru16(koff);
                     let _tiff_tag_location = ru16(koff + 2);
                     let _count = ru16(koff + 4);
@@ -251,9 +285,9 @@ fn parse_ifd(buf: &[u8]) -> Result<CogMeta> {
 /// Size in bytes for a TIFF field type.
 fn type_size(ft: u16) -> usize {
     match ft {
-        1 | 2 | 6 | 7 => 1,   // BYTE, ASCII, SBYTE, UNDEFINED
-        TYPE_SHORT | 8 => 2,    // SHORT, SSHORT
-        TYPE_LONG | 9 => 4,     // LONG, SLONG
+        1 | 2 | 6 | 7 => 1,      // BYTE, ASCII, SBYTE, UNDEFINED
+        TYPE_SHORT | 8 => 2,     // SHORT, SSHORT
+        TYPE_LONG | 9 => 4,      // LONG, SLONG
         TYPE_RATIONAL | 10 => 8, // RATIONAL, SRATIONAL
         11 => 4,                 // FLOAT
         TYPE_DOUBLE => 8,        // DOUBLE
@@ -268,23 +302,38 @@ fn read_u64_array(buf: &[u8], off: usize, count: usize, field_type: u16, le: boo
     let elem_size = type_size(field_type);
     for i in 0..count {
         let p = off + i * elem_size;
-        if p + elem_size > buf.len() { break; }
+        if p + elem_size > buf.len() {
+            break;
+        }
         let val = match field_type {
             TYPE_SHORT => {
-                if le { u16::from_le_bytes([buf[p], buf[p+1]]) as u64 }
-                else { u16::from_be_bytes([buf[p], buf[p+1]]) as u64 }
+                if le {
+                    u16::from_le_bytes([buf[p], buf[p + 1]]) as u64
+                } else {
+                    u16::from_be_bytes([buf[p], buf[p + 1]]) as u64
+                }
             }
             TYPE_LONG => {
-                if le { u32::from_le_bytes([buf[p], buf[p+1], buf[p+2], buf[p+3]]) as u64 }
-                else { u32::from_be_bytes([buf[p], buf[p+1], buf[p+2], buf[p+3]]) as u64 }
+                if le {
+                    u32::from_le_bytes([buf[p], buf[p + 1], buf[p + 2], buf[p + 3]]) as u64
+                } else {
+                    u32::from_be_bytes([buf[p], buf[p + 1], buf[p + 2], buf[p + 3]]) as u64
+                }
             }
             TYPE_LONG8 => {
-                let b: [u8; 8] = buf[p..p+8].try_into().unwrap();
-                if le { u64::from_le_bytes(b) } else { u64::from_be_bytes(b) }
+                let b: [u8; 8] = buf[p..p + 8].try_into().unwrap();
+                if le {
+                    u64::from_le_bytes(b)
+                } else {
+                    u64::from_be_bytes(b)
+                }
             }
             _ => {
-                if le { u32::from_le_bytes([buf[p], buf[p+1], buf[p+2], buf[p+3]]) as u64 }
-                else { u32::from_be_bytes([buf[p], buf[p+1], buf[p+2], buf[p+3]]) as u64 }
+                if le {
+                    u32::from_le_bytes([buf[p], buf[p + 1], buf[p + 2], buf[p + 3]]) as u64
+                } else {
+                    u32::from_be_bytes([buf[p], buf[p + 1], buf[p + 2], buf[p + 3]]) as u64
+                }
             }
         };
         out.push(val);
@@ -328,24 +377,27 @@ pub async fn read_cog_region(
     }
 
     // Download all needed tiles concurrently
-    let tile_futures: Vec<_> = tiles.iter().map(|&(tx, ty)| {
-        let client = client.clone();
-        let url = url.to_string();
-        let idx = meta.tile_index(tx, ty);
-        let offset = meta.tile_offsets[idx];
-        let size = meta.tile_byte_counts[idx] as usize;
-        let compression = meta.compression;
-        let bits = meta.bits_per_sample;
-        let sample_fmt = meta.sample_format;
-        let predictor = meta.predictor;
-        let tw = meta.tile_width as usize;
-        let th = meta.tile_height as usize;
-        async move {
-            let raw = download_range(&client, &url, offset as usize, size).await?;
-            let pixels = decode_tile(&raw, compression, bits, sample_fmt, predictor, tw, th)?;
-            Ok::<_, anyhow::Error>((tx, ty, pixels))
-        }
-    }).collect();
+    let tile_futures: Vec<_> = tiles
+        .iter()
+        .map(|&(tx, ty)| {
+            let client = client.clone();
+            let url = url.to_string();
+            let idx = meta.tile_index(tx, ty);
+            let offset = meta.tile_offsets[idx];
+            let size = meta.tile_byte_counts[idx] as usize;
+            let compression = meta.compression;
+            let bits = meta.bits_per_sample;
+            let sample_fmt = meta.sample_format;
+            let predictor = meta.predictor;
+            let tw = meta.tile_width as usize;
+            let th = meta.tile_height as usize;
+            async move {
+                let raw = download_range(&client, &url, offset as usize, size).await?;
+                let pixels = decode_tile(&raw, compression, bits, sample_fmt, predictor, tw, th)?;
+                Ok::<_, anyhow::Error>((tx, ty, pixels))
+            }
+        })
+        .collect();
 
     let results = futures::future::join_all(tile_futures).await;
 
@@ -359,12 +411,16 @@ pub async fn read_cog_region(
 
         for dy in 0..th {
             let src_y = tile_px_y as usize + dy;
-            if src_y < bbox.y0 as usize || src_y >= bbox.y1 as usize { continue; }
+            if src_y < bbox.y0 as usize || src_y >= bbox.y1 as usize {
+                continue;
+            }
             let dst_y = src_y - bbox.y0 as usize;
 
             for dx in 0..tw {
                 let src_x = tile_px_x as usize + dx;
-                if src_x < bbox.x0 as usize || src_x >= bbox.x1 as usize { continue; }
+                if src_x < bbox.x0 as usize || src_x >= bbox.x1 as usize {
+                    continue;
+                }
                 let dst_x = src_x - bbox.x0 as usize;
 
                 let val = pixels[dy * tw + dx];
@@ -387,16 +443,16 @@ fn unpack_15bit_tight(bytes: &[u8], n_pixels: usize) -> Vec<u16> {
     for _ in 0..n_pixels {
         let byte_idx = bit_pos / 8;
         let bit_off = bit_pos % 8;
-        
+
         let b0 = *bytes.get(byte_idx).unwrap_or(&0) as u32;
         let b1 = *bytes.get(byte_idx + 1).unwrap_or(&0) as u32;
         let b2 = *bytes.get(byte_idx + 2).unwrap_or(&0) as u32;
-        
+
         // Assemble 24 bits (little-endian byte read, so b0 is lowest bits)
         // Note: For BigTIFF/TIFF typically FillOrder=1 (MSB first bits),
         // but Sentinel-2 15bps are standard packed words. A simple shift works.
         let word = (b0 | (b1 << 8) | (b2 << 16)) >> bit_off;
-        
+
         out.push((word & 0x7FFF) as u16); // Mask 15 bits
         bit_pos += 15;
     }
@@ -438,7 +494,8 @@ fn decode_tile(
             // Used by Sentinel-1 GRD/RTC from late 2023+ from Planetary Computer
             let mut dec = zstd::stream::Decoder::new(raw).context("Failed to init ZSTD decoder")?;
             let mut buf = Vec::with_capacity(tile_width * tile_height * 2);
-            dec.read_to_end(&mut buf).context("ZSTD decompression failed")?;
+            dec.read_to_end(&mut buf)
+                .context("ZSTD decompression failed")?;
             buf
         }
         _ => anyhow::bail!("Unsupported TIFF compression: {compression}"),
@@ -495,11 +552,21 @@ fn decode_tile(
                         let cur = rs + x * 4;
                         let prev = rs + (x - 1) * 4;
                         if cur + 3 < bytes.len() {
-                            let cur_val = f32::from_le_bytes([bytes[cur], bytes[cur+1], bytes[cur+2], bytes[cur+3]]);
-                            let prev_val = f32::from_le_bytes([bytes[prev], bytes[prev+1], bytes[prev+2], bytes[prev+3]]);
+                            let cur_val = f32::from_le_bytes([
+                                bytes[cur],
+                                bytes[cur + 1],
+                                bytes[cur + 2],
+                                bytes[cur + 3],
+                            ]);
+                            let prev_val = f32::from_le_bytes([
+                                bytes[prev],
+                                bytes[prev + 1],
+                                bytes[prev + 2],
+                                bytes[prev + 3],
+                            ]);
                             let result = cur_val + prev_val;
                             let rb = result.to_le_bytes();
-                            bytes[cur..cur+4].copy_from_slice(&rb);
+                            bytes[cur..cur + 4].copy_from_slice(&rb);
                         }
                     }
                 }
@@ -537,7 +604,7 @@ fn decode_tile(
             // 15bps tight packing (Newer ESA baseline).
             // We unpacked raw tight bits OR they are byte-aligned. Let's unpack first.
             let mut unpacked = unpack_15bit_tight(&decompressed, n_pixels);
-            
+
             // Re-apply predictor=2 correctly on the *unpacked* 16-bit values
             if predictor == 2 {
                 let samples_per_row = tile_width;
@@ -548,11 +615,11 @@ fn decode_tile(
                     }
                 }
             }
-            
+
             unpacked.into_iter().map(|v| v as f32).collect()
         }
         (16, 1) => {
-            // uint16 LE 
+            // uint16 LE
             // If predictor was 2, bytes array is already cumulative sum
             let mut out = Vec::with_capacity(n_pixels);
             for i in 0..n_pixels {
@@ -572,7 +639,12 @@ fn decode_tile(
             for i in 0..n_pixels {
                 let off = i * 4;
                 if off + 3 < bytes.len() {
-                    let v = f32::from_le_bytes([bytes[off], bytes[off+1], bytes[off+2], bytes[off+3]]);
+                    let v = f32::from_le_bytes([
+                        bytes[off],
+                        bytes[off + 1],
+                        bytes[off + 2],
+                        bytes[off + 3],
+                    ]);
                     out.push(v);
                 } else {
                     out.push(f32::NAN);
@@ -589,7 +661,12 @@ fn decode_tile(
 // ── HTTP helpers ──
 
 /// Download a byte range from a URL (with retry on transient errors).
-pub async fn download_range(client: &Client, url: &str, offset: usize, length: usize) -> Result<Vec<u8>> {
+pub async fn download_range(
+    client: &Client,
+    url: &str,
+    offset: usize,
+    length: usize,
+) -> Result<Vec<u8>> {
     let end = offset + length - 1;
     let max_retries = 3u32;
 
@@ -631,11 +708,15 @@ pub async fn download_range(client: &Client, url: &str, offset: usize, length: u
 
 /// Read CogMeta from a local GeoTIFF file (for anchor references).
 pub fn read_local_tif_meta(path: &std::path::Path) -> Result<CogMeta> {
-    let data = std::fs::read(path)
-        .with_context(|| format!("Cannot read TIF: {}", path.display()))?;
+    let data =
+        std::fs::read(path).with_context(|| format!("Cannot read TIF: {}", path.display()))?;
 
     // Only need the first HEADER_BYTES for IFD parsing
-    let header = if data.len() > HEADER_BYTES { &data[..HEADER_BYTES] } else { &data };
+    let header = if data.len() > HEADER_BYTES {
+        &data[..HEADER_BYTES]
+    } else {
+        &data
+    };
     parse_ifd(header)
 }
 
@@ -652,13 +733,13 @@ mod tests {
         // [ 0x5555 (15 bits) ][ 0x2AAA (15 bits) ]
         // V1: 1010 1010 1010 101 = 0x5555
         // V2: 0101 0101 0101 010 = 0x2AAA
-        
+
         let v1 = 0x5555u32;
         let v2 = 0x2AAAu32;
-        
+
         let packed_30 = v1 | (v2 << 15);
         let bytes = packed_30.to_le_bytes(); // 4 bytes covering the 30 bits
-        
+
         let unpacked = unpack_15bit_tight(&bytes, 2);
         assert_eq!(unpacked, vec![v1 as u16, v2 as u16]);
     }

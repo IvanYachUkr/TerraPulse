@@ -12,10 +12,12 @@ fn decode_interleaved_f32(path: &Path) -> Result<(usize, usize, Vec<f32>)> {
     let mut decoder = Decoder::new(std::io::BufReader::new(file))
         .with_context(|| format!("Cannot decode TIF: {}", path.display()))?;
 
-    let (w, h) = decoder.dimensions()
+    let (w, h) = decoder
+        .dimensions()
         .with_context(|| format!("Cannot read dimensions: {}", path.display()))?;
 
-    let image = decoder.read_image()
+    let image = decoder
+        .read_image()
         .with_context(|| format!("Cannot read image data: {}", path.display()))?;
 
     let interleaved = match image {
