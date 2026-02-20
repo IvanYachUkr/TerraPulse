@@ -32,7 +32,7 @@ TerraPulse predicts the **land-cover composition** of any area on Earth from Sen
 | 🪨 Bare/Sparse | Exposed soil, construction sites |
 | 💧 Water | Rivers, lakes, ponds |
 
-The champion model achieves **R² = 0.787** with **2.50 pp mean absolute error** across 5-fold spatial cross-validation with geographic buffer separation.
+The production model — a tapered MLP trained on **14 European cities** — achieves **R² = 0.862** with **2.43 pp mean absolute error** on the held-out Nuremberg test region.
 
 ---
 
@@ -193,11 +193,12 @@ TerraPulse/
 
 ### Models
 
-| Model | R² | MAE | Parameters | Purpose |
-|-------|:--:|:---:|:----------:|---------|
-| **MLP** | 0.787 | 2.50 pp | 917K | Production (deployed via ONNX) |
-| LightGBM | 0.736 | 2.99 pp | — | Tree-based comparison |
-| Ridge | 0.423 | 5.63 pp | — | Interpretable baseline |
+| Model | R² | MAE | Parameters | Context |
+|-------|:--:|:---:|:----------:|--------|
+| **MLP (production)** | **0.862** | **2.43 pp** | 917K | Multi-city (14 cities → Nuremberg), deployed via ONNX |
+| MLP (5-fold CV) | 0.787 | 2.50 pp | 917K | Single-city spatial CV research metric |
+| LightGBM | 0.736 | 2.99 pp | — | Tree-based comparison (research) |
+| Ridge | 0.423 | 5.63 pp | — | Interpretable baseline (research) |
 
 ---
 
