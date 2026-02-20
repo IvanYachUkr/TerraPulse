@@ -169,9 +169,9 @@ pub fn resample_nearest_par(
                 // Geo → source pixel (fractional, corner-based)
                 let (sx, sy) = src_gt.geo_to_pixel(gx, gy);
 
-                // Convert to center-index coords and round to nearest
-                let ix = (sx - 0.5 + 0.5).floor() as isize; // equivalent to sx.floor() but clearer intent
-                let iy = (sy - 0.5 + 0.5).floor() as isize;
+                // Round to nearest source pixel
+                let ix = sx.floor() as isize;
+                let iy = sy.floor() as isize;
 
                 if ix < 0 || iy < 0 || ix >= src_w as isize || iy >= src_h as isize {
                     continue;

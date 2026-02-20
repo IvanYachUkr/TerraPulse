@@ -128,7 +128,12 @@ pub async fn download_and_composite(
         })
         .collect();
 
-    let results = futures::future::join_all(scene_futures).await;
+    // Use buffer_unordered to limit concurrent scene downloads and avoid OOM
+    use futures::stream::{self, StreamExt};
+    let results: Vec<_> = stream::iter(scene_futures)
+        .buffer_unordered(6)
+        .collect()
+        .await;
 
     // Collect successful scenes
     let mut scenes: Vec<SceneData> = Vec::new();
@@ -547,7 +552,7 @@ fn write_geotiff_manual(
                                               // SamplesPerPixel
     write_entry(w, 277, 3, 1, n_bands as u32)?;
     // RowsPerStrip = height (single strip)
-    write_entry(w, 278, 3, 1, height)?;
+    write_entry(w, 278, 4, 1, height)?; // LONG to support height > 65535
     // StripByteCounts
     write_entry(w, 279, 4, 1, data_bytes as u32)?;
     // PlanarConfiguration = 1 (pixel-interleaved)

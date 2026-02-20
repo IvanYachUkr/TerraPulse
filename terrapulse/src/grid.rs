@@ -18,13 +18,13 @@ pub fn generate_grid_geojson(anchor: &AnchorRef, out_path: &Path) -> Result<()> 
     let hemisphere = if is_north { 'N' } else { 'S' };
 
     let grid_px: usize = 10;
-    let sentinel_res = 10.0;
+    let t = &anchor.geo_transform;
+    let sentinel_res = t.pixel_size_x; // use actual pixel size from anchor
     
     let nc = anchor.width / grid_px;
     let nr = anchor.height / grid_px;
 
     // We'll calculate it just like python: precalculate x0,x1 and y0,y1 for all cells
-    let t = &anchor.geo_transform;
     
     for ri in 0..nr {
         for ci in 0..nc {

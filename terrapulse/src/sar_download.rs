@@ -10,7 +10,7 @@ use std::path::Path;
 
 use crate::cog::{self, PixelBbox};
 use crate::composite::AnchorRef;
-use crate::reproject::{bilinear_interp, GeoTransform};
+use crate::reproject::GeoTransform;
 use crate::stac;
 
 /// Maximum raw DN value for scaling S1 amplitudes to [0, 1].
@@ -342,7 +342,7 @@ pub async fn download_sar_composite(
     let dst_h = anchor.height;
     let n_pixels = dst_w * dst_h;
     let gt = &anchor.geo_transform;
-    let utm_zone = utm_zone_from_epsg(anchor.epsg);
+    let (utm_zone, is_north) = utm_zone_info_from_epsg(anchor.epsg);
 
     let dst_gt = gt.clone();
 
@@ -373,7 +373,7 @@ pub async fn download_sar_composite(
                     );
                     tokio::time::sleep(std::time::Duration::from_secs(3 * attempt as u64)).await;
                 }
-                match download_one_sar_scene(&client, &item, &token, dw, dh, &dst_gt, utm_z).await {
+                match download_one_sar_scene(&client, &item, &token, dw, dh, &dst_gt, utm_z, is_north).await {
                     Ok(Some(data)) => {
                         eprintln!("    SAR scene {}: OK", si + 1);
                         return Ok(Some(data));
@@ -489,6 +489,7 @@ async fn download_one_sar_scene(
     dst_h: usize,
     dst_gt: &GeoTransform,
     utm_zone: u32,
+    is_north: bool,
 ) -> Result<Option<(Vec<f32>, Vec<f32>)>> {
     let vv_asset = item.assets.get("vv").context("Missing VV asset")?;
     let vh_asset = item.assets.get("vh").context("Missing VH asset")?;
@@ -517,7 +518,7 @@ async fn download_one_sar_scene(
     let mut has_overlap = false;
     for &(dx, dy) in &corners {
         let (gx, gy) = dst_gt.pixel_to_geo(dx, dy);
-        let (lon, lat) = utm_to_wgs84(gx, gy, utm_zone);
+        let (lon, lat) = utm_to_wgs84(gx, gy, utm_zone, is_north);
         if gcp_grid.wgs84_to_pixel(lon, lat).is_some() {
             has_overlap = true;
             break;
@@ -539,7 +540,7 @@ async fn download_one_sar_scene(
     for dy in (0..dst_h).step_by(step) {
         for dx in (0..dst_w).step_by(step) {
             let (gx, gy) = dst_gt.pixel_to_geo(dx as f64 + 0.5, dy as f64 + 0.5);
-            let (lon, lat) = utm_to_wgs84(gx, gy, utm_zone);
+            let (lon, lat) = utm_to_wgs84(gx, gy, utm_zone, is_north);
             if let Some((px, py)) = gcp_grid.wgs84_to_pixel(lon, lat) {
                 src_x0 = src_x0.min(px as u32);
                 src_y0 = src_y0.min(py as u32);
@@ -579,10 +580,10 @@ async fn download_one_sar_scene(
 
     // Resample from GCP-referenced pixel space to target UTM grid
     let vv_resampled = resample_gcp_to_utm(
-        &vv_pixels, crop_w, crop_h, src_x0, src_y0, &gcp_grid, dst_w, dst_h, dst_gt, utm_zone,
+        &vv_pixels, crop_w, crop_h, src_x0, src_y0, &gcp_grid, dst_w, dst_h, dst_gt, utm_zone, is_north,
     );
     let vh_resampled = resample_gcp_to_utm(
-        &vh_pixels, crop_w, crop_h, src_x0, src_y0, &gcp_grid, dst_w, dst_h, dst_gt, utm_zone,
+        &vh_pixels, crop_w, crop_h, src_x0, src_y0, &gcp_grid, dst_w, dst_h, dst_gt, utm_zone, is_north,
     );
 
     Ok(Some((vv_resampled, vh_resampled)))
@@ -605,6 +606,7 @@ fn resample_gcp_to_utm(
     dst_h: usize,
     dst_gt: &GeoTransform,
     utm_zone: u32,
+    is_north: bool,
 ) -> Vec<f32> {
     use rayon::prelude::*;
 
@@ -619,7 +621,7 @@ fn resample_gcp_to_utm(
                 let (utm_x, utm_y) = dst_gt.pixel_to_geo(dx as f64 + 0.5, dy as f64 + 0.5);
 
                 // 2. UTM → WGS84
-                let (lon, lat) = utm_to_wgs84(utm_x, utm_y, utm_zone);
+                let (lon, lat) = utm_to_wgs84(utm_x, utm_y, utm_zone, is_north);
 
                 // 3. WGS84 → source pixel via GCP grid (piecewise bilinear inverse)
                 let (src_px, src_py) = match gcp_grid.wgs84_to_pixel(lon, lat) {
@@ -699,7 +701,7 @@ fn resample_gcp_to_utm(
 }
 
 /// UTM → WGS84 inverse projection (approximate, good to ~1m accuracy).
-fn utm_to_wgs84(easting: f64, northing: f64, zone: u32) -> (f64, f64) {
+fn utm_to_wgs84(easting: f64, northing: f64, zone: u32, is_north: bool) -> (f64, f64) {
     use std::f64::consts::PI;
 
     let a: f64 = 6378137.0;
@@ -712,7 +714,7 @@ fn utm_to_wgs84(easting: f64, northing: f64, zone: u32) -> (f64, f64) {
     let lon0 = ((zone as f64 - 1.0) * 6.0 - 180.0 + 3.0) * PI / 180.0;
 
     let x = easting - 500000.0; // remove false easting
-    let y = northing; // northern hemisphere
+    let y = if is_north { northing } else { northing - 10_000_000.0 }; // subtract false northing for southern hemisphere
 
     let m = y / k0;
     let mu = m / (a * (1.0 - e2 / 4.0 - 3.0 * e2.powi(2) / 64.0 - 5.0 * e2.powi(3) / 256.0));
@@ -750,14 +752,14 @@ fn utm_to_wgs84(easting: f64, northing: f64, zone: u32) -> (f64, f64) {
 }
 
 /// Write a 2-band SAR GeoTIFF.
-/// Determine UTM zone from EPSG code.
-fn utm_zone_from_epsg(epsg: u32) -> u32 {
+/// Determine UTM zone and hemisphere from EPSG code.
+fn utm_zone_info_from_epsg(epsg: u32) -> (u32, bool) {
     if epsg >= 32601 && epsg <= 32660 {
-        epsg - 32600 // Northern hemisphere
+        (epsg - 32600, true) // Northern hemisphere
     } else if epsg >= 32701 && epsg <= 32760 {
-        epsg - 32700 // Southern hemisphere
+        (epsg - 32700, false) // Southern hemisphere
     } else {
-        32 // fallback for central Europe
+        (32, true) // fallback for central Europe (north)
     }
 }
 
@@ -836,8 +838,8 @@ fn write_sar_tif(
     // Write IFD entries (must be sorted by tag number!)
     // Using PlanarConfiguration=1 (CHUNKY) with interleaved pixel data
     let ifd_entries: Vec<(u16, u16, u32, u32)> = vec![
-        (256, 3, 1, width as u32),                       // ImageWidth
-        (257, 3, 1, height as u32),                      // ImageLength
+        (256, 4, 1, width as u32),                       // ImageWidth (LONG to support > 65535)
+        (257, 4, 1, height as u32),                      // ImageLength (LONG to support > 65535)
         (258, 3, 2, bps_inline),                         // BitsPerSample = [32, 32] inline
         (259, 3, 1, 1),                                  // Compression = None
         (262, 3, 1, 1),                                  // PhotometricInterpretation = MinIsBlack
@@ -921,7 +923,7 @@ mod tests {
         let northing = 5479630.0;
         let zone = 32;
 
-        let (lon, lat) = utm_to_wgs84(easting, northing, zone);
+        let (lon, lat) = utm_to_wgs84(easting, northing, zone, true);
 
         // Approximate inversion for 32N coordinates (49.4506, 11.0782)
         assert!(
@@ -932,10 +934,27 @@ mod tests {
     }
 
     #[test]
-    fn test_utm_zone_from_epsg() {
-        assert_eq!(utm_zone_from_epsg(32632), 32); // 32N
-        assert_eq!(utm_zone_from_epsg(32633), 33); // 33N
-        assert_eq!(utm_zone_from_epsg(32732), 32); // 32S
-        assert_eq!(utm_zone_from_epsg(4326), 32);  // fallback
+    fn test_utm_to_wgs84_southern() {
+        // Cape Town area: lat ~-33.9, lon ~18.4
+        // UTM Zone 34S, EPSG:32734
+        let easting = 261878.0;
+        let northing = 6243186.0;
+        let zone = 34;
+        let (lon, lat) = utm_to_wgs84(easting, northing, zone, false);
+        assert!(
+            (lat - (-33.93)).abs() < 0.05 && (lon - 18.42).abs() < 0.05,
+            "Southern hemisphere: expected (~-33.93, ~18.42), got ({}, {})",
+            lat, lon
+        );
+        // Verify latitude is negative (southern hemisphere)
+        assert!(lat < 0.0, "Southern hemisphere latitude should be negative, got {}", lat);
+    }
+
+    #[test]
+    fn test_utm_zone_info_from_epsg() {
+        assert_eq!(utm_zone_info_from_epsg(32632), (32, true));  // 32N
+        assert_eq!(utm_zone_info_from_epsg(32633), (33, true));  // 33N
+        assert_eq!(utm_zone_info_from_epsg(32732), (32, false)); // 32S
+        assert_eq!(utm_zone_info_from_epsg(4326), (32, true));   // fallback
     }
 }

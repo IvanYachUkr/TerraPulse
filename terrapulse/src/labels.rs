@@ -42,7 +42,8 @@ pub async fn download_labels(client: &Client, year: u32, anchor: &AnchorRef, out
     let cx = t.origin_x + (anchor.width as f64 / 2.0) * t.pixel_size_x;
     let cy = t.origin_y - (anchor.height as f64 / 2.0) * t.pixel_size_y;
     
-    let (lat_center, lon_center) = utm::wsg84_utm_to_lat_lon(cx, cy, zone, hemisphere).unwrap();
+    let (lat_center, lon_center) = utm::wsg84_utm_to_lat_lon(cx, cy, zone, hemisphere)
+        .map_err(|e| anyhow::anyhow!("UTM->WGS84 center conversion failed: {:?}", e))?;
 
     let lat_tile = (lat_center / 3.0).floor() as i32 * 3;
     let lon_tile = (lon_center / 3.0).floor() as i32 * 3;
@@ -71,7 +72,8 @@ pub async fn download_labels(client: &Client, year: u32, anchor: &AnchorRef, out
     ];
 
     for &(gx, gy) in &corners {
-        let (lat, lon) = utm::wsg84_utm_to_lat_lon(gx, gy, zone, hemisphere).unwrap();
+        let (lat, lon) = utm::wsg84_utm_to_lat_lon(gx, gy, zone, hemisphere)
+            .map_err(|e| anyhow::anyhow!("UTM->WGS84 corner conversion failed: {:?}", e))?;
         min_lat = min_lat.min(lat);
         max_lat = max_lat.max(lat);
         min_lon = min_lon.min(lon);
@@ -111,7 +113,9 @@ pub async fn download_labels(client: &Client, year: u32, anchor: &AnchorRef, out
                 let py = ri * grid_px + dy;
                 
                 let (easting, northing) = t.pixel_to_geo(px as f64 + 0.5, py as f64 + 0.5);
-                let (lat, lon) = utm::wsg84_utm_to_lat_lon(easting, northing, zone, hemisphere).unwrap();
+                let Ok((lat, lon)) = utm::wsg84_utm_to_lat_lon(easting, northing, zone, hemisphere) else {
+                    continue; // skip pixels with invalid UTM coordinates
+                };
                 
                 let (sx_f, sy_f) = src_gt.geo_to_pixel(lon, lat);
                 let ix = sx_f.floor() as isize - src_bbox.x0 as isize;

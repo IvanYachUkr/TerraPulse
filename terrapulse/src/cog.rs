@@ -52,6 +52,7 @@ pub struct CogMeta {
     pub pixel_scale: [f64; 3], // from ModelPixelScaleTag
     pub tiepoint: [f64; 6],    // from ModelTiepointTag
     pub epsg: u32,             // from GeoKeyDirectory
+    pub le: bool,              // true = little-endian, false = big-endian
 }
 
 impl CogMeta {
@@ -174,6 +175,7 @@ fn parse_ifd(buf: &[u8]) -> Result<CogMeta> {
         pixel_scale: [0.0; 3],
         tiepoint: [0.0; 6],
         epsg: 0,
+        le,
     };
 
     for i in 0..n_entries {
@@ -389,11 +391,12 @@ pub async fn read_cog_region(
             let bits = meta.bits_per_sample;
             let sample_fmt = meta.sample_format;
             let predictor = meta.predictor;
+            let is_le = meta.le;
             let tw = meta.tile_width as usize;
             let th = meta.tile_height as usize;
             async move {
                 let raw = download_range(&client, &url, offset as usize, size).await?;
-                let pixels = decode_tile(&raw, compression, bits, sample_fmt, predictor, tw, th)?;
+                let pixels = decode_tile(&raw, compression, bits, sample_fmt, predictor, tw, th, is_le)?;
                 Ok::<_, anyhow::Error>((tx, ty, pixels))
             }
         })
@@ -477,6 +480,7 @@ fn decode_tile(
     predictor: u16,
     tile_width: usize,
     tile_height: usize,
+    le: bool,
 ) -> Result<Vec<f32>> {
     // Decompress
     let decompressed = match compression {
@@ -542,10 +546,18 @@ fn decode_tile(
                         let cur = rs + x * 2;
                         let prev = rs + (x - 1) * 2;
                         if cur + 1 < bytes.len() {
-                            let cur_val = u16::from_le_bytes([bytes[cur], bytes[cur + 1]]);
-                            let prev_val = u16::from_le_bytes([bytes[prev], bytes[prev + 1]]);
+                            let cur_val = if le {
+                                u16::from_le_bytes([bytes[cur], bytes[cur + 1]])
+                            } else {
+                                u16::from_be_bytes([bytes[cur], bytes[cur + 1]])
+                            };
+                            let prev_val = if le {
+                                u16::from_le_bytes([bytes[prev], bytes[prev + 1]])
+                            } else {
+                                u16::from_be_bytes([bytes[prev], bytes[prev + 1]])
+                            };
                             let result = cur_val.wrapping_add(prev_val);
-                            let rb = result.to_le_bytes();
+                            let rb = if le { result.to_le_bytes() } else { result.to_be_bytes() };
                             bytes[cur] = rb[0];
                             bytes[cur + 1] = rb[1];
                         }
@@ -561,20 +573,38 @@ fn decode_tile(
                         let cur = rs + x * 4;
                         let prev = rs + (x - 1) * 4;
                         if cur + 3 < bytes.len() {
-                            let cur_val = f32::from_le_bytes([
-                                bytes[cur],
-                                bytes[cur + 1],
-                                bytes[cur + 2],
-                                bytes[cur + 3],
-                            ]);
-                            let prev_val = f32::from_le_bytes([
-                                bytes[prev],
-                                bytes[prev + 1],
-                                bytes[prev + 2],
-                                bytes[prev + 3],
-                            ]);
+                            let cur_val = if le {
+                                f32::from_le_bytes([
+                                    bytes[cur],
+                                    bytes[cur + 1],
+                                    bytes[cur + 2],
+                                    bytes[cur + 3],
+                                ])
+                            } else {
+                                f32::from_be_bytes([
+                                    bytes[cur],
+                                    bytes[cur + 1],
+                                    bytes[cur + 2],
+                                    bytes[cur + 3],
+                                ])
+                            };
+                            let prev_val = if le {
+                                f32::from_le_bytes([
+                                    bytes[prev],
+                                    bytes[prev + 1],
+                                    bytes[prev + 2],
+                                    bytes[prev + 3],
+                                ])
+                            } else {
+                                f32::from_be_bytes([
+                                    bytes[prev],
+                                    bytes[prev + 1],
+                                    bytes[prev + 2],
+                                    bytes[prev + 3],
+                                ])
+                            };
                             let result = cur_val + prev_val;
-                            let rb = result.to_le_bytes();
+                            let rb = if le { result.to_le_bytes() } else { result.to_be_bytes() };
                             bytes[cur..cur + 4].copy_from_slice(&rb);
                         }
                     }
@@ -634,7 +664,11 @@ fn decode_tile(
             for i in 0..n_pixels {
                 let off = i * 2;
                 if off + 1 < bytes.len() {
-                    let v = u16::from_le_bytes([bytes[off], bytes[off + 1]]);
+                    let v = if le {
+                        u16::from_le_bytes([bytes[off], bytes[off + 1]])
+                    } else {
+                        u16::from_be_bytes([bytes[off], bytes[off + 1]])
+                    };
                     out.push(v as f32);
                 } else {
                     out.push(f32::NAN);
@@ -648,12 +682,21 @@ fn decode_tile(
             for i in 0..n_pixels {
                 let off = i * 4;
                 if off + 3 < bytes.len() {
-                    let v = f32::from_le_bytes([
-                        bytes[off],
-                        bytes[off + 1],
-                        bytes[off + 2],
-                        bytes[off + 3],
-                    ]);
+                    let v = if le {
+                        f32::from_le_bytes([
+                            bytes[off],
+                            bytes[off + 1],
+                            bytes[off + 2],
+                            bytes[off + 3],
+                        ])
+                    } else {
+                        f32::from_be_bytes([
+                            bytes[off],
+                            bytes[off + 1],
+                            bytes[off + 2],
+                            bytes[off + 3],
+                        ])
+                    };
                     out.push(v);
                 } else {
                     out.push(f32::NAN);
