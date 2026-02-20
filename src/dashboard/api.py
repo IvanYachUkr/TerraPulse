@@ -236,6 +236,25 @@ def explainability():
     return get_explainability()
 
 
+@app.get("/api/shap-plots/manifest")
+def shap_manifest():
+    """Manifest of available SHAP deep-dive plots."""
+    return _load_json("shap_plots/manifest.json")
+
+
+from fastapi.responses import FileResponse
+
+@app.get("/api/shap-plots/{filename}")
+def shap_plot_file(filename: str):
+    """Serve SHAP plot PNG images."""
+    if not filename.endswith(".png"):
+        raise HTTPException(status_code=400, detail="Only .png files are served")
+    path = os.path.join(DATA_DIR, "shap_plots", filename)
+    if not os.path.exists(path):
+        raise HTTPException(status_code=404, detail=f"Plot not found: {filename}")
+    return FileResponse(path, media_type="image/png")
+
+
 @app.get("/api/cell/{cell_id}")
 def cell_detail(cell_id: int):
     """
