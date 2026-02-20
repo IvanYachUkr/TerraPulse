@@ -886,3 +886,56 @@ fn write_sar_tif(
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_median_sorted() {
+        let empty: &[f32] = &[];
+        assert!(median_sorted(empty).is_nan());
+
+        let one = &[5.0];
+        assert_eq!(median_sorted(one), 5.0);
+
+        let two = &[2.0, 4.0];
+        assert_eq!(median_sorted(two), 3.0);
+
+        let three = &[1.0, 10.0, 100.0];
+        assert_eq!(median_sorted(three), 10.0);
+
+        let four = &[1.0, 2.0, 3.0, 4.0];
+        assert_eq!(median_sorted(four), 2.5);
+    }
+
+    #[test]
+    fn test_utm_to_wgs84() {
+        // Test coordinate: Center of Nuremberg
+        // lat: 49.4521, lon: 11.0767
+        // UTM Zone 32N
+        // Expected Easting: ~650630, Expected Northing: ~5479630
+        
+        // Exact derived coordinates from EPSG:32632
+        let easting = 650630.0;
+        let northing = 5479630.0;
+        let zone = 32;
+
+        let (lon, lat) = utm_to_wgs84(easting, northing, zone);
+
+        // Approximate inversion for 32N coordinates (49.4506, 11.0782)
+        assert!(
+            (lat - 49.450644).abs() < 1e-5 && (lon - 11.078287).abs() < 1e-5,
+            "Expected (~49.450644, ~11.078287), got ({}, {})",
+            lat, lon
+        );
+    }
+
+    #[test]
+    fn test_utm_zone_from_epsg() {
+        assert_eq!(utm_zone_from_epsg(32632), 32); // 32N
+        assert_eq!(utm_zone_from_epsg(32633), 33); // 33N
+        assert_eq!(utm_zone_from_epsg(32732), 32); // 32S
+        assert_eq!(utm_zone_from_epsg(4326), 32);  // fallback
+    }
+}

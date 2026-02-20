@@ -185,3 +185,79 @@ pub fn resample_nearest_par(
 
     output
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_geo_transform() {
+        let gt = GeoTransform {
+            origin_x: 100.0,
+            origin_y: 50.0,
+            pixel_size_x: 10.0,
+            pixel_size_y: 10.0,
+        };
+
+        // pixel -> geo
+        // (0, 0) -> (100, 50)
+        let (gx, gy) = gt.pixel_to_geo(0.0, 0.0);
+        assert_eq!(gx, 100.0);
+        assert_eq!(gy, 50.0);
+
+        // (1, 1) -> (110, 40) -- note Y decreases
+        let (gx, gy) = gt.pixel_to_geo(1.0, 1.0);
+        assert_eq!(gx, 110.0);
+        assert_eq!(gy, 40.0);
+
+        // fractional
+        let (gx, gy) = gt.pixel_to_geo(0.5, 0.5);
+        assert_eq!(gx, 105.0);
+        assert_eq!(gy, 45.0);
+
+        // geo -> pixel
+        let (px, py) = gt.geo_to_pixel(105.0, 45.0);
+        assert_eq!(px, 0.5);
+        assert_eq!(py, 0.5);
+    }
+
+    #[test]
+    fn test_geo_transform_from_cog() {
+        let pixel_scale = [10.0, 10.0, 0.0];
+        // tiepoint: [I, J, K, X, Y, Z]
+        let tiepoint = [0.0, 0.0, 0.0, 100.0, 50.0, 0.0];
+        let gt = GeoTransform::from_cog(&pixel_scale, &tiepoint);
+        
+        assert_eq!(gt.origin_x, 100.0);
+        assert_eq!(gt.origin_y, 50.0);
+        assert_eq!(gt.pixel_size_x, 10.0);
+        assert_eq!(gt.pixel_size_y, 10.0);
+    }
+
+    #[test]
+    fn test_bilinear_interp() {
+        // all finite
+        let act = bilinear_interp(10.0, 20.0, 30.0, 40.0, 0.5, 0.5);
+        assert_eq!(act, 25.0); // center of 10,20,30,40 is 25
+
+        let act = bilinear_interp(10.0, 20.0, 30.0, 40.0, 0.0, 0.0);
+        assert_eq!(act, 10.0); // exact top-left corner
+
+        let act = bilinear_interp(10.0, 20.0, 30.0, 40.0, 1.0, 1.0);
+        assert_eq!(act, 40.0); // exact bottom-right corner
+
+        // with NaNs (fallback to average of finite weights)
+        // Only v00 is finite, w00 is max at fx=0, fy=0
+        let act = bilinear_interp(10.0, f64::NAN, f64::NAN, f64::NAN, 0.0, 0.0);
+        assert_eq!(act, 10.0);
+
+        // 50/50 mix between v00 and v10 because v01 and v11 are NaN
+        // weights: w00=(1-0.5)*(1-0) = 0.5, w10=0.5*(1-0) = 0.5
+        let act = bilinear_interp(10.0, 20.0, f64::NAN, f64::NAN, 0.5, 0.0);
+        assert_eq!(act, 15.0);
+
+        // All NaN
+        let act = bilinear_interp(f64::NAN, f64::NAN, f64::NAN, f64::NAN, 0.5, 0.5);
+        assert!(act.is_nan());
+    }
+}

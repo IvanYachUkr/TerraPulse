@@ -1127,6 +1127,57 @@ pub fn extract_all_seasons(season_data: &[Vec<f32>], n_rows: usize, n_cols: usiz
             flat[dst..dst + N_FEAT].copy_from_slice(&season_results[si][ci]);
         }
     }
-
     flat
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_reflect_index() {
+        assert_eq!(reflect_index(0, 5), 0);
+        assert_eq!(reflect_index(4, 5), 4);
+        assert_eq!(reflect_index(-1, 5), 0); // -1 -> -(-1)-1 = 0
+        assert_eq!(reflect_index(-2, 5), 1); // -2 -> -(-2)-1 = 1
+        assert_eq!(reflect_index(5, 5), 4);  // 5 -> 2*5-5-1 = 4
+        assert_eq!(reflect_index(6, 5), 3);  // 6 -> 2*5-6-1 = 3
+    }
+
+    #[test]
+    fn test_cell_stats_8() {
+        let mut px = [f32::NAN; 100];
+        
+        // Populate 10 valid values: 1.0 to 10.0
+        for i in 0..10 {
+            px[i] = (i + 1) as f32;
+        }
+
+        let stats = cell_stats_8(&px);
+        // [mean, std, min, max, q25, med, q75, finite_frac]
+        assert_eq!(stats[0], 5.5); // mean
+        let expected_var = (0..10).map(|x| (x as f32 + 1.0 - 5.5).powi(2)).sum::<f32>() / 10.0;
+        assert!((stats[1] - expected_var.sqrt()).abs() < 1e-5);
+        assert_eq!(stats[2], 1.0); // min
+        assert_eq!(stats[3], 10.0); // max
+        assert_eq!(stats[5], 5.5); // med
+        assert_eq!(stats[7], 0.1); // 10/100
+    }
+
+    #[test]
+    fn test_build_lbp_lut() {
+        let lut = build_lbp_lut();
+        assert_eq!(lut.len(), 256);
+        
+        // 00000000 -> 0 transitions -> 0 ones -> bin 0
+        assert_eq!(lut[0], 0);
+        // 11111111 -> 0 transitions -> 8 ones -> bin 8
+        assert_eq!(lut[255], 8);
+        
+        // 00000001 -> 2 transitions -> 1 one -> bin 1
+        assert_eq!(lut[1], 1);
+        
+        // 01010101 -> 8 transitions -> non-uniform -> bin 9
+        assert_eq!(lut[0b01010101], 9);
+    }
 }

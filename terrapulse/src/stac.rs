@@ -366,3 +366,55 @@ pub async fn search_sar_scenes(
         Ok(fc.features)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_season_date_range() {
+        let (start, end) = season_date_range(2023, "spring").unwrap();
+        assert_eq!(start, "2023-04-01");
+        assert_eq!(end, "2023-05-31");
+
+        let (start, end) = season_date_range(2023, "summer").unwrap();
+        assert_eq!(start, "2023-06-01");
+        assert_eq!(end, "2023-08-31");
+
+        let (start, end) = season_date_range(2023, "autumn").unwrap();
+        assert_eq!(start, "2023-09-01");
+        assert_eq!(end, "2023-10-31");
+
+        assert!(season_date_range(2023, "winter").is_err());
+    }
+
+    #[test]
+    fn test_chrono_parse_expand() {
+        // Expand forward
+        assert_eq!(chrono_parse_expand("2023-05-31", 14), "2023-06-14");
+        // Expand backward
+        assert_eq!(chrono_parse_expand("2023-04-01", -14), "2023-03-18");
+        
+        // Year cross forward
+        assert_eq!(chrono_parse_expand("2023-12-25", 10), "2024-01-04");
+        // Year cross backward
+        assert_eq!(chrono_parse_expand("2024-01-05", -10), "2023-12-26");
+
+        // Leap year forward
+        assert_eq!(chrono_parse_expand("2024-02-28", 2), "2024-03-01");
+        // Leap year backward
+        assert_eq!(chrono_parse_expand("2024-03-01", -2), "2024-02-28");
+        
+        // Non-leap year forward
+        assert_eq!(chrono_parse_expand("2023-02-28", 2), "2023-03-02");
+    }
+
+    #[test]
+    fn test_apply_token_pub() {
+        let url1 = "https://example.com/asset.tif";
+        assert_eq!(apply_token_pub(url1, "token=123"), "https://example.com/asset.tif?token=123");
+
+        let url2 = "https://example.com/asset.tif?foo=bar";
+        assert_eq!(apply_token_pub(url2, "token=123"), "https://example.com/asset.tif?foo=bar&token=123");
+    }
+}

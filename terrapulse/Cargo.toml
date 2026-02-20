@@ -41,3 +41,7 @@ indicatif = "0.17"  # progress bars
 opt-level = 3
 lto = "fat"
 codegen-units = 1
+
+[dev-dependencies]
+assert_cmd = "2.0"
+predicates = "3.1"
