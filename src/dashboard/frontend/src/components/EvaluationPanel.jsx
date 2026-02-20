@@ -34,7 +34,6 @@ const TABS = [
     { key: 'stress', label: 'Stress Tests' },
     { key: 'change', label: 'Change Det.' },
     { key: 'failure', label: 'Failure' },
-    { key: 'explain', label: 'Explain' },
 ];
 
 const DARK_CHART_OPTS = {
@@ -72,7 +71,7 @@ function useChart(ref, chartRef, config) {
 function PerClassChart({ evaluation }) {
     const canvasRef = useRef(null);
     const chartRef = useRef(null);
-    const classes = ['tree_cover', 'shrubland', 'grassland', 'cropland', 'built_up', 'bare_sparse', 'water'];
+    const classes = ['tree_cover', 'grassland', 'cropland', 'built_up', 'bare_sparse', 'water'];
     const labels = classes.map((c) => CLASS_LABELS[c]);
 
     const config = evaluation ? {
@@ -110,28 +109,52 @@ function NoiseChart({ stressTests }) {
     const chartRef = useRef(null);
 
     const noise = stressTests?.noise;
-    const config = noise ? {
+    // Separate by model
+    const mlpNoise = noise?.filter((r) => r.model === 'MLP');
+    const treeNoise = noise?.filter((r) => r.model === 'LightGBM');
+    const sigmas = mlpNoise?.map((r) => r.noise_sigma.toString());
+
+    const config = mlpNoise ? {
         type: 'line',
         data: {
-            labels: noise.map((r) => r.noise_sigma.toString()),
+            labels: sigmas,
             datasets: [
                 {
-                    label: 'R²',
-                    data: noise.map((r) => r.r2),
-                    borderColor: 'rgb(59,130,246)',
-                    backgroundColor: 'rgba(59,130,246,0.1)',
-                    fill: true,
+                    label: 'MLP R²',
+                    data: mlpNoise.map((r) => r.r2),
+                    borderColor: MODEL_COLORS.MLP.border,
+                    backgroundColor: 'rgba(236,72,153,0.1)',
+                    fill: false,
                     tension: 0.3,
                     pointRadius: 5,
                 },
                 {
-                    label: 'MAE (pp)',
-                    data: noise.map((r) => r.mae_pp),
-                    borderColor: 'rgb(239,68,68)',
-                    backgroundColor: 'rgba(239,68,68,0.1)',
-                    fill: true,
+                    label: 'LightGBM R²',
+                    data: treeNoise.map((r) => r.r2),
+                    borderColor: MODEL_COLORS.LightGBM.border,
+                    backgroundColor: 'rgba(16,185,129,0.1)',
+                    fill: false,
                     tension: 0.3,
                     pointRadius: 5,
+                    borderDash: [5, 5],
+                },
+                {
+                    label: 'MLP MAE',
+                    data: mlpNoise.map((r) => r.mae_pp),
+                    borderColor: 'rgba(236,72,153,0.5)',
+                    fill: false,
+                    tension: 0.3,
+                    pointRadius: 3,
+                    yAxisID: 'y1',
+                },
+                {
+                    label: 'LightGBM MAE',
+                    data: treeNoise.map((r) => r.mae_pp),
+                    borderColor: 'rgba(16,185,129,0.5)',
+                    fill: false,
+                    tension: 0.3,
+                    pointRadius: 3,
+                    borderDash: [5, 5],
                     yAxisID: 'y1',
                 },
             ],
@@ -154,22 +177,25 @@ function NoiseChart({ stressTests }) {
 function AblationChart({ stressTests }) {
     const canvasRef = useRef(null);
     const chartRef = useRef(null);
+    const [ablModel, setAblModel] = useState('MLP');
 
-    const season = stressTests?.season_dropout?.filter((r) => r.season_dropped !== 'none');
-    const feature = stressTests?.feature_ablation?.filter((r) => r.group_dropped !== 'none');
-    const baseR2 = stressTests?.season_dropout?.find((r) => r.season_dropped === 'none')?.r2 || 0;
+    const season = stressTests?.season_dropout?.filter((r) => r.model === ablModel && r.season_dropped !== 'none');
+    const feature = stressTests?.feature_ablation?.filter((r) => r.model === ablModel && r.group_dropped !== 'none');
+    const baseR2 = stressTests?.season_dropout?.find((r) => r.model === ablModel && r.season_dropped === 'none')?.r2 || 0;
 
     const allItems = [
         ...(season || []).map((r) => ({ label: r.season_dropped.replace('_', ' '), delta: r.r2 - baseR2, type: 'season' })),
         ...(feature || []).map((r) => ({ label: `${r.group_dropped} (${r.n_zeroed}f)`, delta: r.r2 - baseR2, type: 'feature' })),
     ].sort((a, b) => a.delta - b.delta);
 
+    const modelColor = ablModel === 'MLP' ? MODEL_COLORS.MLP.border : MODEL_COLORS.LightGBM.border;
+
     const config = allItems.length ? {
         type: 'bar',
         data: {
             labels: allItems.map((r) => r.label),
             datasets: [{
-                label: 'R² change',
+                label: `${ablModel} R² change`,
                 data: allItems.map((r) => r.delta),
                 backgroundColor: allItems.map((r) =>
                     r.delta < -0.3 ? 'rgba(239,68,68,0.7)' : r.delta < -0.1 ? 'rgba(245,158,11,0.7)' : 'rgba(16,185,129,0.7)'
@@ -182,14 +208,22 @@ function AblationChart({ stressTests }) {
             indexAxis: 'y',
             plugins: { ...DARK_CHART_OPTS.plugins, legend: { display: false } },
             scales: {
-                x: { ...DARK_CHART_OPTS.scales.x, title: { display: true, text: `R² Δ from baseline (${baseR2.toFixed(4)})`, color: '#64748b', font: { size: 10 } } },
+                x: { ...DARK_CHART_OPTS.scales.x, title: { display: true, text: `${ablModel} R² Δ from baseline (${baseR2.toFixed(4)})`, color: '#64748b', font: { size: 10 } } },
                 y: { ...DARK_CHART_OPTS.scales.y, ticks: { color: '#f0f4f8', font: { size: 10 } } },
             },
         },
     } : null;
 
     useChart(canvasRef, chartRef, config);
-    return <canvas ref={canvasRef} />;
+    return (
+        <>
+            <div className="toggle-group" style={{ marginBottom: 6 }}>
+                <button className={`toggle-btn ${ablModel === 'MLP' ? 'active' : ''}`} onClick={() => setAblModel('MLP')}>MLP</button>
+                <button className={`toggle-btn ${ablModel === 'LightGBM' ? 'active' : ''}`} onClick={() => setAblModel('LightGBM')}>LightGBM</button>
+            </div>
+            <canvas ref={canvasRef} />
+        </>
+    );
 }
 
 // ── Failure by land cover chart ──
@@ -197,26 +231,31 @@ function FailureChart({ failureAnalysis }) {
     const canvasRef = useRef(null);
     const chartRef = useRef(null);
 
+    // Group by model — show both MLP and LightGBM side by side
+    const models = ['MLP', 'LightGBM'];
+    const classOrder = ['tree_cover', 'grassland', 'cropland', 'built_up', 'bare_sparse', 'water'];
+    const labels = classOrder.map((c) => CLASS_LABELS[c] || c);
+
     const config = failureAnalysis ? {
         type: 'bar',
         data: {
-            labels: failureAnalysis.map((r) => CLASS_LABELS[r.dominant_class] || r.dominant_class),
-            datasets: [
-                {
-                    label: 'MAE (pp)',
-                    data: failureAnalysis.map((r) => r.mae_pp),
-                    backgroundColor: failureAnalysis.map((r) => {
-                        const hex = CLASS_COLORS_HEX[r.dominant_class] || '#64748b';
-                        return hex + 'aa';
+            labels,
+            datasets: models.map((model) => {
+                const modelData = failureAnalysis.filter((r) => r.model === model);
+                return {
+                    label: `${model} MAE`,
+                    data: classOrder.map((c) => {
+                        const row = modelData.find((r) => r.dominant_class === c);
+                        return row ? row.mae_pp : 0;
                     }),
-                    borderColor: failureAnalysis.map((r) => CLASS_COLORS_HEX[r.dominant_class] || '#64748b'),
+                    backgroundColor: model === 'MLP' ? MODEL_COLORS.MLP.bg : MODEL_COLORS.LightGBM.bg,
+                    borderColor: model === 'MLP' ? MODEL_COLORS.MLP.border : MODEL_COLORS.LightGBM.border,
                     borderWidth: 1,
-                },
-            ],
+                };
+            }),
         },
         options: {
             ...DARK_CHART_OPTS,
-            plugins: { ...DARK_CHART_OPTS.plugins, legend: { display: false } },
             scales: {
                 x: { ...DARK_CHART_OPTS.scales.x, ticks: { ...DARK_CHART_OPTS.scales.x.ticks, maxRotation: 30 } },
                 y: { ...DARK_CHART_OPTS.scales.y, title: { display: true, text: 'MAE (pp)', color: '#64748b', font: { size: 10 } } },
@@ -363,6 +402,114 @@ function ShapChart({ explainability }) {
 }
 
 // ── Explanation cards ──
+// ── SHAP Deep Dive (beeswarm + dependence plots) ──
+function ShapDeepDive() {
+    const [manifest, setManifest] = useState(null);
+    const [activeModel, setActiveModel] = useState('mlp');
+    const [activeClass, setActiveClass] = useState('tree_cover');
+    const [viewMode, setViewMode] = useState('beeswarm'); // 'beeswarm' | 'dependence'
+    const [activeDep, setActiveDep] = useState(0);
+
+    useEffect(() => {
+        fetch('/api/shap-plots/manifest')
+            .then(r => r.json())
+            .then(d => setManifest(d))
+            .catch(() => { });
+    }, []);
+
+    if (!manifest) return <div style={{ color: '#94a3b8', padding: 12, fontSize: 12 }}>Loading SHAP deep-dive plots...</div>;
+
+    const modelData = manifest[activeModel];
+    if (!modelData) return null;
+
+    const classInfo = modelData.classes?.find(c => c.class === activeClass);
+    const depPlots = classInfo?.dependence || [];
+
+    const CLASS_LABELS_MAP = {
+        tree_cover: 'Tree Cover', grassland: 'Grassland', cropland: 'Cropland',
+        built_up: 'Built-up', bare_sparse: 'Bare/Sparse', water: 'Water',
+    };
+
+    return (
+        <div>
+            {/* Model toggle */}
+            <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+                <button className={`toggle-btn ${activeModel === 'mlp' ? 'active' : ''}`}
+                    onClick={() => { setActiveModel('mlp'); setActiveDep(0); }}>MLP</button>
+                <button className={`toggle-btn ${activeModel === 'tree' ? 'active' : ''}`}
+                    onClick={() => { setActiveModel('tree'); setActiveDep(0); }}>LightGBM</button>
+                <div style={{ flex: 1 }} />
+                <button className={`toggle-btn ${viewMode === 'beeswarm' ? 'active' : ''}`}
+                    onClick={() => setViewMode('beeswarm')}
+                    style={{ fontSize: 10 }}>Beeswarm</button>
+                <button className={`toggle-btn ${viewMode === 'dependence' ? 'active' : ''}`}
+                    onClick={() => setViewMode('dependence')}
+                    style={{ fontSize: 10 }}>Dependence</button>
+            </div>
+
+            {/* Class tabs */}
+            <div style={{ display: 'flex', gap: 4, marginBottom: 10, flexWrap: 'wrap' }}>
+                {modelData.classes?.map(c => (
+                    <button key={c.class}
+                        className={`toggle-btn ${activeClass === c.class ? 'active' : ''}`}
+                        onClick={() => { setActiveClass(c.class); setActiveDep(0); }}
+                        style={{ fontSize: 10, padding: '3px 8px' }}>
+                        {CLASS_LABELS_MAP[c.class] || c.class}
+                    </button>
+                ))}
+            </div>
+
+            {/* Plot display */}
+            {viewMode === 'beeswarm' && classInfo && (
+                <div style={{ textAlign: 'center' }}>
+                    <img
+                        src={`/api/shap-plots/${classInfo.beeswarm}`}
+                        alt={`SHAP Beeswarm - ${activeModel} - ${activeClass}`}
+                        style={{ maxWidth: '100%', borderRadius: 6, border: '1px solid #334155' }}
+                    />
+                    <div style={{ color: '#94a3b8', fontSize: 10, marginTop: 6 }}>
+                        Each dot = one sample. X-axis = SHAP impact on prediction. Color = feature value (blue=low, red=high).
+                    </div>
+                </div>
+            )}
+
+            {viewMode === 'dependence' && classInfo && (
+                <div>
+                    {/* Feature selector for dependence plots */}
+                    <div style={{ display: 'flex', gap: 4, marginBottom: 8, flexWrap: 'wrap' }}>
+                        {depPlots.map((d, i) => {
+                            const shortFeat = d.feature.length > 22
+                                ? d.feature.substring(0, 21) + '.'
+                                : d.feature;
+                            return (
+                                <button key={i}
+                                    className={`toggle-btn ${activeDep === i ? 'active' : ''}`}
+                                    onClick={() => setActiveDep(i)}
+                                    style={{ fontSize: 9, padding: '2px 6px' }}>
+                                    {shortFeat}
+                                </button>
+                            );
+                        })}
+                    </div>
+                    {depPlots[activeDep] && (
+                        <div style={{ textAlign: 'center' }}>
+                            <img
+                                src={`/api/shap-plots/${depPlots[activeDep].file}`}
+                                alt={`SHAP Dependence - ${depPlots[activeDep].feature}`}
+                                style={{ maxWidth: '100%', borderRadius: 6, border: '1px solid #334155' }}
+                            />
+                            <div style={{ color: '#94a3b8', fontSize: 10, marginTop: 6 }}>
+                                X-axis = feature value. Y-axis = SHAP impact. Color = interaction feature value.
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+}
+
+
 function ExplanationCards({ explainability }) {
     const mlp = explainability?.models?.mlp || {};
     const tree = explainability?.models?.tree || {};
@@ -395,7 +542,7 @@ function ExplanationCards({ explainability }) {
 }
 
 // ── Main component ──
-export default function EvaluationPanel({ evaluation, stressTests, failureAnalysis, explainability, onClose }) {
+export default function EvaluationPanel({ evaluation, stressTests, failureAnalysis, onClose }) {
     const [activeTab, setActiveTab] = useState('metrics');
 
     return (
@@ -424,7 +571,7 @@ export default function EvaluationPanel({ evaluation, stressTests, failureAnalys
                     {/* Aggregate summary */}
                     {evaluation?.aggregate && (
                         <div className="card">
-                            <div className="card-title">Aggregate Metrics</div>
+                            <div className="card-title">Aggregate Metrics <span style={{ color: '#64748b', fontWeight: 400, fontSize: 10 }}>(Holdout fold 0)</span></div>
                             <div className="metric-grid">
                                 {evaluation.aggregate.map((m) => (
                                     <div className="metric-item" key={m.model}>
@@ -487,9 +634,9 @@ export default function EvaluationPanel({ evaluation, stressTests, failureAnalys
 
                     {failureAnalysis && (
                         <div className="card">
-                            <div className="card-title">Failure Details</div>
+                            <div className="card-title">Failure Details (MLP)</div>
                             <div className="metric-grid">
-                                {failureAnalysis.map((r) => (
+                                {failureAnalysis.filter((r) => r.model === 'MLP').map((r) => (
                                     <div className="metric-item" key={r.dominant_class}>
                                         <span className="metric-value" style={{
                                             fontSize: 13,
@@ -509,29 +656,6 @@ export default function EvaluationPanel({ evaluation, stressTests, failureAnalys
                             </div>
                         </div>
                     )}
-                </>
-            )}
-
-            {activeTab === 'explain' && (
-                <>
-                    <div className="card">
-                        <div className="card-title">Permutation Importance (Top 15)</div>
-                        <div style={{ height: 320, position: 'relative' }}>
-                            <PermutationChart explainability={explainability} />
-                        </div>
-                    </div>
-
-                    <div className="card">
-                        <div className="card-title">SHAP per Class (Top 12)</div>
-                        <div style={{ minHeight: 280, position: 'relative' }}>
-                            <ShapChart explainability={explainability} />
-                        </div>
-                    </div>
-
-                    <div className="card">
-                        <div className="card-title">Explanations</div>
-                        <ExplanationCards explainability={explainability} />
-                    </div>
                 </>
             )}
         </div>

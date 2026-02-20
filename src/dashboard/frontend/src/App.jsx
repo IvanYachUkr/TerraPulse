@@ -3,6 +3,7 @@ import Header from './components/Header.jsx';
 import Sidebar from './components/Sidebar.jsx';
 import MapView from './components/MapView.jsx';
 import CellInspector from './components/CellInspector.jsx';
+import ExplainabilityPanel from './components/ExplainabilityPanel.jsx';
 import ModelComparison from './components/ModelComparison.jsx';
 import EvaluationPanel from './components/EvaluationPanel.jsx';
 import DeployView from './components/DeployView.jsx';
@@ -51,6 +52,7 @@ export default function App() {
     const [searchCellId, setSearchCellId] = useState(null);
     const [showComparison, setShowComparison] = useState(false);
     const [showEvaluation, setShowEvaluation] = useState(false);
+    const [showExplainability, setShowExplainability] = useState(false);
 
     // Data fetching — labels (always loaded)
     const { data: grid, loading: gridLoading } = useApi('/api/grid');
@@ -141,9 +143,11 @@ export default function App() {
                 sidebarOpen={sidebarOpen}
                 onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
                 showComparison={showComparison}
-                onToggleComparison={() => setShowComparison(!showComparison)}
+                onToggleComparison={() => { setShowComparison(v => !v); setShowEvaluation(false); }}
                 showEvaluation={showEvaluation}
-                onToggleEvaluation={() => setShowEvaluation(!showEvaluation)}
+                onToggleEvaluation={() => { setShowEvaluation(v => !v); setShowComparison(false); }}
+                showExplainability={showExplainability}
+                onToggleExplainability={() => setShowExplainability(v => !v)}
                 appMode={appMode}
                 onAppModeChange={setAppMode}
             />
@@ -212,8 +216,13 @@ export default function App() {
                             evaluation={evaluationData}
                             stressTests={stressTestsData}
                             failureAnalysis={failureData}
-                            explainability={explainData}
                             onClose={() => setShowEvaluation(false)}
+                        />
+                    )}
+                    {showExplainability && (
+                        <ExplainabilityPanel
+                            explainability={explainData}
+                            onClose={() => setShowExplainability(false)}
                         />
                     )}
                     <CellInspector

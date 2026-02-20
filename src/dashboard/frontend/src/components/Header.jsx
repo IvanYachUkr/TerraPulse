@@ -1,4 +1,4 @@
-export default function Header({ sidebarOpen, onToggleSidebar, showComparison, onToggleComparison, showEvaluation, onToggleEvaluation, appMode, onAppModeChange }) {
+export default function Header({ sidebarOpen, onToggleSidebar, showComparison, onToggleComparison, showEvaluation, onToggleEvaluation, showExplainability, onToggleExplainability, appMode, onAppModeChange }) {
     return (
         <header className="header">
             {appMode !== 'deploy' && (
@@ -39,6 +39,13 @@ export default function Header({ sidebarOpen, onToggleSidebar, showComparison, o
                         title="Evaluation metrics"
                     >
                         &#128202; Eval
+                    </button>
+                    <button
+                        className={`header-btn ${showExplainability ? 'active' : ''}`}
+                        onClick={onToggleExplainability}
+                        title="Model explainability"
+                    >
+                        🔍 Explain
                     </button>
                     <button
                         className={`header-btn ${showComparison ? 'active' : ''}`}

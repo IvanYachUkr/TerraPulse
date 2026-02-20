@@ -103,7 +103,7 @@ export default function ModelComparison({ models, evaluation }) {
             aitchChartRef.current = new Chart(aitchRef.current, {
                 type: 'bar',
                 data: {
-                    labels: aitchSorted.map((m) => m.model),
+                    labels: aitchSorted.map((m) => MODEL_DISPLAY[m.model] || m.model),
                     datasets: [{
                         label: 'Aitchison Distance',
                         data: aitchSorted.map((m) => m.aitchison_mean),
@@ -142,13 +142,13 @@ export default function ModelComparison({ models, evaluation }) {
     return (
         <div className="model-comparison">
             <div className="card">
-                <div className="card-title">Model R&sup2; Comparison</div>
+                <div className="card-title">Model R&sup2; Comparison <span style={{ color: '#64748b', fontWeight: 400, fontSize: 10 }}>(5-fold CV avg)</span></div>
                 <div style={{ height: 160, position: 'relative' }}>
                     <canvas ref={r2Ref} />
                 </div>
             </div>
             <div className="card" style={{ marginTop: 12 }}>
-                <div className="card-title">Model MAE Comparison</div>
+                <div className="card-title">Model MAE Comparison <span style={{ color: '#64748b', fontWeight: 400, fontSize: 10 }}>(5-fold CV avg)</span></div>
                 <div style={{ height: 160, position: 'relative' }}>
                     <canvas ref={maeRef} />
                 </div>
@@ -156,7 +156,7 @@ export default function ModelComparison({ models, evaluation }) {
             {evaluation?.aggregate && (
                 <div className="card" style={{ marginTop: 12 }}>
                     <div className="card-title">Aitchison Distance</div>
-                    <div style={{ height: 100, position: 'relative' }}>
+                    <div style={{ height: 140, position: 'relative' }}>
                         <canvas ref={aitchRef} />
                     </div>
                 </div>
