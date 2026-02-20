@@ -378,3 +378,14 @@ def deploy_labels(job_id: str, year: int):
     if labels_data is None:
         raise HTTPException(404, "Labels not found")
     return labels_data
+
+
+# ---------------------------------------------------------------------------
+# Serve frontend static files in production (Docker)
+# Must be AFTER all /api routes to avoid shadowing them.
+# ---------------------------------------------------------------------------
+_frontend_dist = os.path.join(os.path.dirname(__file__), "frontend", "dist")
+if os.path.isdir(_frontend_dist):
+    from fastapi.staticfiles import StaticFiles
+    app.mount("/", StaticFiles(directory=_frontend_dist, html=True), name="frontend")
+

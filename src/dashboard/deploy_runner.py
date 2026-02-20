@@ -31,12 +31,14 @@ import pandas as pd
 _HERE = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.abspath(os.path.join(_HERE, "..", ".."))
 
-ONNX_MODELS_DIR = os.path.join(
-    PROJECT_ROOT, "data", "pipeline_output", "models", "onnx")
-DEPLOY_DIR = os.path.join(PROJECT_ROOT, "data", "deploy_jobs")
-TERRAPULSE_BIN = os.path.join(
-    PROJECT_ROOT, "terrapulse", "target", "release", "terrapulse.exe"
-)
+ONNX_MODELS_DIR = os.environ.get("ONNX_MODELS_DIR", os.path.join(
+    PROJECT_ROOT, "data", "pipeline_output", "models", "onnx"))
+DEPLOY_DIR = os.environ.get("DEPLOY_DIR", os.path.join(
+    PROJECT_ROOT, "data", "deploy_jobs"))
+_default_bin = "terrapulse.exe" if os.name == "nt" else "terrapulse"
+TERRAPULSE_BIN = os.environ.get("TERRAPULSE_BIN", os.path.join(
+    PROJECT_ROOT, "terrapulse", "target", "release", _default_bin
+))
 
 CLASS_NAMES = ["tree_cover", "shrubland", "grassland", "cropland",
                "built_up", "bare_sparse", "water"]

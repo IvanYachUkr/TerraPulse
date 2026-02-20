@@ -1,0 +1,113 @@
+# ===========================================================================
+# TerraPulse Dashboard – Multi-Stage Docker Image
+# ===========================================================================
+# Stages:
+#   1. rust-build   → compile terrapulse binary (Linux)
+#   2. frontend     → npm ci && npm run build (static dist/)
+#   3. runtime      → Python + Rust binary + frontend + data + models
+#
+# Build:  docker build -t terrapulse .
+# Run:    docker run -p 8000:8000 terrapulse
+#
+# Environment variables (optional overrides):
+#   TERRAPULSE_BIN   – path to the terrapulse binary
+#   ONNX_MODELS_DIR  – path to ONNX model + scaler + columns JSON
+#   DEPLOY_DIR       – scratch directory for deploy jobs
+# ===========================================================================
+
+# ---------------------------------------------------------------------------
+# Stage 1: Build the Rust binary
+# ---------------------------------------------------------------------------
+FROM rust:1.83-bookworm AS rust-build
+
+# Install build deps (zstd for S1 COG support)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    pkg-config libzstd-dev cmake \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+
+# Copy only Cargo files first (layer caching for deps)
+COPY terrapulse/Cargo.toml terrapulse/Cargo.lock ./
+
+# Create dummy main.rs to build deps only
+RUN mkdir src && echo "fn main() {}" > src/main.rs
+RUN cargo build --release 2>/dev/null || true
+
+# Now copy real source and rebuild
+COPY terrapulse/src/ ./src/
+COPY terrapulse/tests/ ./tests/
+RUN touch src/main.rs && cargo build --release
+
+# Verify the binary works
+RUN ./target/release/terrapulse --help
+
+# ONNX Runtime .so is downloaded by the ort crate – copy it alongside binary
+RUN find target/release -name "libonnxruntime*.so*" -exec cp {} target/release/ \; 2>/dev/null || true
+
+# ---------------------------------------------------------------------------
+# Stage 2: Build the frontend
+# ---------------------------------------------------------------------------
+FROM node:22-slim AS frontend
+
+WORKDIR /frontend
+COPY src/dashboard/frontend/package.json src/dashboard/frontend/package-lock.json ./
+RUN npm ci --ignore-scripts
+
+COPY src/dashboard/frontend/ ./
+RUN npm run build
+
+# ---------------------------------------------------------------------------
+# Stage 3: Runtime
+# ---------------------------------------------------------------------------
+FROM python:3.12-slim-bookworm AS runtime
+
+# Install runtime deps for rasterio (GDAL) and ONNX Runtime
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgdal-dev gdal-bin \
+    libzstd1 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Python deps (slim set for dashboard only)
+COPY requirements-docker.txt ./
+RUN pip install --no-cache-dir -r requirements-docker.txt
+
+# Copy Rust binary
+COPY --from=rust-build /build/target/release/terrapulse /usr/local/bin/terrapulse
+
+# Copy ONNX Runtime shared libs (glob requires directory dest with trailing /)
+# The ort crate downloads these during build; copy them for runtime loading
+COPY --from=rust-build /build/target/release/libonnxruntime* /usr/local/lib/
+RUN ldconfig 2>/dev/null || true
+
+# Copy frontend dist
+COPY --from=frontend /frontend/dist /app/src/dashboard/frontend/dist
+
+# Copy Python source
+COPY src/ /app/src/
+
+# Copy dashboard data (research JSONs)
+COPY src/dashboard/data/ /app/src/dashboard/data/
+
+# Copy ONNX model + scaler + columns
+COPY data/pipeline_output/models/onnx/ /app/models/onnx/
+
+# Environment variables
+ENV TERRAPULSE_BIN=/usr/local/bin/terrapulse
+ENV ONNX_MODELS_DIR=/app/models/onnx
+ENV DEPLOY_DIR=/app/deploy_jobs
+ENV ORT_DYLIB_PATH=/usr/local/lib
+
+# Create deploy job scratch dir
+RUN mkdir -p /app/deploy_jobs
+
+EXPOSE 8000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/meta')" || exit 1
+
+# Run the API server
+CMD ["python", "-m", "uvicorn", "src.dashboard.api:app", "--host", "0.0.0.0", "--port", "8000"]

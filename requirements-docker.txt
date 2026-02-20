@@ -1,0 +1,9 @@
+# Slim dependencies for Docker (dashboard only — no training deps)
+fastapi
+uvicorn[standard]
+rasterio
+numpy
+pandas
+pyproj
+affine
+pydantic

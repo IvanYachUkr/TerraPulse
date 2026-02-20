@@ -1,0 +1,36 @@
+# Git
+.git
+.gitignore
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+catboost_info/
+
+# Rust build artifacts (rebuilt inside Docker)
+terrapulse/target/
+
+# Node modules (rebuilt inside Docker)
+src/dashboard/frontend/node_modules/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Large data not needed in build context
+cache/
+research/
+reports/
+notebooks/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Gemini agent
+.gemini/
+.agent/
