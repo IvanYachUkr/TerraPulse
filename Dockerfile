@@ -22,7 +22,7 @@ FROM rust:1.83-bookworm AS rust-build
 
 # Install build deps (zstd for S1 COG support)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    pkg-config libzstd-dev cmake \
+    pkg-config libzstd-dev cmake libssl-dev perl \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /build
