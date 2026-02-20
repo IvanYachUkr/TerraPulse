@@ -4,6 +4,8 @@ mod config;
 mod download;
 mod extract;
 mod features;
+mod grid;
+mod labels;
 mod parquet_io;
 mod predict;
 mod reproject;
@@ -353,6 +355,26 @@ fn run_predict(
         let mlp_out = output_dir.join(format!("pred_mlp_{yp}.parquet"));
         parquet_io::write_predictions_parquet(&mlp_out, &CLASS_NAMES, &mlp_preds, "mlp")?;
         println!("  Wrote {}", mlp_out.display());
+
+        // Parse curr_year from yp (e.g. "2020_2021" -> "2021")
+        let parts: Vec<&str> = yp.split('_').collect();
+        if parts.len() == 2 {
+            let curr_year = parts[1];
+            let json_out = output_dir.parent().unwrap_or(output_dir).join(format!("predictions_{}.json", curr_year));
+            
+            let mut json_map = serde_json::Map::with_capacity(n_cells);
+            for (i, row) in mlp_preds.iter().enumerate() {
+                let mut cell_map = serde_json::Map::with_capacity(CLASS_NAMES.len());
+                for (j, &val) in row.iter().enumerate() {
+                    let rounded = (val * 10000.0).round() / 10000.0;
+                    cell_map.insert(CLASS_NAMES[j].to_string(), serde_json::json!(rounded));
+                }
+                json_map.insert(i.to_string(), serde_json::Value::Object(cell_map));
+            }
+            let json_str = serde_json::to_string(&serde_json::Value::Object(json_map))?;
+            std::fs::write(&json_out, json_str)?;
+            println!("  Wrote json {} ({} cells)", json_out.display(), n_cells);
+        }
     }
 
     println!(
@@ -536,6 +558,39 @@ async fn run_pipeline(
         run_predict(models_dir, &features_dir, &predictions_dir, &year_pairs)?;
     } else {
         println!("\n[SKIP] Stage 3: Predict");
+    }
+
+    // ================= STAGE 4: LABELS =================
+    println!("\n{sep}");
+    println!("STAGE 4: LABELS");
+    println!("{sep}");
+    let anchor = composite::AnchorRef::from_tif(anchor_ref)?;
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(60))
+        .pool_max_idle_per_host(20)
+        .build()?;
+        
+    for &y in &sorted_years {
+        if y <= 2021 {
+            let out_path = data_dir.join(format!("labels_{}.json", y));
+            if out_path.exists() {
+                println!("  Labels {}: cached", y);
+            } else {
+                labels::download_labels(&client, y, &anchor, &out_path).await?;
+            }
+        }
+    }
+
+    // ================= STAGE 5: GRID =================
+    println!("\n{sep}");
+    println!("STAGE 5: GRID");
+    println!("{sep}");
+    let grid_out = data_dir.join("grid.json");
+    if grid_out.exists() {
+        println!("  Grid GeoJSON: cached");
+    } else {
+        grid::generate_grid_geojson(&anchor, &grid_out)?;
+        println!("  Wrote grid GeoJSON: {}", grid_out.display());
     }
 
     println!("\n{sep}");

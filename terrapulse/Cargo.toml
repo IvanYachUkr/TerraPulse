@@ -36,6 +36,7 @@ zstd = "0.13"
 # Utilities
 anyhow = "1"
 indicatif = "0.17"  # progress bars
+utm = "0.1.6"
 
 [profile.release]
 opt-level = 3

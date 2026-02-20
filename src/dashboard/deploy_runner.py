@@ -191,261 +191,38 @@ def _run_rust_pipeline(job: DeployJob, out_dir: str, anchor_path: str):
         elif "STAGE 3: PREDICT" in line:
             job.stage = "Running ONNX inference (Rust)"
             job.progress = 70
+        elif "STAGE 4: LABELS" in line:
+            job.stage = "Downloading labels (Rust)"
+            job.progress = 85
+        elif "STAGE 5: GRID" in line:
+            job.stage = "Building grid (Rust)"
+            job.progress = 95
         elif "Pipeline complete" in line:
-            job.progress = 80
+            job.progress = 100
+
+        # Sync result years immediately if predictions are emitted
+        if "Wrote json" in line and "predictions_" in line:
+            try:
+                yr_str = line.split("predictions_")[1].split(".json")[0]
+                curr_year = int(yr_str)
+                if curr_year not in job.result_years:
+                    job.result_years.append(curr_year)
+            except Exception:
+                pass
+
 
         # Log interesting lines
         if any(kw in line for kw in [
             "scenes", "Written", "Loaded", "done:", "Done",
             "Wrote", "WARNING", "ERROR", "Pipeline", "cells",
             "Year", "Region", "BBOX", "Helper", "TerraPulse",
-            "Scene", "Compositing", "TIMEOUT", "FAILED",
+            "Scene", "Compositing", "TIMEOUT", "FAILED", "Labels", "Fetching"
         ]):
             job.log(line.strip())
 
     proc.wait()
     if proc.returncode != 0:
         raise RuntimeError(f"Rust pipeline failed (exit code {proc.returncode})")
-
-
-# ---------------------------------------------------------------------------
-# STAGE 2: Convert Parquet predictions → JSON
-# ---------------------------------------------------------------------------
-def _convert_predictions(job: DeployJob, out_dir: str):
-    """Read pred_mlp_*.parquet from Rust output and convert to JSON.
-
-    Uses vectorized pandas operations instead of iterrows() for ~100-500x speedup.
-    """
-    preds_dir = os.path.join(out_dir, "predictions")
-    if not os.path.isdir(preds_dir):
-        job.log("No predictions directory found — skipping conversion")
-        return
-
-    years = sorted(job.years)
-    year_pairs = [f"{years[i]}_{years[i+1]}" for i in range(len(years) - 1)]
-
-    for yp in year_pairs:
-        curr_year = int(yp.split("_")[1])
-
-        parquet_path = os.path.join(preds_dir, f"pred_mlp_{yp}.parquet")
-        if not os.path.exists(parquet_path):
-            job.log(f"No MLP predictions for {yp}")
-            continue
-
-        out_path = os.path.join(out_dir, f"predictions_{curr_year}.json")
-        if os.path.exists(out_path):
-            job.log(f"Predictions {curr_year}: cached")
-            if curr_year not in job.result_years:
-                job.result_years.append(curr_year)
-            continue
-
-        df = pd.read_parquet(parquet_path)
-        job.log(f"Converting predictions for {curr_year}: {len(df)} cells")
-
-        # Vectorized conversion: no iterrows()
-        mlp_cols = [f"{cls}_mlp" for cls in CLASS_NAMES]
-        # Ensure all columns exist, fill missing with 0
-        for col in mlp_cols:
-            if col not in df.columns:
-                df[col] = 0.0
-
-        # Build index from cell_id, select + round + rename in one shot
-        df_slim = df.set_index(df["cell_id"].astype(int).astype(str))
-        rename_map = {f"{cls}_mlp": cls for cls in CLASS_NAMES}
-        result = df_slim[mlp_cols].round(4).rename(columns=rename_map).to_dict(orient="index")
-
-        with open(out_path, "w") as f:
-            json.dump(result, f)
-
-        if curr_year not in job.result_years:
-            job.result_years.append(curr_year)
-        job.log(f"Predictions {curr_year}: {len(result)} cells saved")
-
-
-# ---------------------------------------------------------------------------
-# STAGE 3: WorldCover labels (for 2020, 2021 ground truth)
-# ---------------------------------------------------------------------------
-def _download_worldcover(job: DeployJob, out_dir: str, anchor_path: str):
-    """Download and reproject WorldCover labels for validation years.
-
-    Uses numpy vectorized reshape+bincount for cell aggregation (~50x faster).
-    """
-    import rasterio
-    from rasterio.warp import Resampling, reproject
-    import urllib.request
-
-    label_years = [y for y in job.years if y <= 2021]
-    if not label_years:
-        return
-
-    # Determine WC tile from bbox center
-    lat = (job.bbox[1] + job.bbox[3]) / 2
-    lon = (job.bbox[0] + job.bbox[2]) / 2
-    lat_tile = int(math.floor(lat / 3.0) * 3)
-    lon_tile = int(math.floor(lon / 3.0) * 3)
-    ns = "N" if lat_tile >= 0 else "S"
-    ew = "E" if lon_tile >= 0 else "W"
-    tile = f"{ns}{abs(lat_tile):02d}{ew}{abs(lon_tile):03d}"
-
-    tiles_dir = os.path.join(out_dir, "wc_tiles")
-    os.makedirs(tiles_dir, exist_ok=True)
-
-    # Pre-build WC code lookup table: wc_class_code -> our_class_index
-    wc_lut = np.full(256, -1, dtype=np.int8)  # -1 = unmapped
-    for wc_code, our_class in WC_CLASS_MAP.items():
-        wc_lut[wc_code] = our_class
-
-    for year in label_years:
-        labels_path = os.path.join(out_dir, f"labels_{year}.json")
-        if os.path.exists(labels_path):
-            job.log(f"Labels {year}: cached")
-            continue
-
-        version = "v100" if year == 2020 else "v200"
-        filename = f"ESA_WorldCover_10m_{year}_{version}_{tile}_Map.tif"
-        wc_path = os.path.join(tiles_dir, filename)
-
-        if not os.path.exists(wc_path):
-            url = (f"https://esa-worldcover.s3.eu-central-1.amazonaws.com/"
-                   f"{version}/{year}/map/{filename}")
-            job.log(f"Downloading WorldCover {year} ({tile})...")
-            try:
-                urllib.request.urlretrieve(url, wc_path)
-            except Exception as e:
-                job.log(f"WARNING: WorldCover download failed: {e}")
-                continue
-
-        # Reproject to anchor grid
-        with rasterio.open(anchor_path) as ref:
-            anchor_meta = {
-                "crs": ref.crs, "transform": ref.transform,
-                "width": ref.width, "height": ref.height,
-            }
-
-        dst_array = np.zeros(
-            (anchor_meta["height"], anchor_meta["width"]), dtype=np.uint8)
-        with rasterio.open(wc_path) as src:
-            reproject(
-                source=rasterio.band(src, 1), destination=dst_array,
-                src_transform=src.transform, src_crs=src.crs,
-                src_nodata=src.nodata,
-                dst_transform=anchor_meta["transform"],
-                dst_crs=anchor_meta["crs"],
-                dst_nodata=0, resampling=Resampling.nearest,
-            )
-
-        # Vectorized cell aggregation via reshape + LUT
-        nc = anchor_meta["width"] // GRID_PX
-        nr = anchor_meta["height"] // GRID_PX
-        total_px = GRID_PX * GRID_PX
-
-        # Reshape (H, W) -> (nr, GP, nc, GP) -> (nr, nc, GP, GP) -> (n_cells, GP*GP)
-        cells = (dst_array[:nr*GRID_PX, :nc*GRID_PX]
-                 .reshape(nr, GRID_PX, nc, GRID_PX)
-                 .transpose(0, 2, 1, 3)
-                 .reshape(nr * nc, total_px))
-
-        # Map WC codes to our class indices via LUT
-        mapped = wc_lut[cells]  # (n_cells, total_px), values -1..5
-
-        # Count class proportions per cell using vectorized bincount
-        n_cells = nr * nc
-        proportions = np.zeros((n_cells, N_CLASSES), dtype=np.float32)
-        for cls_idx in range(N_CLASSES):
-            proportions[:, cls_idx] = np.sum(mapped == cls_idx, axis=1)
-        proportions /= total_px
-
-        # Build result dict
-        result = {}
-        for cell_id in range(n_cells):
-            result[str(cell_id)] = {
-                CLASS_NAMES[i]: round(float(proportions[cell_id, i]), 4)
-                for i in range(N_CLASSES)
-            }
-
-        with open(labels_path, "w") as f:
-            json.dump(result, f)
-        job.log(f"Labels {year}: {len(result)} cells")
-
-
-# ---------------------------------------------------------------------------
-# STAGE 4: Build grid GeoJSON (for map overlay)
-# ---------------------------------------------------------------------------
-def _build_grid_geojson(job: DeployJob, out_dir: str, anchor_path: str):
-    """Create a GeoJSON FeatureCollection with cell polygons in WGS84.
-
-    Uses a single batched rasterio.warp.transform call for all cell corners
-    instead of one call per cell (~100x faster for 30k+ cells).
-    """
-    import rasterio
-    from rasterio.warp import transform
-
-    grid_path = os.path.join(out_dir, "grid.json")
-    if os.path.exists(grid_path):
-        return
-
-    with rasterio.open(anchor_path) as src:
-        crs = src.crs
-        t = src.transform
-        width = src.width
-        height = src.height
-
-    nc = width // GRID_PX
-    nr = height // GRID_PX
-    ps = SENTINEL_RES
-    n_cells = nr * nc
-
-    # Pre-compute all cell corners in projected CRS using numpy
-    col_indices = np.arange(nc)
-    row_indices = np.arange(nr)
-
-    # x0, x1 for each column; y0, y1 for each row
-    x0_arr = t.c + col_indices * GRID_PX * ps
-    x1_arr = x0_arr + GRID_PX * ps
-    y0_arr = t.f - row_indices * GRID_PX * ps
-    y1_arr = y0_arr - GRID_PX * ps
-
-    # Build flat arrays of all 5 corner points per cell (closed polygon)
-    # Order: (x0,y0), (x1,y0), (x1,y1), (x0,y1), (x0,y0)
-    # Total points: n_cells * 5
-    all_xs = np.empty(n_cells * 5, dtype=np.float64)
-    all_ys = np.empty(n_cells * 5, dtype=np.float64)
-
-    idx = 0
-    for ri in range(nr):
-        for ci in range(nc):
-            x0, x1 = x0_arr[ci], x1_arr[ci]
-            y0, y1 = y0_arr[ri], y1_arr[ri]
-            all_xs[idx:idx+5] = [x0, x1, x1, x0, x0]
-            all_ys[idx:idx+5] = [y0, y0, y1, y1, y0]
-            idx += 5
-
-    # Single batched CRS transform for ALL points
-    out_xs, out_ys = transform(crs, "EPSG:4326",
-                               all_xs.tolist(), all_ys.tolist())
-
-    # Build GeoJSON features from transformed coordinates
-    features = []
-    for cell_id in range(n_cells):
-        base = cell_id * 5
-        coords = [
-            (round(out_xs[base + j], 6), round(out_ys[base + j], 6))
-            for j in range(5)
-        ]
-        features.append({
-            "type": "Feature",
-            "properties": {"cell_id": cell_id},
-            "geometry": {
-                "type": "Polygon",
-                "coordinates": [coords],
-            },
-        })
-
-    geojson = {"type": "FeatureCollection", "features": features}
-    with open(grid_path, "w") as f:
-        json.dump(geojson, f)
-
-    job.log(f"Grid GeoJSON: {n_cells} cells")
 
 
 # ---------------------------------------------------------------------------
@@ -462,25 +239,10 @@ def _run_pipeline(job: DeployJob):
         job.progress = 5
         anchor_path = _create_anchor(job, out_dir)
 
-        # Stage 1: Rust pipeline (download + extract + predict)
+        # Stage 1-5: Rust pipeline handles everything now
         job.stage = "Running Rust pipeline"
         job.progress = 10
         _run_rust_pipeline(job, out_dir, anchor_path)
-
-        # Stage 2: Convert Parquet → JSON
-        job.stage = "Converting predictions"
-        job.progress = 82
-        _convert_predictions(job, out_dir)
-
-        # Stage 3: WorldCover labels
-        job.stage = "Downloading labels"
-        job.progress = 88
-        _download_worldcover(job, out_dir, anchor_path)
-
-        # Stage 4: Grid GeoJSON
-        job.stage = "Building grid"
-        job.progress = 95
-        _build_grid_geojson(job, out_dir, anchor_path)
 
         job.status = "complete"
         job.progress = 100
