@@ -394,24 +394,6 @@ def export_failure_analysis(out_dir):
     print(f"  [ok] failure_analysis.json -- {len(data)} land-cover classes")
 
 
-# ===========================================================================
-# Main
-# ===========================================================================
-def main():
-    os.makedirs(OUT_DIR, exist_ok=True)
-    print(f"Output directory: {OUT_DIR}\n")
-
-    print("[1/10] Grid (GeoJSON) ...")
-    export_grid(OUT_DIR)
-
-    print("[2/10] Labels ...")
-    export_labels(OUT_DIR)
-
-    print("[3/10] Change labels ...")
-    export_change(OUT_DIR)
-
-    print("[4/10] Predictions ...")
-    export_predictions(OUT_DIR)
 
 # ── Phase 10: Explainability ──────────────────────────────────────────────
 def export_explainability(out_dir, top_n=20):

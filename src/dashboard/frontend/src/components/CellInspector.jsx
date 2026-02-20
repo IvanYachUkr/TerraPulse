@@ -4,12 +4,9 @@ import { Chart, registerables } from 'chart.js';
 Chart.register(...registerables);
 
 const MODEL_DISPLAY = {
-    ridge: 'Ridge',
-    elasticnet: 'ElasticNet',
-    extratrees: 'ExtraTrees',
-    rf: 'Random Forest',
-    catboost: 'CatBoost',
     mlp: 'MLP',
+    tree: 'LightGBM',
+    ridge: 'Ridge',
 };
 
 // Distinct palette for each model (not tied to class colors)
@@ -94,7 +91,7 @@ export default function CellInspector({
                     return [Math.max(0, pred - halfW), Math.min(100, pred + halfW)];
                 });
                 datasets.push({
-                    label: `Conformal 90% CI`,
+                    label: `Conformal CI`,
                     data: floatingData,
                     backgroundColor: 'rgba(255,255,255,0.07)',
                     borderColor: 'rgba(255,255,255,0.3)',
@@ -196,6 +193,9 @@ export default function CellInspector({
                         <div className="card">
                             <div className="card-title">
                                 Conformal Intervals ({MODEL_DISPLAY[selectedModel] || selectedModel})
+                            </div>
+                            <div className="info-badge" style={{ marginBottom: 6 }}>
+                                Spatial data &mdash; coverage may be below nominal 90% target
                             </div>
                             <div className="metric-grid">
                                 {classes.map((c) => {
