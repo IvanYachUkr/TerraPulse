@@ -36,8 +36,12 @@ RUN cargo build --release
 # Verify the binary works
 RUN ./target/release/terrapulse --help
 
-# ONNX Runtime .so is downloaded by the ort crate – copy it alongside binary
-RUN find target/release -name "libonnxruntime*.so*" -exec cp {} target/release/ \; 2>/dev/null || true
+# ONNX Runtime .so is downloaded by ort-sys into cargo's OUT_DIR cache
+# Search the entire filesystem to find it
+RUN mkdir -p /ort_libs && \
+    find / -name "libonnxruntime*.so*" 2>/dev/null -exec cp {} /ort_libs/ \; || true && \
+    echo "=== ORT libs found:" && ls -la /ort_libs/ && \
+    echo "=== Total files: $(find /ort_libs -type f | wc -l)"
 
 # ---------------------------------------------------------------------------
 # Stage 2: Build the frontend
@@ -71,10 +75,17 @@ RUN pip install --no-cache-dir -r requirements-docker.txt
 # Copy Rust binary
 COPY --from=rust-build /build/target/release/terrapulse /usr/local/bin/terrapulse
 
-# Copy ONNX Runtime shared libs (glob requires directory dest with trailing /)
-# The ort crate downloads these during build; copy them for runtime loading
-COPY --from=rust-build /build/target/release/libonnxruntime* /usr/local/lib/
-RUN ldconfig 2>/dev/null || true
+# Download ONNX Runtime shared lib (ort crate uses load-dynamic / dlopen at runtime)
+RUN apt-get update && apt-get install -y --no-install-recommends curl && \
+    mkdir -p /tmp/ort /usr/local/lib/ort && \
+    curl -sL https://github.com/microsoft/onnxruntime/releases/download/v1.22.0/onnxruntime-linux-x64-1.22.0.tgz -o /tmp/ort.tgz && \
+    tar xzf /tmp/ort.tgz -C /tmp/ort --strip-components=1 && \
+    cp /tmp/ort/lib/libonnxruntime*.so* /usr/local/lib/ort/ && \
+    ldconfig /usr/local/lib/ort && \
+    rm -rf /tmp/ort /tmp/ort.tgz && \
+    apt-get purge -y curl && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
+
+ENV ORT_DYLIB_PATH=/usr/local/lib/ort
 
 # Copy frontend dist
 COPY --from=frontend /frontend/dist /app/src/dashboard/frontend/dist
@@ -92,7 +103,6 @@ COPY data/pipeline_output/models/onnx/ /app/models/onnx/
 ENV TERRAPULSE_BIN=/usr/local/bin/terrapulse
 ENV ONNX_MODELS_DIR=/app/models/onnx
 ENV DEPLOY_DIR=/app/deploy_jobs
-ENV ORT_DYLIB_PATH=/usr/local/lib
 
 # Create deploy job scratch dir
 RUN mkdir -p /app/deploy_jobs
