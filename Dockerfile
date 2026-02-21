@@ -18,7 +18,7 @@
 # ---------------------------------------------------------------------------
 # Stage 1: Build the Rust binary
 # ---------------------------------------------------------------------------
-FROM rust:1.85-bookworm AS rust-build
+FROM rust:bookworm AS rust-build
 
 # Install build deps (zstd for S1 COG support)
 RUN apt-get update && apt-get install -y --no-install-recommends \
