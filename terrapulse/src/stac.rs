@@ -293,7 +293,7 @@ pub async fn get_s1_token(client: &Client) -> Result<String> {
     Ok(token)
 }
 
-/// Search for Sentinel-1 IW GRD scenes.
+/// Search for Sentinel-1 IW GRD scenes (with retry on transient failures).
 pub async fn search_sar_scenes(
     client: &Client,
     bbox: [f64; 4],
@@ -301,6 +301,56 @@ pub async fn search_sar_scenes(
     season: &str,
 ) -> Result<Vec<StacItem>> {
     let (start, end) = season_date_range(year, season)?;
+    let url = format!("{STAC_API}/search");
+
+    // Retry wrapper for STAC POST requests
+    let stac_post_with_retry = |body: StacSearchBody| {
+        let client = client.clone();
+        let url = url.clone();
+        async move {
+            let mut last_err = String::new();
+            for attempt in 0..4u32 {
+                if attempt > 0 {
+                    let wait = 2u64 << (attempt - 1); // 2s, 4s, 8s
+                    eprintln!("    S1 STAC retry {attempt}/3 in {wait}s...");
+                    tokio::time::sleep(std::time::Duration::from_secs(wait)).await;
+                }
+                let body_clone = StacSearchBody {
+                    collections: body.collections.clone(),
+                    bbox: body.bbox,
+                    datetime: body.datetime.clone(),
+                    query: body.query.clone(),
+                    limit: body.limit,
+                };
+                match client.post(&url).json(&body_clone).send().await {
+                    Ok(resp) => {
+                        let status = resp.status();
+                        if status.as_u16() == 429 {
+                            last_err = "rate limited (429)".to_string();
+                            continue;
+                        }
+                        if !status.is_success() {
+                            let text = resp.text().await.unwrap_or_default();
+                            last_err = format!("{status}: {text}");
+                            continue;
+                        }
+                        match resp.json::<StacFeatureCollection>().await {
+                            Ok(fc) => return Ok(fc.features),
+                            Err(e) => {
+                                last_err = format!("parse error: {e}");
+                                continue;
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        last_err = format!("network error: {e}");
+                        continue;
+                    }
+                }
+            }
+            anyhow::bail!("S1 STAC search failed after 4 attempts: {last_err}")
+        }
+    };
 
     // First try ascending orbit only
     let body = StacSearchBody {
@@ -314,25 +364,9 @@ pub async fn search_sar_scenes(
         limit: 500,
     };
 
-    let url = format!("{STAC_API}/search");
-    let resp = client
-        .post(&url)
-        .json(&body)
-        .send()
-        .await
-        .context("S1 STAC search failed")?;
-    let status = resp.status();
-    if !status.is_success() {
-        let text = resp.text().await.unwrap_or_default();
-        anyhow::bail!("S1 STAC search returned {status}: {text}");
-    }
-    let fc: StacFeatureCollection = resp
-        .json()
-        .await
-        .context("Failed to parse S1 STAC response")?;
-
-    if fc.features.len() >= 3 {
-        return Ok(fc.features);
+    let items = stac_post_with_retry(body).await?;
+    if items.len() >= 3 {
+        return Ok(items);
     }
 
     // Fallback: any orbit
@@ -346,24 +380,11 @@ pub async fn search_sar_scenes(
         limit: 500,
     };
 
-    let resp2 = client
-        .post(&url)
-        .json(&body2)
-        .send()
-        .await
-        .context("S1 STAC fallback search failed")?;
-    if !resp2.status().is_success() {
-        return Ok(fc.features); // return whatever we had
-    }
-    let fc2: StacFeatureCollection = resp2
-        .json()
-        .await
-        .context("Failed to parse S1 STAC fallback response")?;
-
-    if fc2.features.len() > fc.features.len() {
-        Ok(fc2.features)
+    let items2 = stac_post_with_retry(body2).await?;
+    if items2.len() > items.len() {
+        Ok(items2)
     } else {
-        Ok(fc.features)
+        Ok(items)
     }
 }
 

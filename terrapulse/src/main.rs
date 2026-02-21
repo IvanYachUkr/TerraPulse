@@ -481,26 +481,21 @@ async fn run_download(
         t0.elapsed().as_secs_f64()
     );
 
-    // Download SAR (Sentinel-1) for all years concurrently
+    // Download SAR (Sentinel-1) sequentially per year to avoid STAC API overload.
+    // Each year still downloads 3 seasons concurrently.
     println!("\n--- SAR (Sentinel-1) Download ---");
     let t_sar = Instant::now();
-    let sar_futures: Vec<_> = years
-        .iter()
-        .map(|&year| {
-            let client = client.clone();
-            let raw = raw_dir.to_path_buf();
-            let reg = region.to_string();
-            let anch = anchor.clone();
-            async move {
-                println!("--- SAR Year: {year} ---");
-                download::download_sar_year(&client, bbox_arr, year, &reg, &raw, &anch).await
-            }
-        })
-        .collect();
 
-    let sar_results = futures::future::join_all(sar_futures).await;
-    for r in sar_results {
-        if let Err(e) = r {
+    // Pre-fetch S1 token so it's cached before downloads start
+    if let Err(e) = stac::get_s1_token(&client).await {
+        eprintln!("  WARNING: Could not pre-fetch S1 token: {e}");
+    }
+
+    for &year in years.iter() {
+        println!("--- SAR Year: {year} ---");
+        if let Err(e) = download::download_sar_year(
+            &client, bbox_arr, year, region, raw_dir, &anchor,
+        ).await {
             eprintln!("  SAR download error (non-fatal): {e}");
         }
     }
