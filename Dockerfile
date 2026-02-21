@@ -78,7 +78,7 @@ COPY --from=rust-build /build/target/release/terrapulse /usr/local/bin/terrapuls
 # Download ONNX Runtime shared lib (ort crate uses load-dynamic / dlopen at runtime)
 RUN apt-get update && apt-get install -y --no-install-recommends curl && \
     mkdir -p /tmp/ort && \
-    curl -sL https://github.com/microsoft/onnxruntime/releases/download/v1.22.0/onnxruntime-linux-x64-1.22.0.tgz -o /tmp/ort.tgz && \
+    curl -sL https://github.com/microsoft/onnxruntime/releases/download/v1.23.2/onnxruntime-linux-x64-1.23.2.tgz -o /tmp/ort.tgz && \
     tar xzf /tmp/ort.tgz -C /tmp/ort --strip-components=1 && \
     cp /tmp/ort/lib/libonnxruntime*.so* /usr/local/lib/ && \
     ldconfig && \
