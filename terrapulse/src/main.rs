@@ -313,15 +313,41 @@ fn run_predict(
             .collect();
 
         // ---- Extract MLP features + scale ----
+        // Check for missing columns and give a clear error if SAR data is absent
+        let missing_cols: Vec<&str> = mlp_cols
+            .iter()
+            .filter(|c| !col_index.contains_key(c.as_str()))
+            .map(|c| c.as_str())
+            .collect();
+
+        if !missing_cols.is_empty() {
+            let has_sar_missing = missing_cols.iter().any(|c| {
+                c.starts_with("VV_") || c.starts_with("VH_") || c.starts_with("CR_")
+                    || c.starts_with("RVI_") || c.starts_with("SAR_")
+            });
+            if has_sar_missing {
+                eprintln!("ERROR: Sentinel-1 SAR data is unavailable for the selected region.");
+                eprintln!("  The model requires SAR features ({} missing columns),", missing_cols.len());
+                eprintln!("  but no SAR imagery was found for this area.");
+                eprintln!("  Try selecting a region with SAR coverage (e.g. near major cities).");
+                anyhow::bail!(
+                    "SAR data unavailable for this region ({} SAR columns missing). \
+                     Try a region with Sentinel-1 coverage.",
+                    missing_cols.len()
+                );
+            } else {
+                anyhow::bail!(
+                    "{} required feature columns missing from parquet: {:?}",
+                    missing_cols.len(),
+                    &missing_cols[..missing_cols.len().min(5)]
+                );
+            }
+        }
+
         let mlp_indices: Vec<usize> = mlp_cols
             .iter()
-            .map(|c| {
-                col_index
-                    .get(c.as_str())
-                    .copied()
-                    .with_context(|| format!("MLP col '{}' not found in parquet", c))
-            })
-            .collect::<Result<Vec<_>>>()?;
+            .map(|c| *col_index.get(c.as_str()).unwrap())
+            .collect();
 
         let mlp_features: Vec<Vec<f32>> = all_rows
             .iter()

@@ -218,13 +218,22 @@ def _run_rust_pipeline(job: DeployJob, out_dir: str, anchor_path: str):
             "scenes", "Written", "Loaded", "done:", "Done",
             "Wrote", "WARNING", "ERROR", "Pipeline", "cells",
             "Year", "Region", "BBOX", "Helper", "TerraPulse",
-            "Scene", "Compositing", "TIMEOUT", "FAILED", "Labels", "Fetching"
+            "Scene", "Compositing", "TIMEOUT", "FAILED", "Labels", "Fetching",
+            "SAR", "unavailable", "missing",
         ]):
             job.log(line.strip())
 
     proc.wait()
     if proc.returncode != 0:
-        raise RuntimeError(f"Rust pipeline failed (exit code {proc.returncode})")
+        # Find the most meaningful error line from Rust output
+        error_lines = [m for m in job.messages if "ERROR" in m or "unavailable" in m or "missing" in m]
+        if error_lines:
+            last_err = error_lines[-1]
+            # Strip timestamp prefix like "[HH:MM:SS] "
+            msg = last_err.split("] ", 1)[-1] if "] " in last_err else last_err
+        else:
+            msg = f"Rust pipeline failed (exit code {proc.returncode})"
+        raise RuntimeError(msg)
 
 
 # ---------------------------------------------------------------------------
