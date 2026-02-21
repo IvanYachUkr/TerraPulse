@@ -27,17 +27,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /build
 
-# Copy only Cargo files first (layer caching for deps)
-COPY terrapulse/Cargo.toml terrapulse/Cargo.lock ./
+# Copy entire Rust project
+COPY terrapulse/ ./
 
-# Create dummy main.rs to build deps only
-RUN mkdir src && echo "fn main() {}" > src/main.rs
-RUN cargo build --release 2>/dev/null || true
-
-# Now copy real source and rebuild
-COPY terrapulse/src/ ./src/
-COPY terrapulse/tests/ ./tests/
-RUN touch src/main.rs && cargo build --release
+# Build in release mode (ort crate will download ONNX Runtime)
+RUN cargo build --release
 
 # Verify the binary works
 RUN ./target/release/terrapulse --help
