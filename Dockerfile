@@ -77,15 +77,16 @@ COPY --from=rust-build /build/target/release/terrapulse /usr/local/bin/terrapuls
 
 # Download ONNX Runtime shared lib (ort crate uses load-dynamic / dlopen at runtime)
 RUN apt-get update && apt-get install -y --no-install-recommends curl && \
-    mkdir -p /tmp/ort /usr/local/lib/ort && \
+    mkdir -p /tmp/ort && \
     curl -sL https://github.com/microsoft/onnxruntime/releases/download/v1.22.0/onnxruntime-linux-x64-1.22.0.tgz -o /tmp/ort.tgz && \
     tar xzf /tmp/ort.tgz -C /tmp/ort --strip-components=1 && \
-    cp /tmp/ort/lib/libonnxruntime*.so* /usr/local/lib/ort/ && \
-    ldconfig /usr/local/lib/ort && \
+    cp /tmp/ort/lib/libonnxruntime*.so* /usr/local/lib/ && \
+    ldconfig && \
     rm -rf /tmp/ort /tmp/ort.tgz && \
     apt-get purge -y curl && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
 
-ENV ORT_DYLIB_PATH=/usr/local/lib/ort
+# ORT_DYLIB_PATH must be a FILE path, not a directory
+ENV ORT_DYLIB_PATH=/usr/local/lib/libonnxruntime.so
 
 # Copy frontend dist
 COPY --from=frontend /frontend/dist /app/src/dashboard/frontend/dist
