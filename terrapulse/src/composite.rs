@@ -13,7 +13,9 @@ use crate::stac::StacItem;
 // ── Constants matching composite.py ──
 
 /// SCL classes to exclude (cloud, shadow, snow, saturated, etc.)
-const SCL_EXCLUDE: [u8; 8] = [0, 1, 2, 3, 8, 9, 10, 11];
+// Note: We DO NOT exclude 2 (Dark Area Pixels) because S2 often misclassifies
+// clear water / dark forests as 2. Excluding it creates NODATA holes over lakes.
+const SCL_EXCLUDE: [u8; 7] = [0, 1, 3, 8, 9, 10, 11];
 
 /// Spectral bands to download (same order as composite.py)
 const SPECTRAL_BANDS: [&str; 10] = [
