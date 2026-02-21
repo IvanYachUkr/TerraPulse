@@ -1,0 +1,234 @@
+{
+  "noise": [
+    {
+      "model": "MLP",
+      "noise_sigma": 0.0,
+      "r2": 0.8334,
+      "mae_pp": 2.49
+    },
+    {
+      "model": "MLP",
+      "noise_sigma": 0.1,
+      "r2": 0.8335,
+      "mae_pp": 2.51
+    },
+    {
+      "model": "MLP",
+      "noise_sigma": 0.25,
+      "r2": 0.8296,
+      "mae_pp": 2.59
+    },
+    {
+      "model": "MLP",
+      "noise_sigma": 0.5,
+      "r2": 0.8113,
+      "mae_pp": 2.91
+    },
+    {
+      "model": "MLP",
+      "noise_sigma": 1.0,
+      "r2": 0.7188,
+      "mae_pp": 4.23
+    },
+    {
+      "model": "MLP",
+      "noise_sigma": 2.0,
+      "r2": -0.0591,
+      "mae_pp": 9.02
+    },
+    {
+      "model": "LightGBM",
+      "noise_sigma": 0.0,
+      "r2": 0.8099,
+      "mae_pp": 2.98
+    },
+    {
+      "model": "LightGBM",
+      "noise_sigma": 0.1,
+      "r2": 0.7973,
+      "mae_pp": 3.21
+    },
+    {
+      "model": "LightGBM",
+      "noise_sigma": 0.25,
+      "r2": 0.7513,
+      "mae_pp": 4.06
+    },
+    {
+      "model": "LightGBM",
+      "noise_sigma": 0.5,
+      "r2": 0.5874,
+      "mae_pp": 6.72
+    },
+    {
+      "model": "LightGBM",
+      "noise_sigma": 1.0,
+      "r2": -0.1058,
+      "mae_pp": 13.21
+    },
+    {
+      "model": "LightGBM",
+      "noise_sigma": 2.0,
+      "r2": -3.1614,
+      "mae_pp": 22.13
+    }
+  ],
+  "season_dropout": [
+    {
+      "model": "MLP",
+      "season_dropped": "none",
+      "r2": 0.8334,
+      "mae_pp": 2.49,
+      "n_zeroed": 0
+    },
+    {
+      "model": "MLP",
+      "season_dropped": "2020_autumn",
+      "r2": -0.6531,
+      "mae_pp": 15.19,
+      "n_zeroed": 144
+    },
+    {
+      "model": "MLP",
+      "season_dropped": "2020_spring",
+      "r2": -9.0911,
+      "mae_pp": 19.23,
+      "n_zeroed": 144
+    },
+    {
+      "model": "MLP",
+      "season_dropped": "2020_summer",
+      "r2": -0.5638,
+      "mae_pp": 13.95,
+      "n_zeroed": 144
+    },
+    {
+      "model": "MLP",
+      "season_dropped": "2021_autumn",
+      "r2": 0.3495,
+      "mae_pp": 8.21,
+      "n_zeroed": 144
+    },
+    {
+      "model": "MLP",
+      "season_dropped": "2021_spring",
+      "r2": -0.0004,
+      "mae_pp": 10.1,
+      "n_zeroed": 144
+    },
+    {
+      "model": "MLP",
+      "season_dropped": "2021_summer",
+      "r2": -1.8056,
+      "mae_pp": 12.1,
+      "n_zeroed": 144
+    },
+    {
+      "model": "LightGBM",
+      "season_dropped": "none",
+      "r2": 0.8099,
+      "mae_pp": 2.98,
+      "n_zeroed": 0
+    },
+    {
+      "model": "LightGBM",
+      "season_dropped": "2020_autumn",
+      "r2": -1.6223,
+      "mae_pp": 10.56,
+      "n_zeroed": 73
+    },
+    {
+      "model": "LightGBM",
+      "season_dropped": "2020_spring",
+      "r2": -4.7998,
+      "mae_pp": 14.59,
+      "n_zeroed": 73
+    },
+    {
+      "model": "LightGBM",
+      "season_dropped": "2020_summer",
+      "r2": 0.6456,
+      "mae_pp": 6.47,
+      "n_zeroed": 73
+    },
+    {
+      "model": "LightGBM",
+      "season_dropped": "2021_autumn",
+      "r2": 0.6971,
+      "mae_pp": 5.85,
+      "n_zeroed": 73
+    },
+    {
+      "model": "LightGBM",
+      "season_dropped": "2021_spring",
+      "r2": -1.0624,
+      "mae_pp": 10.67,
+      "n_zeroed": 73
+    },
+    {
+      "model": "LightGBM",
+      "season_dropped": "2021_summer",
+      "r2": -0.5662,
+      "mae_pp": 11.83,
+      "n_zeroed": 73
+    }
+  ],
+  "feature_ablation": [
+    {
+      "model": "MLP",
+      "group_dropped": "none",
+      "r2": 0.8334,
+      "mae_pp": 2.49,
+      "n_zeroed": 0,
+      "n_remaining": 864
+    },
+    {
+      "model": "MLP",
+      "group_dropped": "Bands",
+      "r2": -1.4397,
+      "mae_pp": 16.58,
+      "n_zeroed": 480,
+      "n_remaining": 384
+    },
+    {
+      "model": "MLP",
+      "group_dropped": "Indices",
+      "r2": 0.6061,
+      "mae_pp": 6.4,
+      "n_zeroed": 192,
+      "n_remaining": 672
+    },
+    {
+      "model": "MLP",
+      "group_dropped": "LBP",
+      "r2": 0.4737,
+      "mae_pp": 7.61,
+      "n_zeroed": 66,
+      "n_remaining": 798
+    },
+    {
+      "model": "LightGBM",
+      "group_dropped": "none",
+      "r2": 0.8099,
+      "mae_pp": 2.98,
+      "n_zeroed": 0,
+      "n_remaining": 438
+    },
+    {
+      "model": "LightGBM",
+      "group_dropped": "Bands",
+      "r2": -16.5783,
+      "mae_pp": 18.3,
+      "n_zeroed": 192,
+      "n_remaining": 246
+    },
+    {
+      "model": "LightGBM",
+      "group_dropped": "Indices",
+      "r2": -0.9987,
+      "mae_pp": 19.37,
+      "n_zeroed": 150,
+      "n_remaining": 288
+    }
+  ]
+}

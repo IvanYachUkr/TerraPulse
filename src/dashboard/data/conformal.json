@@ -1,0 +1,66 @@
+{
+  "ridge": {
+    "tree_cover": {
+      "coverage_pct": 83.0,
+      "mean_width_pp": 28.58,
+      "median_width_pp": 23.28
+    },
+    "grassland": {
+      "coverage_pct": 78.3,
+      "mean_width_pp": 6.59,
+      "median_width_pp": 5.95
+    },
+    "cropland": {
+      "coverage_pct": 71.0,
+      "mean_width_pp": 0.0,
+      "median_width_pp": 0.0
+    },
+    "built_up": {
+      "coverage_pct": 76.7,
+      "mean_width_pp": 24.3,
+      "median_width_pp": 19.61
+    },
+    "bare_sparse": {
+      "coverage_pct": 79.2,
+      "mean_width_pp": 0.0,
+      "median_width_pp": 0.0
+    },
+    "water": {
+      "coverage_pct": 78.5,
+      "mean_width_pp": 0.0,
+      "median_width_pp": 0.0
+    }
+  },
+  "mlp": {
+    "tree_cover": {
+      "coverage_pct": 78.5,
+      "mean_width_pp": 14.47,
+      "median_width_pp": 17.74
+    },
+    "grassland": {
+      "coverage_pct": 76.4,
+      "mean_width_pp": 5.93,
+      "median_width_pp": 5.07
+    },
+    "cropland": {
+      "coverage_pct": 70.4,
+      "mean_width_pp": 0.17,
+      "median_width_pp": 0.15
+    },
+    "built_up": {
+      "coverage_pct": 74.4,
+      "mean_width_pp": 12.48,
+      "median_width_pp": 15.09
+    },
+    "bare_sparse": {
+      "coverage_pct": 76.1,
+      "mean_width_pp": 0.04,
+      "median_width_pp": 0.04
+    },
+    "water": {
+      "coverage_pct": 79.6,
+      "mean_width_pp": 0.03,
+      "median_width_pp": 0.03
+    }
+  }
+}

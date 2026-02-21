@@ -1,0 +1,110 @@
+[
+  {
+    "model": "MLP",
+    "dominant_class": "tree_cover",
+    "n_cells": 14354,
+    "mae_pp": 1.57,
+    "mae_std_pp": 2.49,
+    "aitchison_mean": 7.321,
+    "r2_uniform": 0.6335
+  },
+  {
+    "model": "MLP",
+    "dominant_class": "grassland",
+    "n_cells": 2240,
+    "mae_pp": 4.89,
+    "mae_std_pp": 4.67,
+    "aitchison_mean": 8.528,
+    "r2_uniform": 0.3366
+  },
+  {
+    "model": "MLP",
+    "dominant_class": "cropland",
+    "n_cells": 3129,
+    "mae_pp": 4.66,
+    "mae_std_pp": 5.03,
+    "aitchison_mean": 8.543,
+    "r2_uniform": 0.0811
+  },
+  {
+    "model": "MLP",
+    "dominant_class": "built_up",
+    "n_cells": 9948,
+    "mae_pp": 2.51,
+    "mae_std_pp": 2.58,
+    "aitchison_mean": 8.085,
+    "r2_uniform": 0.4631
+  },
+  {
+    "model": "MLP",
+    "dominant_class": "bare_sparse",
+    "n_cells": 28,
+    "mae_pp": 13.81,
+    "mae_std_pp": 6.9,
+    "aitchison_mean": 10.645,
+    "r2_uniform": -1.9566
+  },
+  {
+    "model": "MLP",
+    "dominant_class": "water",
+    "n_cells": 247,
+    "mae_pp": 5.12,
+    "mae_std_pp": 4.52,
+    "aitchison_mean": 9.327,
+    "r2_uniform": 0.2523
+  },
+  {
+    "model": "LightGBM",
+    "dominant_class": "tree_cover",
+    "n_cells": 14354,
+    "mae_pp": 1.71,
+    "mae_std_pp": 2.44,
+    "aitchison_mean": 7.793,
+    "r2_uniform": 0.5926
+  },
+  {
+    "model": "LightGBM",
+    "dominant_class": "grassland",
+    "n_cells": 2240,
+    "mae_pp": 5.66,
+    "mae_std_pp": 4.3,
+    "aitchison_mean": 9.529,
+    "r2_uniform": 0.312
+  },
+  {
+    "model": "LightGBM",
+    "dominant_class": "cropland",
+    "n_cells": 3129,
+    "mae_pp": 7.24,
+    "mae_std_pp": 4.58,
+    "aitchison_mean": 10.726,
+    "r2_uniform": -0.4822
+  },
+  {
+    "model": "LightGBM",
+    "dominant_class": "built_up",
+    "n_cells": 9948,
+    "mae_pp": 2.78,
+    "mae_std_pp": 2.49,
+    "aitchison_mean": 9.055,
+    "r2_uniform": 0.397
+  },
+  {
+    "model": "LightGBM",
+    "dominant_class": "bare_sparse",
+    "n_cells": 28,
+    "mae_pp": 14.82,
+    "mae_std_pp": 5.91,
+    "aitchison_mean": 10.789,
+    "r2_uniform": -1.8304
+  },
+  {
+    "model": "LightGBM",
+    "dominant_class": "water",
+    "n_cells": 247,
+    "mae_pp": 5.86,
+    "mae_std_pp": 4.41,
+    "aitchison_mean": 11.122,
+    "r2_uniform": 0.1361
+  }
+]

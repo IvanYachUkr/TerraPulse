@@ -1,0 +1,809 @@
+{
+  "models": {
+    "mlp": {
+      "permutation": [
+        {
+          "feature": "B02_q25_2021_autumn",
+          "importance": 0.01628,
+          "std": 0.00137
+        },
+        {
+          "feature": "B02_q25_2021_summer",
+          "importance": 0.01467,
+          "std": 0.00072
+        },
+        {
+          "feature": "B03_min_2021_spring",
+          "importance": 0.01436,
+          "std": 0.00171
+        },
+        {
+          "feature": "B02_median_2021_summer",
+          "importance": 0.01301,
+          "std": 0.00098
+        },
+        {
+          "feature": "B05_min_2021_spring",
+          "importance": 0.01265,
+          "std": 0.00097
+        },
+        {
+          "feature": "B02_mean_2021_summer",
+          "importance": 0.01259,
+          "std": 0.00064
+        },
+        {
+          "feature": "B02_median_2021_autumn",
+          "importance": 0.01142,
+          "std": 0.00174
+        },
+        {
+          "feature": "B02_q75_2021_autumn",
+          "importance": 0.01038,
+          "std": 0.00093
+        },
+        {
+          "feature": "B03_q25_2021_autumn",
+          "importance": 0.01015,
+          "std": 0.00082
+        },
+        {
+          "feature": "B11_max_2020_autumn",
+          "importance": 0.01002,
+          "std": 0.00081
+        },
+        {
+          "feature": "TC_green_mean_2021_summer",
+          "importance": 0.00984,
+          "std": 0.00087
+        },
+        {
+          "feature": "B02_min_2021_autumn",
+          "importance": 0.00964,
+          "std": 0.00064
+        },
+        {
+          "feature": "B02_q25_2020_spring",
+          "importance": 0.00935,
+          "std": 0.00015
+        },
+        {
+          "feature": "B03_q25_2021_summer",
+          "importance": 0.00894,
+          "std": 0.00041
+        },
+        {
+          "feature": "B11_max_2020_summer",
+          "importance": 0.00873,
+          "std": 0.00025
+        },
+        {
+          "feature": "B11_std_2020_autumn",
+          "importance": 0.00872,
+          "std": 0.00177
+        },
+        {
+          "feature": "B02_q25_2021_spring",
+          "importance": 0.00833,
+          "std": 0.001
+        },
+        {
+          "feature": "TC_green_mean_2021_autumn",
+          "importance": 0.00817,
+          "std": 0.00101
+        },
+        {
+          "feature": "B02_mean_2021_autumn",
+          "importance": 0.00816,
+          "std": 0.00068
+        },
+        {
+          "feature": "B02_q25_2020_summer",
+          "importance": 0.00799,
+          "std": 0.00105
+        }
+      ],
+      "shap": [
+        {
+          "feature": "NDRE2_q25_2020_spring",
+          "mean_abs": 0.00249,
+          "tree_cover": 0.00174,
+          "grassland": 0.00565,
+          "cropland": 0.00135,
+          "built_up": 0.00611,
+          "bare_sparse": 3e-05,
+          "water": 5e-05
+        },
+        {
+          "feature": "TC_wet_std_2020_spring",
+          "mean_abs": 0.00242,
+          "tree_cover": 0.00572,
+          "grassland": 0.00663,
+          "cropland": 0.00064,
+          "built_up": 0.00122,
+          "bare_sparse": 0.00012,
+          "water": 0.00021
+        },
+        {
+          "feature": "NDVI_q75_2020_autumn",
+          "mean_abs": 0.00235,
+          "tree_cover": 0.00221,
+          "grassland": 0.0044,
+          "cropland": 0.00135,
+          "built_up": 0.006,
+          "bare_sparse": 6e-05,
+          "water": 9e-05
+        },
+        {
+          "feature": "NDRE2_mean_2020_spring",
+          "mean_abs": 0.00233,
+          "tree_cover": 0.00347,
+          "grassland": 0.00632,
+          "cropland": 0.00076,
+          "built_up": 0.00328,
+          "bare_sparse": 6e-05,
+          "water": 0.0001
+        },
+        {
+          "feature": "NDRE2_median_2020_spring",
+          "mean_abs": 0.00223,
+          "tree_cover": 0.00174,
+          "grassland": 0.00487,
+          "cropland": 0.00086,
+          "built_up": 0.00578,
+          "bare_sparse": 5e-05,
+          "water": 8e-05
+        },
+        {
+          "feature": "B02_min_2021_autumn",
+          "mean_abs": 0.00218,
+          "tree_cover": 0.00408,
+          "grassland": 0.00297,
+          "cropland": 0.00266,
+          "built_up": 0.00318,
+          "bare_sparse": 0.00015,
+          "water": 4e-05
+        },
+        {
+          "feature": "B02_min_2020_autumn",
+          "mean_abs": 0.00213,
+          "tree_cover": 0.00599,
+          "grassland": 0.00338,
+          "cropland": 0.00173,
+          "built_up": 0.0016,
+          "bare_sparse": 6e-05,
+          "water": 5e-05
+        },
+        {
+          "feature": "NDRE2_q75_2020_autumn",
+          "mean_abs": 0.0021,
+          "tree_cover": 0.00418,
+          "grassland": 0.00335,
+          "cropland": 0.00292,
+          "built_up": 0.00202,
+          "bare_sparse": 5e-05,
+          "water": 7e-05
+        },
+        {
+          "feature": "B08_max_2021_autumn",
+          "mean_abs": 0.00208,
+          "tree_cover": 0.00581,
+          "grassland": 0.00351,
+          "cropland": 0.00221,
+          "built_up": 0.00091,
+          "bare_sparse": 3e-05,
+          "water": 3e-05
+        },
+        {
+          "feature": "B03_q25_2021_autumn",
+          "mean_abs": 0.00207,
+          "tree_cover": 0.00518,
+          "grassland": 0.00485,
+          "cropland": 0.00106,
+          "built_up": 0.00111,
+          "bare_sparse": 0.00013,
+          "water": 8e-05
+        },
+        {
+          "feature": "B02_min_2021_summer",
+          "mean_abs": 0.00204,
+          "tree_cover": 0.00599,
+          "grassland": 0.00202,
+          "cropland": 0.00115,
+          "built_up": 0.00299,
+          "bare_sparse": 7e-05,
+          "water": 4e-05
+        },
+        {
+          "feature": "NDRE2_std_2020_autumn",
+          "mean_abs": 0.00204,
+          "tree_cover": 0.00179,
+          "grassland": 0.00194,
+          "cropland": 0.00308,
+          "built_up": 0.00528,
+          "bare_sparse": 4e-05,
+          "water": 0.00012
+        },
+        {
+          "feature": "NDVI_range_2020_spring",
+          "mean_abs": 0.00202,
+          "tree_cover": 0.00455,
+          "grassland": 0.00214,
+          "cropland": 0.00136,
+          "built_up": 0.00388,
+          "bare_sparse": 7e-05,
+          "water": 0.00011
+        },
+        {
+          "feature": "B03_min_2021_summer",
+          "mean_abs": 0.00196,
+          "tree_cover": 0.00505,
+          "grassland": 0.00335,
+          "cropland": 0.00206,
+          "built_up": 0.00112,
+          "bare_sparse": 0.0001,
+          "water": 0.0001
+        },
+        {
+          "feature": "NDRE2_q25_2021_autumn",
+          "mean_abs": 0.0019,
+          "tree_cover": 0.00323,
+          "grassland": 0.00522,
+          "cropland": 0.00049,
+          "built_up": 0.00235,
+          "bare_sparse": 3e-05,
+          "water": 6e-05
+        },
+        {
+          "feature": "B12_q25_2021_spring",
+          "mean_abs": 0.00188,
+          "tree_cover": 0.00288,
+          "grassland": 0.00219,
+          "cropland": 0.00316,
+          "built_up": 0.00284,
+          "bare_sparse": 0.00014,
+          "water": 6e-05
+        },
+        {
+          "feature": "NDRE1_median_2021_autumn",
+          "mean_abs": 0.00187,
+          "tree_cover": 0.0055,
+          "grassland": 0.00124,
+          "cropland": 0.00053,
+          "built_up": 0.00391,
+          "bare_sparse": 2e-05,
+          "water": 4e-05
+        },
+        {
+          "feature": "SAVI_median_2020_autumn",
+          "mean_abs": 0.00187,
+          "tree_cover": 0.00151,
+          "grassland": 0.0037,
+          "cropland": 0.00128,
+          "built_up": 0.00454,
+          "bare_sparse": 5e-05,
+          "water": 0.00014
+        },
+        {
+          "feature": "B12_min_2021_summer",
+          "mean_abs": 0.00183,
+          "tree_cover": 0.00232,
+          "grassland": 0.00379,
+          "cropland": 0.00084,
+          "built_up": 0.00365,
+          "bare_sparse": 0.00012,
+          "water": 0.00025
+        },
+        {
+          "feature": "B8A_q25_2020_summer",
+          "mean_abs": 0.00182,
+          "tree_cover": 0.00216,
+          "grassland": 0.00067,
+          "cropland": 0.00319,
+          "built_up": 0.0048,
+          "bare_sparse": 3e-05,
+          "water": 7e-05
+        }
+      ],
+      "helpful": {
+        "type": "helpful",
+        "explanation": "For this high-vegetation sample (63% tree cover), NDVI_mean SHAP values are small and mixed-sign, showing the model relies on many correlated vegetation features rather than NDVI alone",
+        "rationale": "MLP distributes importance across correlated features (B02, B03, NDRE2, TC_green) \u2014 NDVI alone is not the single driver, but the ensemble of vegetation-sensitive bands captures the physical relationship between spectral reflectance and canopy density",
+        "sample_tree_cover": 0.6299999952316284,
+        "ndvi_features_shap": {
+          "NDVI_mean_2020_spring": -0.0007681831735356172,
+          "NDVI_mean_2020_summer": -0.0008120776875333908,
+          "NDVI_mean_2020_autumn": 0.0004819364807329006,
+          "NDVI_mean_2021_spring": -0.0008001400624891437,
+          "NDVI_mean_2021_summer": -0.0015764040567092382,
+          "NDVI_mean_2021_autumn": -0.0011414619939210833
+        }
+      },
+      "misleading": {
+        "type": "misleading",
+        "explanation": "B02_mean and B02_median are near-perfectly correlated (r>0.99) but SHAP assigns wildly different importance to each",
+        "pitfall": "SHAP splits credit arbitrarily among collinear features - a naive user would wrongly conclude one is important and the other is not",
+        "recommendation": "Group correlated features before interpreting SHAP, or use permutation importance on groups",
+        "pairs": [
+          {
+            "season": "2020_spring",
+            "mean_feature": "B02_mean_2020_spring",
+            "median_feature": "B02_median_2020_spring",
+            "pearson_r": 0.9781890511512756,
+            "shap_mean": 0.0009487502969522179,
+            "shap_median": 0.001054890297292241,
+            "shap_ratio": 0.899382902077619
+          },
+          {
+            "season": "2020_summer",
+            "mean_feature": "B02_mean_2020_summer",
+            "median_feature": "B02_median_2020_summer",
+            "pearson_r": 0.9803357124328613,
+            "shap_mean": 0.0013181997406499972,
+            "shap_median": 0.003435403198971559,
+            "shap_ratio": 0.3837103432414049
+          },
+          {
+            "season": "2020_autumn",
+            "mean_feature": "B02_mean_2020_autumn",
+            "median_feature": "B02_median_2020_autumn",
+            "pearson_r": 0.9793248772621155,
+            "shap_mean": 0.001671865557893653,
+            "shap_median": 0.0019169451512626372,
+            "shap_ratio": 0.8721509620619259
+          },
+          {
+            "season": "2021_spring",
+            "mean_feature": "B02_mean_2021_spring",
+            "median_feature": "B02_median_2021_spring",
+            "pearson_r": 0.9842867851257324,
+            "shap_mean": 0.0008183947874070711,
+            "shap_median": 0.002081220845601894,
+            "shap_ratio": 0.3932282290639797
+          },
+          {
+            "season": "2021_summer",
+            "mean_feature": "B02_mean_2021_summer",
+            "median_feature": "B02_median_2021_summer",
+            "pearson_r": 0.9794531464576721,
+            "shap_mean": 0.0012714944161065418,
+            "shap_median": 0.0010179635695030326,
+            "shap_ratio": 1.2490568957465564
+          },
+          {
+            "season": "2021_autumn",
+            "mean_feature": "B02_mean_2021_autumn",
+            "median_feature": "B02_median_2021_autumn",
+            "pearson_r": 0.9790541529655457,
+            "shap_mean": 0.0007319078845397199,
+            "shap_median": 0.002817651603870054,
+            "shap_ratio": 0.25975812039162044
+          }
+        ]
+      }
+    },
+    "tree": {
+      "permutation": [
+        {
+          "feature": "TC_wet_mean_2020_autumn",
+          "importance": 0.04586,
+          "std": 0.00098
+        },
+        {
+          "feature": "NDTI_q25_2020_spring",
+          "importance": 0.03339,
+          "std": 0.00153
+        },
+        {
+          "feature": "TC_bright_mean_2021_spring",
+          "importance": 0.03244,
+          "std": 0.00095
+        },
+        {
+          "feature": "NDTI_q25_2021_spring",
+          "importance": 0.03147,
+          "std": 0.00202
+        },
+        {
+          "feature": "B05_q75_2021_spring",
+          "importance": 0.03025,
+          "std": 2e-05
+        },
+        {
+          "feature": "TC_wet_mean_2021_summer",
+          "importance": 0.03015,
+          "std": 0.00031
+        },
+        {
+          "feature": "CRI1_q25_2021_summer",
+          "importance": 0.02374,
+          "std": 0.00195
+        },
+        {
+          "feature": "B06_min_2020_spring",
+          "importance": 0.02,
+          "std": 0.00017
+        },
+        {
+          "feature": "TC_wet_mean_2021_autumn",
+          "importance": 0.01779,
+          "std": 0.00058
+        },
+        {
+          "feature": "CRI1_std_2021_summer",
+          "importance": 0.01588,
+          "std": 0.00068
+        },
+        {
+          "feature": "NDRE2_q25_2021_spring",
+          "importance": 0.01438,
+          "std": 0.00162
+        },
+        {
+          "feature": "CRI1_std_2020_autumn",
+          "importance": 0.01301,
+          "std": 0.00077
+        },
+        {
+          "feature": "CRI1_q75_2020_autumn",
+          "importance": 0.01215,
+          "std": 0.00037
+        },
+        {
+          "feature": "NDRE2_q25_2021_summer",
+          "importance": 0.01142,
+          "std": 0.0004
+        },
+        {
+          "feature": "TC_wet_mean_2020_spring",
+          "importance": 0.01022,
+          "std": 0.00049
+        },
+        {
+          "feature": "B07_median_2021_autumn",
+          "importance": 0.0095,
+          "std": 0.00034
+        },
+        {
+          "feature": "TC_bright_mean_2020_spring",
+          "importance": 0.00928,
+          "std": 0.00089
+        },
+        {
+          "feature": "TC_wet_mean_2021_spring",
+          "importance": 0.00763,
+          "std": 0.00036
+        },
+        {
+          "feature": "B05_max_2021_autumn",
+          "importance": 0.00716,
+          "std": 0.00055
+        },
+        {
+          "feature": "B05_mean_2021_spring",
+          "importance": 0.00712,
+          "std": 0.0001
+        }
+      ],
+      "native_gain": [
+        {
+          "feature": "CRI1_q75_2021_autumn",
+          "gain": 0.24255,
+          "splits": 0.00397
+        },
+        {
+          "feature": "NDRE2_q25_2021_summer",
+          "gain": 0.16097,
+          "splits": 0.00428
+        },
+        {
+          "feature": "CRI1_q75_2020_autumn",
+          "gain": 0.10171,
+          "splits": 0.00472
+        },
+        {
+          "feature": "TC_wet_mean_2020_autumn",
+          "gain": 0.04659,
+          "splits": 0.00804
+        },
+        {
+          "feature": "B06_median_2021_summer",
+          "gain": 0.01964,
+          "splits": 0.00169
+        },
+        {
+          "feature": "CRI1_std_2020_autumn",
+          "gain": 0.0187,
+          "splits": 0.00719
+        },
+        {
+          "feature": "CRI1_q25_2021_summer",
+          "gain": 0.01797,
+          "splits": 0.00414
+        },
+        {
+          "feature": "TC_wet_mean_2021_autumn",
+          "gain": 0.01532,
+          "splits": 0.0061
+        },
+        {
+          "feature": "IRECI_q75_2020_autumn",
+          "gain": 0.01464,
+          "splits": 0.00151
+        },
+        {
+          "feature": "B06_q75_2021_spring",
+          "gain": 0.01259,
+          "splits": 0.00174
+        },
+        {
+          "feature": "CRI1_q75_2021_summer",
+          "gain": 0.01209,
+          "splits": 0.00251
+        },
+        {
+          "feature": "B05_q75_2021_summer",
+          "gain": 0.01199,
+          "splits": 0.00259
+        },
+        {
+          "feature": "B06_mean_2021_summer",
+          "gain": 0.01147,
+          "splits": 0.00124
+        },
+        {
+          "feature": "CRI1_std_2021_summer",
+          "gain": 0.0113,
+          "splits": 0.00667
+        },
+        {
+          "feature": "B05_q25_2021_autumn",
+          "gain": 0.00954,
+          "splits": 0.00277
+        },
+        {
+          "feature": "NDTI_q25_2021_spring",
+          "gain": 0.00921,
+          "splits": 0.00542
+        },
+        {
+          "feature": "NDTI_q25_2020_spring",
+          "gain": 0.00831,
+          "splits": 0.00477
+        },
+        {
+          "feature": "TC_green_std_2021_summer",
+          "gain": 0.00811,
+          "splits": 0.00551
+        },
+        {
+          "feature": "TC_wet_mean_2021_summer",
+          "gain": 0.00682,
+          "splits": 0.00609
+        },
+        {
+          "feature": "NDTI_mean_2021_spring",
+          "gain": 0.00638,
+          "splits": 0.00386
+        }
+      ],
+      "shap": [
+        {
+          "feature": "NDRE2_q25_2021_summer",
+          "mean_abs": 0.02718,
+          "tree_cover": 0.00084,
+          "grassland": 0.00089,
+          "cropland": 0.00225,
+          "built_up": 0.15903,
+          "bare_sparse": 3e-05,
+          "water": 6e-05
+        },
+        {
+          "feature": "CRI1_q75_2021_autumn",
+          "mean_abs": 0.0217,
+          "tree_cover": 0.1278,
+          "grassland": 0.00144,
+          "cropland": 0.00061,
+          "built_up": 0.0003,
+          "bare_sparse": 2e-05,
+          "water": 3e-05
+        },
+        {
+          "feature": "CRI1_q75_2020_autumn",
+          "mean_abs": 0.01063,
+          "tree_cover": 0.04764,
+          "grassland": 0.00297,
+          "cropland": 0.01288,
+          "built_up": 0.00025,
+          "bare_sparse": 4e-05,
+          "water": 2e-05
+        },
+        {
+          "feature": "TC_wet_mean_2020_autumn",
+          "mean_abs": 0.01028,
+          "tree_cover": 0.00685,
+          "grassland": 0.01438,
+          "cropland": 0.0381,
+          "built_up": 0.00223,
+          "bare_sparse": 9e-05,
+          "water": 2e-05
+        },
+        {
+          "feature": "CRI1_q25_2021_summer",
+          "mean_abs": 0.0086,
+          "tree_cover": 0.00039,
+          "grassland": 0.00107,
+          "cropland": 0.00504,
+          "built_up": 0.04456,
+          "bare_sparse": 0.0005,
+          "water": 4e-05
+        },
+        {
+          "feature": "CRI1_std_2020_autumn",
+          "mean_abs": 0.00603,
+          "tree_cover": 0.00512,
+          "grassland": 0.00161,
+          "cropland": 0.02811,
+          "built_up": 0.00128,
+          "bare_sparse": 4e-05,
+          "water": 2e-05
+        },
+        {
+          "feature": "B05_q75_2021_summer",
+          "mean_abs": 0.00568,
+          "tree_cover": 0.03183,
+          "grassland": 0.001,
+          "cropland": 0.00036,
+          "built_up": 0.00083,
+          "bare_sparse": 4e-05,
+          "water": 1e-05
+        },
+        {
+          "feature": "TC_green_std_2021_summer",
+          "mean_abs": 0.00542,
+          "tree_cover": 0.00109,
+          "grassland": 0.00083,
+          "cropland": 0.00964,
+          "built_up": 0.0206,
+          "bare_sparse": 0.00025,
+          "water": 9e-05
+        },
+        {
+          "feature": "CRI1_q75_2021_summer",
+          "mean_abs": 0.00461,
+          "tree_cover": 0.02642,
+          "grassland": 0.00058,
+          "cropland": 0.00043,
+          "built_up": 0.00018,
+          "bare_sparse": 4e-05,
+          "water": 0.0
+        },
+        {
+          "feature": "CRI1_std_2021_summer",
+          "mean_abs": 0.00454,
+          "tree_cover": 0.00902,
+          "grassland": 0.00042,
+          "cropland": 0.01054,
+          "built_up": 0.00716,
+          "bare_sparse": 5e-05,
+          "water": 3e-05
+        },
+        {
+          "feature": "NDTI_q25_2021_spring",
+          "mean_abs": 0.00452,
+          "tree_cover": 0.00205,
+          "grassland": 0.00239,
+          "cropland": 0.01109,
+          "built_up": 0.01153,
+          "bare_sparse": 4e-05,
+          "water": 2e-05
+        },
+        {
+          "feature": "IRECI_q75_2020_autumn",
+          "mean_abs": 0.00438,
+          "tree_cover": 0.00091,
+          "grassland": 0.00033,
+          "cropland": 0.00015,
+          "built_up": 0.02488,
+          "bare_sparse": 2e-05,
+          "water": 1e-05
+        },
+        {
+          "feature": "TC_wet_mean_2021_autumn",
+          "mean_abs": 0.0043,
+          "tree_cover": 0.00148,
+          "grassland": 0.00847,
+          "cropland": 0.01508,
+          "built_up": 0.00067,
+          "bare_sparse": 6e-05,
+          "water": 2e-05
+        },
+        {
+          "feature": "NDTI_q25_2021_summer",
+          "mean_abs": 0.00422,
+          "tree_cover": 0.00037,
+          "grassland": 0.00132,
+          "cropland": 0.00035,
+          "built_up": 0.02311,
+          "bare_sparse": 0.0001,
+          "water": 6e-05
+        },
+        {
+          "feature": "B05_q75_2021_autumn",
+          "mean_abs": 0.0041,
+          "tree_cover": 0.01755,
+          "grassland": 0.00216,
+          "cropland": 0.00305,
+          "built_up": 0.00179,
+          "bare_sparse": 4e-05,
+          "water": 1e-05
+        },
+        {
+          "feature": "B05_q25_2021_autumn",
+          "mean_abs": 0.00332,
+          "tree_cover": 0.01591,
+          "grassland": 0.00354,
+          "cropland": 0.00023,
+          "built_up": 0.00017,
+          "bare_sparse": 6e-05,
+          "water": 2e-05
+        },
+        {
+          "feature": "TC_bright_mean_2020_spring",
+          "mean_abs": 0.00328,
+          "tree_cover": 0.00851,
+          "grassland": 0.00067,
+          "cropland": 0.01004,
+          "built_up": 0.00023,
+          "bare_sparse": 0.00018,
+          "water": 3e-05
+        },
+        {
+          "feature": "NDTI_q25_2020_spring",
+          "mean_abs": 0.00319,
+          "tree_cover": 0.00559,
+          "grassland": 0.0011,
+          "cropland": 0.00875,
+          "built_up": 0.00357,
+          "bare_sparse": 7e-05,
+          "water": 3e-05
+        },
+        {
+          "feature": "TC_wet_mean_2021_summer",
+          "mean_abs": 0.00297,
+          "tree_cover": 0.0009,
+          "grassland": 0.00892,
+          "cropland": 0.0062,
+          "built_up": 0.00165,
+          "bare_sparse": 7e-05,
+          "water": 6e-05
+        },
+        {
+          "feature": "NDTI_median_2021_summer",
+          "mean_abs": 0.00263,
+          "tree_cover": 0.00104,
+          "grassland": 0.00178,
+          "cropland": 0.00058,
+          "built_up": 0.01232,
+          "bare_sparse": 4e-05,
+          "water": 1e-05
+        }
+      ],
+      "helpful": {
+        "type": "helpful",
+        "model": "LightGBM",
+        "explanation": "NDVI_mean features have positive TreeSHAP for high tree_cover predictions",
+        "rationale": "High NDVI physically indicates dense vegetation - the model learned a real physical relationship",
+        "sample_tree_cover": 1.0,
+        "ndvi_features_shap": {
+          "NDVI_mean_2020_spring": 0.00018048266051671485,
+          "NDVI_mean_2020_summer": -0.00023415531792232228,
+          "NDVI_mean_2020_autumn": -6.854393292662483e-05,
+          "NDVI_mean_2021_spring": 0.00020096928150256023,
+          "NDVI_mean_2021_summer": 0.00010683784639500335,
+          "NDVI_mean_2021_autumn": 1.946828143338669e-05
+        }
+      }
+    }
+  }
+}
