@@ -31,8 +31,8 @@ _original_city_features_dir = v5_mod.city_features_dir
 
 
 def _city_features_dir_v8(city):
-    """Override: point to features_v8/ instead of features/."""
-    return os.path.join(v5_mod.city_dir(city), "features_v8")
+    """Override: point to features_v7/ (reuse V7 data, no duplication)."""
+    return os.path.join(v5_mod.city_dir(city), "features_v7")
 
 
 # Patch the module-level function so sweep_mlp_v6 picks it up

@@ -1,14 +1,11 @@
 #!/usr/bin/env python3
 """
-V8 Overnight Pipeline: Full Rust download + extract + MLP sweep.
+V8 Overnight Pipeline: Download new cities + extract features + MLP sweep.
 
-Identical to V7 but with 40 more training tiles (97 total) targeting
-landscape diversity: Mediterranean shrubland/bare, Nordic cropland,
-Atlantic grassland, continental steppe, coastal wetlands, alpine.
-
-All S2 and SAR downloads go through the Rust binary (new cloud mask + Q1
-aggregation + DEFLATE compression). Feature extraction with spatial NN
-NaN fill (no median imputation). Labels via Python WorldCover.
+REUSES raw_v7/ and features_v7/ directories for ALL cities:
+  - Old cities already have data → skipped automatically
+  - New V8 cities get downloaded/extracted into the SAME dirs (raw_v7, features_v7)
+  - Only the SWEEP OUTPUT goes to models_v8_sweep/
 
 Usage:
     python scripts/run_overnight_v8.py                  # full run
@@ -18,7 +15,6 @@ Usage:
 
 import argparse
 import os
-import shutil
 import subprocess
 import sys
 import time
@@ -28,7 +24,6 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
 sys.path.insert(0, PROJECT_ROOT)
 
-# Import city configs and label logic from V5 pipeline
 from scripts.run_multi_city_pipeline_v5 import (
     CITIES, TRAIN_CITIES, TEST_CITIES,
     CityConfig,
@@ -40,38 +35,29 @@ from scripts.run_multi_city_pipeline_v5 import (
 
 MODELS_DIR = os.path.join(PROJECT_ROOT, "data", "cities", "models_v8_sweep")
 
-
-# V8-specific directories — separate from V7 to allow comparison
-def city_raw_v8(city: CityConfig) -> str:
-    return os.path.join(city_dir(city), "raw_v8")
-
-def city_features_v8(city: CityConfig) -> str:
-    return os.path.join(city_dir(city), "features_v8")
-
 YEARS = [2020, 2021]
 YEAR_PAIRS = ["2020_2021"]
+
+
+# Reuse V7 directories — no duplication
+def city_raw(city: CityConfig) -> str:
+    return os.path.join(city_dir(city), "raw_v7")
+
+def city_features(city: CityConfig) -> str:
+    return os.path.join(city_dir(city), "features_v7")
 
 
 def ts():
     return time.strftime("%H:%M:%S")
 
 
-# ===========================================================================
-# STAGE -1: ENSURE DIRECTORIES EXIST
-# ===========================================================================
-
-def ensure_v8_dirs(cities):
-    """Create all required directories before anything runs."""
-    ensure_all_dirs()  # V5 base dirs: city dirs, worldcover_tiles, etc.
+def ensure_dirs(cities):
+    ensure_all_dirs()
     os.makedirs(MODELS_DIR, exist_ok=True)
     for c in cities:
-        os.makedirs(city_raw_v8(c), exist_ok=True)
-        os.makedirs(city_features_v8(c), exist_ok=True)
+        os.makedirs(city_raw(c), exist_ok=True)
+        os.makedirs(city_features(c), exist_ok=True)
 
-
-# ===========================================================================
-# STAGE 0: ANCHORS
-# ===========================================================================
 
 def stage_anchors(cities):
     print(f"\n{'='*70}")
@@ -82,16 +68,11 @@ def stage_anchors(cities):
     print(f"  [OK] All anchors ready.")
 
 
-# ===========================================================================
-# STAGE 1: DOWNLOAD VIA RUST (S2 + SAR)
-# ===========================================================================
-
 def download_city(city: CityConfig):
-    """Download S2 + SAR composites for a city using the Rust binary."""
-    raw = city_raw_v8(city)
+    raw = city_raw(city)
     anchor = city_anchor_path(city)
 
-    # Check if already downloaded — both S2 AND SAR
+    # Check if already downloaded
     all_exist = True
     for year in YEARS:
         for season in ["spring", "summer", "autumn"]:
@@ -136,7 +117,7 @@ def download_city(city: CityConfig):
 
 def stage_download(cities, max_workers=1):
     print(f"\n{'='*70}")
-    print("STAGE 1: DOWNLOAD S2 + SAR (Rust)")
+    print("STAGE 1: DOWNLOAD S2 + SAR (Rust) — reusing raw_v7/")
     print(f"{'='*70}")
 
     if not os.path.exists(TERRAPULSE_BIN):
@@ -162,10 +143,6 @@ def stage_download(cities, max_workers=1):
     return len(failed) == 0
 
 
-# ===========================================================================
-# STAGE 2: LABELS (Python WorldCover — reuse from V5)
-# ===========================================================================
-
 def stage_labels(cities):
     print(f"\n{'='*70}")
     print("STAGE 2: WORLDCOVER LABELS")
@@ -175,13 +152,9 @@ def stage_labels(cities):
     print(f"  [OK] All labels ready.")
 
 
-# ===========================================================================
-# STAGE 3: EXTRACT FEATURES (Rust CLI)
-# ===========================================================================
-
 def stage_extract(cities):
     print(f"\n{'='*70}")
-    print("STAGE 3: EXTRACT FEATURES (Rust CLI — spatial NN fill)")
+    print("STAGE 3: EXTRACT FEATURES (Rust CLI) — reusing features_v7/")
     print(f"{'='*70}")
 
     if not os.path.exists(TERRAPULSE_BIN):
@@ -191,10 +164,9 @@ def stage_extract(cities):
     failed = []
     for city in cities:
         year_pairs_str = " ".join(YEAR_PAIRS)
-        raw = city_raw_v8(city)
-        feat = city_features_v8(city)
+        raw = city_raw(city)
+        feat = city_features(city)
 
-        # Check if all already extracted
         all_done = all(
             os.path.exists(os.path.join(feat, f"features_rust_{yp}.parquet"))
             for yp in YEAR_PAIRS
@@ -229,10 +201,6 @@ def stage_extract(cities):
     return len(failed) == 0
 
 
-# ===========================================================================
-# STAGE 4: MLP TRAINING
-# ===========================================================================
-
 def stage_train():
     print(f"\n{'='*70}")
     print("STAGE 4: MLP TRAINING (sweep_mlp_v8)")
@@ -253,22 +221,14 @@ def stage_train():
     print(f"\n[{ts()}] Training complete in {elapsed/3600:.1f}h (exit={result.returncode})")
 
 
-# ===========================================================================
-# MAIN
-# ===========================================================================
-
 def main():
     parser = argparse.ArgumentParser(description="V8 Overnight Pipeline")
     parser.add_argument("--test-cities", type=int, default=0,
                         help="Run on first N cities only (for testing)")
-    parser.add_argument("--skip-download", action="store_true",
-                        help="Skip download, use existing TIFs")
-    parser.add_argument("--skip-extract", action="store_true",
-                        help="Skip feature extraction")
-    parser.add_argument("--skip-labels", action="store_true",
-                        help="Skip WorldCover label creation")
-    parser.add_argument("--skip-train", action="store_true",
-                        help="Skip MLP training")
+    parser.add_argument("--skip-download", action="store_true")
+    parser.add_argument("--skip-extract", action="store_true")
+    parser.add_argument("--skip-labels", action="store_true")
+    parser.add_argument("--skip-train", action="store_true")
     args = parser.parse_args()
 
     cities = CITIES
@@ -276,45 +236,40 @@ def main():
         cities = CITIES[:args.test_cities]
         print(f"=== TEST MODE: {args.test_cities} cities ===")
 
+    train = [c for c in cities if not c.is_test]
+    test = [c for c in cities if c.is_test]
     print(f"V8 Pipeline — {len(cities)} cities, years {YEARS}")
-    print(f"  Training: {len([c for c in cities if not c.is_test])}")
-    print(f"  Test:     {len([c for c in cities if c.is_test])}")
-    print(f"  Rust binary: {TERRAPULSE_BIN}")
-    print(f"  Exists: {os.path.exists(TERRAPULSE_BIN)}")
+    print(f"  Training: {len(train)}, Test: {len(test)}")
+    print(f"  Raw data:   raw_v7/  (reused, no duplication)")
+    print(f"  Features:   features_v7/  (reused, no duplication)")
+    print(f"  Models out: {MODELS_DIR}")
+    print(f"  Rust binary: {TERRAPULSE_BIN} (exists={os.path.exists(TERRAPULSE_BIN)})")
 
     t_total = time.time()
 
-    # Create all directories upfront
-    ensure_v8_dirs(cities)
-
-    # Stage 0: Anchors
+    ensure_dirs(cities)
     stage_anchors(cities)
 
-    # Stage 1: Download S2 + SAR via Rust (with retry for stragglers)
     if not args.skip_download:
-        for attempt in range(1, 4):  # up to 3 attempts
+        for attempt in range(1, 4):
             ok = stage_download(cities)
             if ok:
                 break
             if attempt < 3:
-                print(f"\n  Retry {attempt}/3: re-checking incomplete cities...")
+                print(f"\n  Retry {attempt}/3...")
             else:
-                print("\n  FATAL: Download stage still has failures after 3 attempts — stopping.")
-                print("  Re-run with same command to retry failed cities.")
+                print("\n  FATAL: Download failures after 3 attempts.")
                 sys.exit(1)
 
-    # Stage 2: Labels
     if not args.skip_labels:
         stage_labels(cities)
 
-    # Stage 3: Extract features via Rust
     if not args.skip_extract:
         ok = stage_extract(cities)
         if not ok:
-            print("\n  FATAL: Extract stage had failures — stopping.")
+            print("\n  FATAL: Extract stage had failures.")
             sys.exit(1)
 
-    # Stage 4: Train
     if not args.skip_train:
         stage_train()
 
