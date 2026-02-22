@@ -191,6 +191,61 @@ CITIES = [
     CityConfig("oslo",        [10.65, 59.87, 10.85, 60.00], 32632, "N57E009"),
     CityConfig("gdansk",      [18.55, 54.32, 18.75, 54.45], 32634, "N54E018"),
 
+    # === V8 — Mediterranean Shrubland & Bare Ground (satellite-verified) ===
+    CityConfig("castilla_meseta",     [-3.10, 39.20, -2.85, 39.35], 32630, "N39W006"),
+    CityConfig("extremadura_dehesa",  [-6.15, 39.10, -5.90, 39.25], 32629, "N39W009"),
+    CityConfig("aragon_steppe",       [-0.70, 41.05, -0.45, 41.20], 32630, "N39W003"),
+    CityConfig("murcia_drylands",     [-1.60, 38.00, -1.35, 38.15], 32630, "N36W003"),
+    CityConfig("tabernas_desert",     [-2.40, 37.00, -2.15, 37.15], 32630, "N36W003"),
+    CityConfig("bardenas_reales",     [-1.57, 42.13, -1.32, 42.27], 32630, "N42W003"),
+    CityConfig("sardinia_maquis",     [9.00, 39.80, 9.25, 39.95], 32632, "N39E009"),
+    CityConfig("crete_phrygana",      [24.80, 35.20, 25.05, 35.35], 32635, "N33E024"),
+    CityConfig("corsica_interior",    [9.10, 41.85, 9.35, 42.00], 32632, "N39E009"),
+    CityConfig("thessaly_scrubland",  [22.30, 39.50, 22.55, 39.65], 32634, "N39E021"),
+    CityConfig("thrace_steppe",       [26.40, 41.00, 26.65, 41.15], 32635, "N39E024"),
+    CityConfig("el_ejido_greenhouses",[-2.94, 36.70, -2.69, 36.84], 32630, "N36W003"),
+
+    # === V8 — Nordic, Baltic & Extreme Cold Cropland ===
+    CityConfig("skane_fields",        [13.40, 55.70, 13.65, 55.85], 32633, "N54E012"),
+    CityConfig("trondelag_farmland",  [10.30, 63.35, 10.55, 63.50], 32632, "N63E009"),
+    CityConfig("estonian_plains",     [25.50, 58.50, 25.75, 58.65], 32635, "N57E024"),
+    CityConfig("latvian_farmland",    [24.00, 56.85, 24.25, 57.00], 32635, "N54E021"),
+    CityConfig("lithuanian_lowland",  [23.80, 55.60, 24.05, 55.75], 32635, "N54E021"),
+    CityConfig("finnish_coastal_farm",[24.00, 60.40, 24.25, 60.55], 32635, "N60E021"),
+    CityConfig("iceland_highlands",   [-19.48, 64.13, -19.23, 64.27], 32627, "N63W021"),
+    CityConfig("lapland_tundra",      [27.07, 68.28, 27.32, 68.42], 32635, "N66E027"),
+
+    # === V8 — Atlantic Wet Grassland & Specialty Forest ===
+    CityConfig("galicia_pastures",    [-8.60, 42.80, -8.35, 42.95], 32629, "N42W009"),
+    CityConfig("brittany_bocage",     [-3.40, 48.10, -3.15, 48.25], 32630, "N48W006"),
+    CityConfig("ireland_bog_pasture", [-7.80, 53.20, -7.55, 53.35], 32629, "N51W009"),
+    CityConfig("wales_upland",        [-3.90, 52.00, -3.65, 52.15], 32630, "N51W006"),
+    CityConfig("les_landes_forest",   [-0.93, 44.08, -0.68, 44.22], 32630, "N42W003"),
+
+    # === V8 — Continental Steppe & Specialty Cropland ===
+    CityConfig("hortobagy_puszta",    [21.02, 47.53, 21.27, 47.67], 32634, "N45E021"),
+    CityConfig("wallachian_steppe",   [25.50, 44.20, 25.75, 44.35], 32635, "N42E024"),
+    CityConfig("thracian_farmland",   [25.00, 42.10, 25.25, 42.25], 32635, "N42E024"),
+    CityConfig("vojvodina_cropland",  [20.20, 45.30, 20.45, 45.45], 32634, "N45E018"),
+    CityConfig("jaen_olives",         [-3.92, 37.78, -3.67, 37.92], 32630, "N36W006"),
+
+    # === V8 — Coastal Wetlands & Deltas ===
+    CityConfig("camargue_wetland",    [4.40, 43.40, 4.65, 43.55], 32631, "N42E003"),
+    CityConfig("ebro_delta",          [0.65, 40.60, 0.90, 40.75], 32631, "N39E000"),
+    CityConfig("wadden_tidal",        [8.00, 53.55, 8.25, 53.70], 32632, "N51E006"),
+    CityConfig("danube_delta",        [29.32, 44.98, 29.57, 45.12], 32635, "N45E027"),
+
+    # === V8 — Mountain Transitions & Extreme Alpine ===
+    CityConfig("pyrenees_meadows",    [0.40, 42.60, 0.65, 42.75], 32631, "N42E000"),
+    CityConfig("norwegian_fjord",     [7.00, 61.50, 7.25, 61.65], 32632, "N60E006"),
+    CityConfig("carpathian_alpine",   [24.50, 47.50, 24.75, 47.65], 32635, "N45E024"),
+    CityConfig("swiss_alps_high",     [7.62, 45.93, 7.88, 46.07], 32632, "N45E006"),
+
+    # === V8 — Extra fills (port + dense urban diversity) ===
+    CityConfig("foggia_wheat",        [15.43, 41.38, 15.68, 41.52], 32633, "N39E015"),
+    CityConfig("jutland_farmland",    [8.82, 56.18, 9.07, 56.32], 32632, "N54E006"),
+
+
     # === 6 VALIDATION CITIES (diverse biomes) ===
     CityConfig("munich",      [11.45, 48.08, 11.70, 48.22], 32632, "N48E009",
                is_test=True),
