@@ -12,10 +12,17 @@ use crate::reproject::{self, GeoTransform};
 use crate::stac::StacItem;
 // ── Constants matching composite.py ──
 
-/// SCL classes to exclude (cloud, shadow, snow, saturated, etc.)
-// Note: We DO NOT exclude 2 (Dark Area Pixels) because S2 often misclassifies
-// clear water / dark forests as 2. Excluding it creates NODATA holes over lakes.
-const SCL_EXCLUDE: [u8; 7] = [0, 1, 3, 8, 9, 10, 11];
+/// SCL classes to exclude (cloud, shadow, saturated, etc.)
+/// Matches the reference algorithm:
+///   1 = SATURATED_DEFECTIVE
+///   3 = CLOUD_SHADOW
+///   7 = CLOUD_LOW_PROBA / UNCLASSIFIED  (haze contaminates Q1 composites)
+///   8 = CLOUD_MEDIUM_PROBA
+///   9 = CLOUD_HIGH_PROBA
+///  10 = THIN_CIRRUS
+/// Note: SCL 0 (no_data) is handled implicitly by the is_finite() check.
+///       SCL 11 (snow) is kept — rare in our study area and provides valid data.
+const SCL_EXCLUDE: [u8; 6] = [1, 3, 7, 8, 9, 10];
 
 /// Spectral bands to download (same order as composite.py)
 const SPECTRAL_BANDS: [&str; 10] = [
@@ -237,12 +244,11 @@ pub async fn download_and_composite(
                 }
                 if !vals.is_empty() {
                     vals.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
-                    let median = if vals.len() % 2 == 0 {
-                        (vals[vals.len() / 2 - 1] + vals[vals.len() / 2]) / 2.0
-                    } else {
-                        vals[vals.len() / 2]
-                    };
-                    medians.push(median);
+                    // TARGET ALGORITHM: Take the value of the first quartile (25th percentile)
+                    // instead of the median (50th percentile).
+                    let q1_idx = vals.len() / 4;
+                    let quartile = vals[q1_idx];
+                    medians.push(quartile);
                 } else {
                     medians.push(NODATA_VAL);
                 }
@@ -286,27 +292,43 @@ async fn download_one_scene(
 
     let src_gt = GeoTransform::from_cog(&src_meta.pixel_scale, &src_meta.tiepoint);
 
-    // Verify CRS match (or close enough)
-    if src_meta.epsg != 0 && dst_epsg != 0 && src_meta.epsg != dst_epsg {
-        // For now, skip scenes with different CRS (rare in same-zone scenes)
-        anyhow::bail!(
-            "CRS mismatch: source EPSG:{} != target EPSG:{}",
-            src_meta.epsg,
-            dst_epsg
+    // Check CRS — if different, we'll use cross-CRS resampling instead of bailing
+    let epsg_mismatch = src_meta.epsg != 0 && dst_epsg != 0 && src_meta.epsg != dst_epsg;
+    if epsg_mismatch {
+        eprintln!(
+            "    (cross-CRS: source EPSG:{} → target EPSG:{})",
+            src_meta.epsg, dst_epsg
         );
     }
 
     // Calculate which source pixels we need (target bbox in source pixel coords)
+    // When CRS differs, transform target corners to source CRS first
     let (tl_gx, tl_gy) = dst_gt.pixel_to_geo(0.0, 0.0);
     let (br_gx, br_gy) = dst_gt.pixel_to_geo(dst_w as f64, dst_h as f64);
 
-    let (tl_sx, tl_sy) = src_gt.geo_to_pixel(tl_gx, tl_gy);
-    let (br_sx, br_sy) = src_gt.geo_to_pixel(br_gx, br_gy);
+    let (tl_sx, tl_sy, br_sx, br_sy) = if epsg_mismatch {
+        let (dst_zone, dst_north) = reproject::epsg_to_zone(dst_epsg);
+        let (src_zone, src_north) = reproject::epsg_to_zone(src_meta.epsg);
+        let (tl_e, tl_n) = reproject::utm_to_utm(tl_gx, tl_gy, dst_zone, dst_north, src_zone, src_north);
+        let (br_e, br_n) = reproject::utm_to_utm(br_gx, br_gy, dst_zone, dst_north, src_zone, src_north);
+        let (tl_sx, tl_sy) = src_gt.geo_to_pixel(tl_e, tl_n);
+        let (br_sx, br_sy) = src_gt.geo_to_pixel(br_e, br_n);
+        (tl_sx, tl_sy, br_sx, br_sy)
+    } else {
+        let (tl_sx, tl_sy) = src_gt.geo_to_pixel(tl_gx, tl_gy);
+        let (br_sx, br_sy) = src_gt.geo_to_pixel(br_gx, br_gy);
+        (tl_sx, tl_sy, br_sx, br_sy)
+    };
 
     let src_x0 = (tl_sx.min(br_sx).floor() as i64 - 2).max(0) as u32;
     let src_y0 = (tl_sy.min(br_sy).floor() as i64 - 2).max(0) as u32;
     let src_x1 = ((tl_sx.max(br_sx).ceil() as u32 + 2).min(src_meta.width)).max(src_x0 + 1);
     let src_y1 = ((tl_sy.max(br_sy).ceil() as u32 + 2).min(src_meta.height)).max(src_y0 + 1);
+
+    // If source pixels don't overlap target at all, skip this scene
+    if src_x0 >= src_meta.width || src_y0 >= src_meta.height {
+        anyhow::bail!("Scene does not overlap target grid");
+    }
 
     let src_bbox = PixelBbox {
         x0: src_x0,
@@ -317,6 +339,7 @@ async fn download_one_scene(
 
     // Download all bands + SCL concurrently
     let mut band_futures = Vec::new();
+    let src_epsg_for_bands = src_meta.epsg;
     for bname in SPECTRAL_BANDS.iter().chain(std::iter::once(&"SCL")) {
         let url = band_urls
             .get(*bname)
@@ -384,17 +407,26 @@ async fn download_one_scene(
         band_data.push(data);
     }
 
-    // Process spectral bands: resample each to target grid
+    // Process spectral bands: resample each to target grid, freeing raw data immediately
     let n_pixels = dst_w * dst_h;
     let mut bands = Vec::with_capacity(n_bands);
 
-    for bi in 0..n_bands {
-        let (ref raw_pixels, raw_w, raw_h, ref raw_gt) = band_data[bi];
+    // Extract SCL (last element) first so we can consume spectral bands freely
+    let scl_entry = band_data.pop().unwrap(); // SCL is always last
 
-        let mut resampled = reproject::resample_bilinear_par(
-            raw_pixels, raw_w, raw_h, raw_gt, dst_w, dst_h, dst_gt,
-        );
-        // Mask Sentinel-2 nodata (0) to NaN — S2 L2A uses 0 for missing/edge pixels
+    // Consume spectral bands — each raw buffer is freed right after resampling
+    for (raw_pixels, raw_w, raw_h, raw_gt) in band_data.into_iter() {
+        let mut resampled = if epsg_mismatch {
+            reproject::resample_bilinear_cross_crs(
+                &raw_pixels, raw_w, raw_h, &raw_gt, src_epsg_for_bands,
+                dst_w, dst_h, dst_gt, dst_epsg,
+            )
+        } else {
+            reproject::resample_bilinear_par(
+                &raw_pixels, raw_w, raw_h, &raw_gt, dst_w, dst_h, dst_gt,
+            )
+        };
+        // raw_pixels is dropped here — frees source tile memory immediately
         for v in resampled.iter_mut() {
             if *v == 0.0 {
                 *v = f32::NAN;
@@ -403,14 +435,21 @@ async fn download_one_scene(
         bands.push(resampled);
     }
 
-    // Process SCL band (last in band_data) — MUST use nearest-neighbor
-    // because SCL is a categorical mask (class IDs). Bilinear would blend
-    // e.g. cloud=9 and clear=4 into 6.5, producing wrong classes.
+    // Process SCL band — nearest-neighbor (categorical mask)
     let scl_resampled = {
-        let (ref raw_pixels, raw_w, raw_h, ref raw_gt) = band_data[n_bands];
-
-        reproject::resample_nearest_par(raw_pixels, raw_w, raw_h, raw_gt, dst_w, dst_h, dst_gt)
+        let (ref raw_pixels, raw_w, raw_h, ref raw_gt) = scl_entry;
+        if epsg_mismatch {
+            reproject::resample_nearest_cross_crs(
+                raw_pixels, raw_w, raw_h, raw_gt, src_epsg_for_bands,
+                dst_w, dst_h, dst_gt, dst_epsg,
+            )
+        } else {
+            reproject::resample_nearest_par(raw_pixels, raw_w, raw_h, raw_gt, dst_w, dst_h, dst_gt)
+        }
     };
+    drop(scl_entry); // free SCL source data
+
+
 
     // Build cloud mask from SCL
     let mut valid_mask = vec![true; n_pixels];
@@ -477,7 +516,7 @@ fn write_composite_tif(
     Ok(())
 }
 
-/// Write a minimal GeoTIFF by hand (no tiff crate encoder dependency).
+/// Write a minimal GeoTIFF by hand with DEFLATE compression.
 fn write_geotiff_manual(
     w: &mut impl std::io::Write,
     width: u32,
@@ -486,11 +525,15 @@ fn write_geotiff_manual(
     pixel_data: &[u8],
     anchor: &AnchorRef,
 ) -> Result<()> {
-    // Strategy: write header, then all pixel data as a single strip,
-    // then IFD entries pointing to the strip.
-    // Actually, simpler: header → IFD → tag data → pixel data.
+    use flate2::write::ZlibEncoder;
+    use flate2::Compression;
+    use std::io::Write as _;
 
-    let data_bytes = pixel_data.len();
+    // Compress pixel data with zlib-wrapped DEFLATE (TIFF Compression=8)
+    let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
+    encoder.write_all(pixel_data)?;
+    let compressed = encoder.finish()?;
+    let compressed_bytes = compressed.len();
 
     // TIFF header (classic, little-endian)
     let ifd_offset: u32 = 8;
@@ -540,13 +583,13 @@ fn write_geotiff_manual(
         };
 
     // ImageWidth
-    write_entry(w, 256, 4, 1, width)?; // LONG — supports dimensions > 65535
+    write_entry(w, 256, 4, 1, width)?; // LONG
                                        // ImageLength
     write_entry(w, 257, 4, 1, height)?;
     // BitsPerSample (offset to array)
     write_entry(w, 258, 3, n_bands as u32, bps_offset)?;
-    // Compression = none
-    write_entry(w, 259, 3, 1, 1)?;
+    // Compression = DEFLATE (8)
+    write_entry(w, 259, 3, 1, 8)?;
     // PhotometricInterpretation = 1 (min-is-black)
     write_entry(w, 262, 3, 1, 1)?;
     // StripOffsets
@@ -555,8 +598,8 @@ fn write_geotiff_manual(
     write_entry(w, 277, 3, 1, n_bands as u32)?;
     // RowsPerStrip = height (single strip)
     write_entry(w, 278, 4, 1, height)?; // LONG to support height > 65535
-    // StripByteCounts
-    write_entry(w, 279, 4, 1, data_bytes as u32)?;
+    // StripByteCounts = compressed size
+    write_entry(w, 279, 4, 1, compressed_bytes as u32)?;
     // PlanarConfiguration = 1 (pixel-interleaved)
     write_entry(w, 284, 3, 1, 1)?;
     // SampleFormat (offset to array)
@@ -602,8 +645,8 @@ fn write_geotiff_manual(
     w.write_all(&1u16.to_le_bytes())?; // Count
     w.write_all(&(anchor.epsg as u16).to_le_bytes())?; // Value
 
-    // == Write pixel data ==
-    w.write_all(pixel_data)?;
+    // == Write compressed pixel data ==
+    w.write_all(&compressed)?;
 
     w.flush()?;
     Ok(())

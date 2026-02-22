@@ -166,6 +166,22 @@ CITIES = [
     CityConfig("almeria_coast",[-2.50, 36.78, -2.30, 36.90], 32630, "N36W003"),
     CityConfig("central_hungary",[19.50, 47.10, 19.75, 47.24], 32634, "N45E018"),
 
+    # === V7 — Nordic/Boreal (forest, wetland, sparse veg) ===
+    CityConfig("finnish_lakeland", [27.50, 61.80, 27.80, 61.95], 32636, "N60E027"),
+    CityConfig("swedish_forest",   [15.30, 57.30, 15.55, 57.45], 32633, "N57E015"),
+    CityConfig("scottish_highlands",[-5.20, 57.05, -4.95, 57.18], 32630, "N57W006"),
+
+    # === V7 — Mediterranean/Southern (dry cropland, bare, scrub) ===
+    CityConfig("sicily_interior",  [14.10, 37.40, 14.35, 37.53], 32633, "N36E012"),
+    CityConfig("alentejo_portugal",[-7.90, 38.10, -7.65, 38.25], 32629, "N36W009"),
+    CityConfig("peloponnese_rural",[22.00, 37.40, 22.25, 37.55], 32634, "N36E021"),
+
+    # === V7 — Rural mixed (cropland + forest + water, minimal built-up) ===
+    CityConfig("carpathian_romania",[24.60, 45.50, 24.85, 45.65], 32635, "N45E024"),
+    CityConfig("po_valley_rural",  [10.80, 44.90, 11.05, 45.05], 32632, "N42E009"),
+    CityConfig("dutch_polders",    [5.10, 52.55, 5.35, 52.70], 32631, "N51E003"),
+    CityConfig("danish_farmland",  [9.80, 55.30, 10.05, 55.45], 32632, "N54E009"),
+
     # === NEW — Fill gaps to reach 50 training ===
     CityConfig("dublin",      [-6.35, 53.30, -6.15, 53.42], 32629, "N51W009"),
     CityConfig("marseille",   [5.30, 43.25, 5.50, 43.38], 32631, "N42E003"),

@@ -33,7 +33,7 @@ enum Commands {
     /// Download Sentinel-2 composites via STAC
     Download {
         /// Bounding box [west, south, east, north] in WGS84
-        #[arg(long, num_args = 4)]
+        #[arg(long, num_args = 4, allow_hyphen_values = true)]
         bbox: Vec<f64>,
 
         /// EPSG code for the target CRS (e.g., 32632)
@@ -102,7 +102,7 @@ enum Commands {
     /// Run the full pipeline: download → extract → predict
     Pipeline {
         /// Bounding box [west, south, east, north] in WGS84
-        #[arg(long, num_args = 4)]
+        #[arg(long, num_args = 4, allow_hyphen_values = true)]
         bbox: Vec<f64>,
 
         /// EPSG code for the target CRS

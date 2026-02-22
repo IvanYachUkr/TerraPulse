@@ -79,42 +79,16 @@ pub async fn download_year(
     anchor: &AnchorRef,
 ) -> Result<()> {
     let (r1, r2, r3) = tokio::join!(
-        download_season(
-            client,
-            bbox,
-            epsg,
-            year,
-            "spring",
-            region_name,
-            raw_dir,
-            anchor
-        ),
-        download_season(
-            client,
-            bbox,
-            epsg,
-            year,
-            "summer",
-            region_name,
-            raw_dir,
-            anchor
-        ),
-        download_season(
-            client,
-            bbox,
-            epsg,
-            year,
-            "autumn",
-            region_name,
-            raw_dir,
-            anchor
-        ),
+        download_season(client, bbox, epsg, year, "spring", region_name, raw_dir, anchor),
+        download_season(client, bbox, epsg, year, "summer", region_name, raw_dir, anchor),
+        download_season(client, bbox, epsg, year, "autumn", region_name, raw_dir, anchor),
     );
     r1?;
     r2?;
     r3?;
     Ok(())
 }
+
 
 // ---- SAR (Sentinel-1) download ----
 
