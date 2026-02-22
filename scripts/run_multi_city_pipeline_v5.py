@@ -117,21 +117,18 @@ CITIES = [
     CityConfig("amsterdam",   [4.75, 52.30, 4.95, 52.40], 32631, "N51E003"),
     CityConfig("hambach_mine",[6.40, 50.85, 6.60, 50.98], 32632, "N48E006"),
     CityConfig("welzow_mine", [14.10, 51.50, 14.35, 51.65], 32633, "N51E012"),
-    CityConfig("amiens",      [2.15, 49.82, 2.42, 49.96], 32631, "N48E000"),
-    CityConfig("magdeburg",   [11.50, 52.05, 11.75, 52.20], 32632, "N51E009"),
-    CityConfig("ulm",         [9.85, 48.33, 10.10, 48.47], 32632, "N48E009"),
+
+
     CityConfig("salzburg",    [12.95, 47.73, 13.15, 47.87], 32633, "N45E012"),
-    CityConfig("schwerin",    [11.30, 53.55, 11.55, 53.70], 32632, "N51E009"),
+
     CityConfig("malmo",       [12.90, 55.53, 13.15, 55.68], 32633, "N54E012"),
     # V4 cities → training (except Nuremberg → back to test)
-    CityConfig("frankfurt",   [8.55, 50.05, 8.80, 50.18], 32632, "N48E006"),
-    CityConfig("regensburg",  [12.00, 48.95, 12.20, 49.07], 32633, "N48E012"),
+
 
     # === NEW — Northwestern Europe ===
     CityConfig("london",      [-0.25, 51.42, 0.05, 51.56], 32631, "N51W003"),
     CityConfig("brussels",    [4.30, 50.80, 4.50, 50.92], 32631, "N48E003"),
-    CityConfig("rotterdam",   [4.35, 51.85, 4.55, 51.97], 32631, "N51E003"),
-    CityConfig("antwerp",     [4.30, 51.15, 4.50, 51.28], 32631, "N51E003"),
+
     CityConfig("paris_south", [2.25, 48.75, 2.50, 48.89], 32631, "N48E000"),
 
     # === NEW — Central Europe ===
@@ -241,9 +238,17 @@ CITIES = [
     CityConfig("carpathian_alpine",   [24.50, 47.50, 24.75, 47.65], 32635, "N45E024"),
     CityConfig("swiss_alps_high",     [7.62, 45.93, 7.88, 46.07], 32632, "N45E006"),
 
-    # === V8 — Extra fills (port + dense urban diversity) ===
+    # === V8 — Extra fills (replacing redundant German/Benelux/French urban) ===
     CityConfig("foggia_wheat",        [15.43, 41.38, 15.68, 41.52], 32633, "N39E015"),
     CityConfig("jutland_farmland",    [8.82, 56.18, 9.07, 56.32], 32632, "N54E006"),
+    CityConfig("donana_marshes",      [-6.50, 36.90, -6.25, 37.05], 32630, "N36W009"),
+    CityConfig("andalusia_olives",    [-4.20, 37.50, -3.95, 37.65], 32630, "N36W006"),
+    CityConfig("central_spain_plateau",[-3.50, 40.60, -3.25, 40.75], 32630, "N39W006"),
+    CityConfig("uppland_farmland",    [17.60, 59.60, 17.85, 59.75], 32633, "N57E015"),
+    CityConfig("finnish_bog",         [26.00, 63.50, 26.25, 63.65], 32636, "N63E024"),
+    CityConfig("mecklenburg_lakes",   [12.60, 53.40, 12.85, 53.55], 32633, "N51E012"),
+    CityConfig("danube_floodplain",   [18.80, 47.80, 19.05, 47.95], 32634, "N45E018"),
+    CityConfig("cretan_coast",        [25.10, 35.30, 25.35, 35.45], 32635, "N33E024"),
 
 
     # === 6 VALIDATION CITIES (diverse biomes) ===
