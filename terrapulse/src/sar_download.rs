@@ -771,16 +771,30 @@ fn write_sar_tif(
     height: usize,
     anchor: &AnchorRef,
 ) -> Result<()> {
+    use flate2::write::ZlibEncoder;
+    use flate2::Compression;
     use std::io::Write;
 
     let n_pixels = width * height;
     let n_bands = 2u16;
 
+    // Build pixel data first: interleaved [VV_0, VH_0, VV_1, VH_1, ...]
+    let mut pixel_bytes = Vec::with_capacity(n_pixels * 8); // 2 bands * 4 bytes
+    for i in 0..n_pixels {
+        pixel_bytes.extend_from_slice(&vv[i].to_le_bytes());
+        pixel_bytes.extend_from_slice(&vh[i].to_le_bytes());
+    }
+
+    // Compress with zlib-wrapped DEFLATE (TIFF Compression=8)
+    let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
+    encoder.write_all(&pixel_bytes)?;
+    let compressed = encoder.finish()?;
+    let compressed_bytes = compressed.len() as u32;
+
     // Build GeoTIFF with same structure as composite.rs
     let gt = &anchor.geo_transform;
     let epsg = anchor.epsg;
 
-    // Simple uncompressed GeoTIFF
     let mut buf = Vec::new();
 
     // TIFF header
@@ -828,25 +842,22 @@ fn write_sar_tif(
     let nodata_off = geo_key_off + 32; // 16 * u16
     let strip_data_off = nodata_off + nodata_str.len() as u32;
 
-    let total_data_bytes = n_pixels as u32 * 4 * n_bands as u32;
-
     // BitsPerSample inline: two u16 values (32, 32) packed into a u32 (little-endian)
     let bps_inline: u32 = 32u32 | (32u32 << 16);
     // SampleFormat inline: two u16 values (3, 3) packed into a u32 (IEEEFP=3)
     let sf_inline: u32 = 3u32 | (3u32 << 16);
 
     // Write IFD entries (must be sorted by tag number!)
-    // Using PlanarConfiguration=1 (CHUNKY) with interleaved pixel data
     let ifd_entries: Vec<(u16, u16, u32, u32)> = vec![
-        (256, 4, 1, width as u32),                       // ImageWidth (LONG to support > 65535)
-        (257, 4, 1, height as u32),                      // ImageLength (LONG to support > 65535)
+        (256, 4, 1, width as u32),                       // ImageWidth
+        (257, 4, 1, height as u32),                      // ImageLength
         (258, 3, 2, bps_inline),                         // BitsPerSample = [32, 32] inline
-        (259, 3, 1, 1),                                  // Compression = None
+        (259, 3, 1, 8),                                  // Compression = DEFLATE
         (262, 3, 1, 1),                                  // PhotometricInterpretation = MinIsBlack
         (273, 4, 1, strip_data_off),                     // StripOffsets (1 strip)
         (277, 3, 1, n_bands as u32),                     // SamplesPerPixel = 2
         (278, 4, 1, height as u32),                      // RowsPerStrip
-        (279, 4, 1, total_data_bytes),                   // StripByteCounts
+        (279, 4, 1, compressed_bytes),                   // StripByteCounts = compressed
         (284, 3, 1, 1),                  // PlanarConfiguration = Chunky (interleaved)
         (339, 3, 2, sf_inline),          // SampleFormat = [IEEEFP, IEEEFP] inline
         (33550, 12, 3, pixel_scale_off), // ModelPixelScaleTag
@@ -877,11 +888,8 @@ fn write_sar_tif(
     }
     buf.write_all(nodata_str)?;
 
-    // Write pixel data: interleaved [VV_0, VH_0, VV_1, VH_1, ...]
-    for i in 0..n_pixels {
-        buf.write_all(&vv[i].to_le_bytes())?;
-        buf.write_all(&vh[i].to_le_bytes())?;
-    }
+    // Write compressed pixel data
+    buf.extend_from_slice(&compressed);
 
     std::fs::create_dir_all(path.parent().unwrap())?;
     std::fs::write(path, &buf)?;

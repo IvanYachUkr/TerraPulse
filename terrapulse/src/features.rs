@@ -338,44 +338,88 @@ fn compute_laplacian(img: &[f32], h: usize, w: usize) -> Vec<f32> {
 // Image preparation helpers
 // =====================================================================
 
-pub(crate) fn clean_band_nan_fill(raw: &[f32], h: usize, w: usize) -> Vec<f32> {
-    let mut sum = 0.0f64;
-    let mut n = 0u64;
-    for &v in &raw[..h * w] {
-        if v.is_finite() {
-            sum += v as f64;
-            n += 1;
+/// Fill NaN pixels in a band raster using spatial nearest-neighbor search.
+///
+/// For each NaN pixel, searches expanding rings (up to `max_radius` pixels)
+/// for the nearest finite pixel. Uses the median of all valid pixels found
+/// in the first ring that contains any. Falls back to 0.0 if no neighbor
+/// found within radius.
+pub fn fill_nan_spatial_band(data: &mut [f32], h: usize, w: usize, max_radius: usize) {
+    // Collect positions of NaN pixels
+    let mut nan_positions: Vec<(usize, usize)> = Vec::new();
+    for r in 0..h {
+        for c in 0..w {
+            if !data[r * w + c].is_finite() {
+                nan_positions.push((r, c));
+            }
         }
     }
-    let fill = if n > 0 { (sum / n as f64) as f32 } else { 0.0 };
-    raw[..h * w]
-        .iter()
-        .map(|&v| if v.is_finite() { v } else { fill })
-        .collect()
+
+    if nan_positions.is_empty() {
+        return;
+    }
+
+    // For each NaN pixel, search expanding rings
+    let mut fill_values: Vec<(usize, f32)> = Vec::with_capacity(nan_positions.len());
+
+    for &(nr, nc_pos) in &nan_positions {
+        let mut found = f32::NAN;
+        'rings: for radius in 1..=max_radius {
+            let mut ring_vals: Vec<f32> = Vec::new();
+            let r_min = nr.saturating_sub(radius);
+            let r_max = (nr + radius).min(h - 1);
+            let c_min = nc_pos.saturating_sub(radius);
+            let c_max = (nc_pos + radius).min(w - 1);
+
+            for r in r_min..=r_max {
+                for c in c_min..=c_max {
+                    // Only check pixels on the ring boundary (not interior)
+                    if r == r_min || r == r_max || c == c_min || c == c_max {
+                        let v = data[r * w + c];
+                        if v.is_finite() {
+                            ring_vals.push(v);
+                        }
+                    }
+                }
+            }
+
+            if !ring_vals.is_empty() {
+                // Use median of the ring for robustness
+                ring_vals.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
+                found = ring_vals[ring_vals.len() / 2];
+                break 'rings;
+            }
+        }
+
+        let fill = if found.is_finite() { found } else { 0.0 };
+        fill_values.push((nr * w + nc_pos, fill));
+    }
+
+    // Apply fills
+    for (idx, val) in fill_values {
+        data[idx] = val;
+    }
+}
+
+pub(crate) fn clean_band_nan_fill(raw: &[f32], h: usize, w: usize) -> Vec<f32> {
+    let mut out: Vec<f32> = raw[..h * w].to_vec();
+    fill_nan_spatial_band(&mut out, h, w, 5);
+    out
 }
 
 /// Same as clean_band_nan_fill but also clips to [0, 1].
 /// Matches Python's `_fill_nan(np.clip(band, 0.0, 1.0))` used before LBP.
 fn clean_band_nan_fill_clipped(raw: &[f32], h: usize, w: usize) -> Vec<f32> {
-    let mut sum = 0.0f64;
-    let mut n = 0u64;
-    for &v in &raw[..h * w] {
-        if v.is_finite() {
-            sum += v.clamp(0.0, 1.0) as f64;
-            n += 1;
-        }
-    }
-    let fill = if n > 0 { (sum / n as f64) as f32 } else { 0.0 };
-    raw[..h * w]
+    let mut out: Vec<f32> = raw[..h * w]
         .iter()
-        .map(|&v| {
-            if v.is_finite() {
-                v.clamp(0.0, 1.0)
-            } else {
-                fill
-            }
-        })
-        .collect()
+        .map(|&v| if v.is_finite() { v.clamp(0.0, 1.0) } else { f32::NAN })
+        .collect();
+    fill_nan_spatial_band(&mut out, h, w, 5);
+    // Clip any filled values too
+    for v in out.iter_mut() {
+        *v = v.clamp(0.0, 1.0);
+    }
+    out
 }
 
 #[inline(always)]

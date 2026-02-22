@@ -80,3 +80,4 @@ models/final_mlp_pyv3/
 # === Temporary scripts & logs ===
 terrapulse/check_s1_compression.py
 terrapulse/s1_tags.txt
+old_rust.rs

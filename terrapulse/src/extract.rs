@@ -313,6 +313,129 @@ pub fn extract_year_pair(
     }
 
     // =========================================================================
+    // Cell-level NaN fill: temporal (same season, other year) + spatial NN
+    // Applied BEFORE phenological features so pheno gets clean inputs.
+    // =========================================================================
+    {
+        let n_optical = n_seasons * features::N_FEAT;
+        let n_sar_per_season = if has_sar { sar_features::N_SAR_FEAT } else { 0 };
+        let _n_sar_total_cols = n_seasons * n_sar_per_season;
+        let n_row_len = rows.first().map_or(0, |r| r.len());
+
+        let mut temporal_fills = 0u64;
+        let mut spatial_fills = 0u64;
+        let mut zero_fills = 0u64;
+
+        // --- Step 1: Temporal fill ---
+        // For each feature in each season, if NaN, try same feature from same
+        // season but other year. E.g., autumn_2020_NDVI_mean -> autumn_2021_NDVI_mean
+        // Seasons come in groups of 3 per year: [spring0, summer0, autumn0, spring1, summer1, autumn1]
+        let n_years_loaded = n_seasons / 3;
+        if n_years_loaded == 2 {
+            // Map season index pairs: 0<->3 (spring), 1<->4 (summer), 2<->5 (autumn)
+            for row in rows.iter_mut() {
+                for season_in_year in 0..3 {
+                    let si_a = season_in_year;         // year 0
+                    let si_b = 3 + season_in_year;     // year 1
+
+                    // Optical features
+                    for fi in 0..features::N_FEAT {
+                        let idx_a = si_a * features::N_FEAT + fi;
+                        let idx_b = si_b * features::N_FEAT + fi;
+                        if !row[idx_a].is_finite() && row[idx_b].is_finite() {
+                            row[idx_a] = row[idx_b];
+                            temporal_fills += 1;
+                        } else if row[idx_a].is_finite() && !row[idx_b].is_finite() {
+                            row[idx_b] = row[idx_a];
+                            temporal_fills += 1;
+                        }
+                    }
+
+                    // SAR features
+                    if has_sar {
+                        for fi in 0..n_sar_per_season {
+                            let idx_a = n_optical + si_a * n_sar_per_season + fi;
+                            let idx_b = n_optical + si_b * n_sar_per_season + fi;
+                            if idx_a < n_row_len && idx_b < n_row_len {
+                                if !row[idx_a].is_finite() && row[idx_b].is_finite() {
+                                    row[idx_a] = row[idx_b];
+                                    temporal_fills += 1;
+                                } else if row[idx_a].is_finite() && !row[idx_b].is_finite() {
+                                    row[idx_b] = row[idx_a];
+                                    temporal_fills += 1;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // --- Step 2: Spatial NN fill ---
+        // For remaining NaN: search ring 1 first (immediate 8 neighbors),
+        // then expand to ring 5. Use median of valid neighbors.
+        let n_grid_rows = nr;
+        let n_grid_cols = nc;
+        let max_ring = 5usize;
+
+        for col in 0..n_row_len {
+            // Check if this column has any NaN
+            let has_any_nan = rows.iter().any(|r| col < r.len() && !r[col].is_finite());
+            if !has_any_nan {
+                continue;
+            }
+
+            for ci in 0..n_cells {
+                if col >= rows[ci].len() || rows[ci][col].is_finite() {
+                    continue;
+                }
+
+                let cr = ci / n_grid_cols;
+                let cc = ci % n_grid_cols;
+                let mut found = f32::NAN;
+
+                'rings: for ring in 1..=max_ring {
+                    let mut ring_vals: Vec<f32> = Vec::new();
+                    let r_min = cr.saturating_sub(ring);
+                    let r_max = (cr + ring).min(n_grid_rows - 1);
+                    let c_min = cc.saturating_sub(ring);
+                    let c_max = (cc + ring).min(n_grid_cols - 1);
+
+                    for r in r_min..=r_max {
+                        for c in c_min..=c_max {
+                            if r == r_min || r == r_max || c == c_min || c == c_max {
+                                let ni = r * n_grid_cols + c;
+                                if ni < n_cells && col < rows[ni].len() {
+                                    let v = rows[ni][col];
+                                    if v.is_finite() {
+                                        ring_vals.push(v);
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if !ring_vals.is_empty() {
+                        ring_vals.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
+                        found = ring_vals[ring_vals.len() / 2];
+                        break 'rings;
+                    }
+                }
+
+                if found.is_finite() {
+                    rows[ci][col] = found;
+                    spatial_fills += 1;
+                } else {
+                    rows[ci][col] = 0.0;
+                    zero_fills += 1;
+                }
+            }
+        }
+
+        println!("    NaN fill: {temporal_fills} temporal, {spatial_fills} spatial NN, {zero_fills} zero fallback");
+    }
+
+    // =========================================================================
     // Phenological cross-season features (V4)
     // For each year's 3 seasons (spring, summer, autumn), compute:
     //   curvature = summer - (spring + autumn) / 2  (seasonal peak)
@@ -547,38 +670,21 @@ pub fn extract_year_pair(
         }
     }
 
-    // Impute NaN values with column medians (covers all features including pheno)
+    // Final NaN safety net: any remaining NaN (e.g. from pheno features
+    // where all 3 seasons were still NaN after fill) gets zero-filled.
+    // This should be rare after temporal + spatial fill.
     let n_all_cols = rows.first().map_or(0, |r| r.len());
-    let mut nan_count = 0u64;
-    for col in 0..n_all_cols {
-        // Collect finite values for this column
-        let mut vals: Vec<f32> = rows
-            .iter()
-            .map(|row| row[col])
-            .filter(|v| v.is_finite())
-            .collect();
-
-        let has_nan = vals.len() < n_cells;
-        if !has_nan {
-            continue;
-        }
-
-        vals.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
-        let median = if vals.is_empty() {
-            0.0
-        } else {
-            vals[vals.len() / 2]
-        };
-
-        for row in rows.iter_mut() {
+    let mut final_nan_count = 0u64;
+    for row in rows.iter_mut() {
+        for col in 0..n_all_cols.min(row.len()) {
             if !row[col].is_finite() {
-                row[col] = median;
-                nan_count += 1;
+                row[col] = 0.0;
+                final_nan_count += 1;
             }
         }
     }
-    if nan_count > 0 {
-        println!("    Imputed {nan_count} NaN values");
+    if final_nan_count > 0 {
+        println!("    Final zero-fill for {final_nan_count} remaining NaN values");
     }
 
     // Add cell_id, valid_fraction columns

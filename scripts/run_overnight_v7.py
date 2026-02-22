@@ -335,13 +335,18 @@ def main():
     # Stage 0: Anchors
     stage_anchors(cities)
 
-    # Stage 1: Download S2 + SAR via Rust
+    # Stage 1: Download S2 + SAR via Rust (with retry for stragglers)
     if not args.skip_download:
-        ok = stage_download(cities)
-        if not ok:
-            print("\n  FATAL: Download stage had failures — stopping.")
-            print("  Re-run with same command to retry failed cities.")
-            sys.exit(1)
+        for attempt in range(1, 4):  # up to 3 attempts
+            ok = stage_download(cities)
+            if ok:
+                break
+            if attempt < 3:
+                print(f"\n  Retry {attempt}/3: re-checking incomplete cities...")
+            else:
+                print("\n  FATAL: Download stage still has failures after 3 attempts — stopping.")
+                print("  Re-run with same command to retry failed cities.")
+                sys.exit(1)
 
     # Stage 2: Labels
     if not args.skip_labels:
