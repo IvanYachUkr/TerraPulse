@@ -7,6 +7,14 @@ Download Sentinel-2 satellite imagery for **any location on Earth** with one com
 1. **Python 3.7+** — [python.org](https://python.org)
 2. **Docker** — [docker.com/get-started](https://docker.com/get-started) (Docker Desktop on Windows/Mac)
 
+## Step 0: Pull the Docker image
+
+```bash
+docker pull ghcr.io/ivanyachukr/terrapulse:latest
+```
+
+This downloads the pre-built TerraPulse image (~400 MB, first time only). The `download.py` script does this automatically, but pulling manually lets you verify Docker is working.
+
 ## Step 1: Get the script
 
 Download [`download.py`](https://raw.githubusercontent.com/IvanYachUkr/TerraPulse/main/download.py) — it's a single file, no pip install needed.
@@ -94,3 +102,52 @@ Each optical GeoTIFF contains 10 Sentinel-2 bands (B02, B03, B04, B05, B06, B07,
 | Download is slow | First run downloads the ~400 MB image; subsequent runs are instant |
 | No output files | Check the bbox — coordinates might be swapped (west < east, south < north) |
 | Permission denied | On Linux, you may need `sudo` or add your user to the `docker` group |
+
+---
+
+## Full Pipeline (Download + Extract + Predict)
+
+For feature extraction and land cover predictions, use [`pipeline.py`](https://raw.githubusercontent.com/IvanYachUkr/TerraPulse/main/pipeline.py) instead:
+
+**Linux / macOS:**
+```bash
+curl -O https://raw.githubusercontent.com/IvanYachUkr/TerraPulse/main/pipeline.py
+```
+
+**Windows (PowerShell):**
+```powershell
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/IvanYachUkr/TerraPulse/main/pipeline.py" -OutFile "pipeline.py"
+```
+
+### Run the full pipeline
+
+```bash
+python pipeline.py --bbox 10.95 49.38 11.20 49.52 --output ./nuremberg
+```
+
+This does everything in one command:
+1. Downloads Sentinel-2 + Sentinel-1 seasonal composites
+2. Extracts 1764 spectral/SAR features per 100m grid cell
+3. Produces land cover predictions using the bundled ONNX model
+
+### Pipeline arguments
+
+| Argument | Required | Default | Description |
+|----------|:--------:|---------|-------------|
+| `--bbox` | ✅ | — | Bounding box: `west south east north` (WGS84 degrees) |
+| `--output` | ✅ | — | Folder to save results |
+| `--years` | | `2021` | Year(s) to process |
+| `--region` | | `region` | Name used in filenames |
+| `--keep-raw` | | | Keep raw satellite GeoTIFFs in the output folder |
+| `--no-predict` | | | Only download + extract features, skip ONNX prediction |
+
+### Pipeline output
+
+```
+nuremberg/
+├── features/
+│   └── features_rust_2020_2021.parquet   # 1764 features per cell
+├── predictions_2021.json                 # Land cover predictions
+├── grid.json                             # Cell geometries (GeoJSON)
+└── anchor.tif                            # Grid reference
+```
