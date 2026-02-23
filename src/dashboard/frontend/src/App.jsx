@@ -3,9 +3,6 @@ import Header from './components/Header.jsx';
 import Sidebar from './components/Sidebar.jsx';
 import MapView from './components/MapView.jsx';
 import CellInspector from './components/CellInspector.jsx';
-import ExplainabilityPanel from './components/ExplainabilityPanel.jsx';
-import ModelComparison from './components/ModelComparison.jsx';
-import EvaluationPanel from './components/EvaluationPanel.jsx';
 import DeployView from './components/DeployView.jsx';
 import { useApi } from './hooks/useApi.js';
 
@@ -50,9 +47,6 @@ export default function App() {
     const [selectedCell, setSelectedCell] = useState(null);
     const [sidebarOpen, setSidebarOpen] = useState(true);
     const [searchCellId, setSearchCellId] = useState(null);
-    const [showComparison, setShowComparison] = useState(false);
-    const [showEvaluation, setShowEvaluation] = useState(false);
-    const [showExplainability, setShowExplainability] = useState(false);
 
     // Data fetching — labels (always loaded)
     const { data: grid, loading: gridLoading } = useApi('/api/grid');
@@ -75,11 +69,6 @@ export default function App() {
     const { data: changeToPred } = useApi(changeToUrl);
 
     const { data: conformal } = useApi('/api/conformal');
-    const { data: splitData } = useApi('/api/split');
-    const { data: evaluationData } = useApi('/api/evaluation');
-    const { data: stressTestsData } = useApi('/api/stress-tests');
-    const { data: failureData } = useApi('/api/failure-analysis');
-    const { data: explainData } = useApi('/api/explainability');
     const { data: cellDetail } = useApi(
         selectedCell != null ? `/api/cell/${selectedCell}` : null
     );
@@ -124,8 +113,6 @@ export default function App() {
                 return predictions;
             case 'change':
                 return computedChangeData;
-            case 'folds':
-                return splitData;
             default:
                 return labels2021;
         }
@@ -142,12 +129,6 @@ export default function App() {
             <Header
                 sidebarOpen={sidebarOpen}
                 onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
-                showComparison={showComparison}
-                onToggleComparison={() => { setShowComparison(v => !v); setShowEvaluation(false); }}
-                showEvaluation={showEvaluation}
-                onToggleEvaluation={() => { setShowEvaluation(v => !v); setShowComparison(false); }}
-                showExplainability={showExplainability}
-                onToggleExplainability={() => setShowExplainability(v => !v)}
                 appMode={appMode}
                 onAppModeChange={setAppMode}
             />
@@ -190,7 +171,6 @@ export default function App() {
                         labels2020={labels2020}
                         labels2021={labels2021}
                         changeData={computedChangeData}
-                        splitData={splitData}
                         classColors={CLASS_COLORS}
                         classes={CLASSES}
                         classLabels={CLASS_LABELS}
@@ -200,31 +180,6 @@ export default function App() {
                         isFutureYear={false}
                         searchCellId={searchCellId}
                     />
-                    {showComparison && (
-                        <div className="comparison-panel">
-                            <div className="inspector-header">
-                                <span className="inspector-title">Model Comparison</span>
-                                <button className="inspector-close" onClick={() => setShowComparison(false)}>
-                                    &times;
-                                </button>
-                            </div>
-                            <ModelComparison models={models} evaluation={evaluationData} />
-                        </div>
-                    )}
-                    {showEvaluation && (
-                        <EvaluationPanel
-                            evaluation={evaluationData}
-                            stressTests={stressTestsData}
-                            failureAnalysis={failureData}
-                            onClose={() => setShowEvaluation(false)}
-                        />
-                    )}
-                    {showExplainability && (
-                        <ExplainabilityPanel
-                            explainability={explainData}
-                            onClose={() => setShowExplainability(false)}
-                        />
-                    )}
                     <CellInspector
                         cellDetail={cellDetail}
                         selectedCell={selectedCell}

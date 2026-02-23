@@ -2,7 +2,6 @@ const VIEW_MODES = [
     { key: 'labels', label: 'Labels' },
     { key: 'predictions', label: 'Predicted' },
     { key: 'change', label: 'Change' },
-    { key: 'folds', label: 'Folds' },
 ];
 
 const MODEL_DISPLAY = {
@@ -11,13 +10,7 @@ const MODEL_DISPLAY = {
     ridge: 'Ridge',
 };
 
-const FOLD_LABELS = [
-    { fold: 0, label: 'Fold 0 (Holdout)', color: '#3b82f6' },
-    { fold: 1, label: 'Fold 1', color: '#ef4444' },
-    { fold: 2, label: 'Fold 2', color: '#10b981' },
-    { fold: 3, label: 'Fold 3', color: '#f59e0b' },
-    { fold: 4, label: 'Fold 4', color: '#8b5cf6' },
-];
+
 
 // Years available for predictions (OOF 2021 + pipeline 2022-2025)
 const PREDICTION_YEARS = [2021, 2022, 2023, 2024, 2025];
@@ -44,7 +37,7 @@ export default function Sidebar({
     searchCellId,
     onSearchCellId,
 }) {
-    const showClasses = viewMode !== 'folds';
+
     // Show model selector when predictions or change involves predicted years
     const needsModel = viewMode === 'predictions' ||
         (viewMode === 'change' && (changeYearFrom > 2021 || changeYearTo > 2021));
@@ -182,23 +175,10 @@ export default function Sidebar({
                 </div>
             )}
 
-            {/* Fold Legend — only in folds view */}
-            {viewMode === 'folds' && (
-                <div className="section">
-                    <div className="section-title">Spatial CV Folds</div>
-                    <div className="fold-legend">
-                        {FOLD_LABELS.map(({ fold, label, color }) => (
-                            <div key={fold} className="fold-item">
-                                <span className="fold-swatch" style={{ backgroundColor: color }} />
-                                <span>{label}</span>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            )}
+
 
             {/* Class Filter */}
-            {showClasses && (
+            {(
                 <div className="section">
                     <div className="section-title">Land-Cover Class</div>
                     <div className="class-chips">
@@ -230,7 +210,7 @@ export default function Sidebar({
             )}
 
             {/* Legend */}
-            {showClasses && (
+            {(
                 <div className="section">
                     <div className="section-title">Legend</div>
                     {viewMode === 'change' ? (
