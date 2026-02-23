@@ -94,6 +94,9 @@ COPY --from=frontend /frontend/dist /app/src/dashboard/frontend/dist
 # Copy Python source
 COPY src/ /app/src/
 
+# Copy easy-download helper script
+COPY src/easy_download.py /app/easy_download.py
+
 # Copy dashboard data (research JSONs)
 COPY src/dashboard/data/ /app/src/dashboard/data/
 

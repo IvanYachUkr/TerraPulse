@@ -133,6 +133,7 @@ Detailed research-paper-style documentation for each component:
 | **[Research](docs/RESEARCH.md)** | Problem definition, data acquisition, feature engineering, 6-way spatial split comparison, 798+ MLP runs, 480 LightGBM runs, 565 ablation studies, all experiments and results |
 | **[Explainability](docs/EXPLAINABILITY.md)** | SHAP analysis (MLP + LightGBM), permutation importance, conformal prediction intervals, stress tests, failure analysis, helpful vs misleading explanations |
 | **[Deploy](docs/DEPLOY.md)** | Rust pipeline architecture, COG reader, feature extraction, ONNX inference, Docker multi-stage build, CI/CD, production fixes, testing |
+| **[CLI Usage](docs/CLI.md)** | Standalone Rust binary usage — run `download`, `extract`, `predict`, or the full `pipeline` directly via Docker without the dashboard |
 
 Additional documentation:
 - [WorldCover Class Mapping](docs/worldcover_class_mapping.md) — ESA class → model class mapping
