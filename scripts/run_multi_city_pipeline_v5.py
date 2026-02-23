@@ -250,6 +250,24 @@ CITIES = [
     CityConfig("danube_floodplain",   [18.80, 47.80, 19.05, 47.95], 32634, "N45E018"),
     CityConfig("cretan_coast",        [25.10, 35.30, 25.35, 35.45], 32635, "N33E024"),
 
+    # === V9 NEW CITIES: DIVERSITY + RARE CLASSES ===
+    # Shrubland-rich locations (LUCAS-verified hotspots)
+    CityConfig("cyprus_troodos",       [32.80, 34.85, 33.05, 35.00], 32636, "N33E030"),
+    CityConfig("dalmatian_coast",      [15.40, 43.85, 15.65, 44.00], 32633, "N42E015"),
+    CityConfig("greek_maquis",        [22.10, 37.50, 22.35, 37.65], 32634, "N36E021"),
+    # Transition zone landscapes
+    CityConfig("schwarzwald_edge",    [7.80, 47.90, 8.05, 48.05],   32632, "N45E006"),
+    CityConfig("algarve_coast",       [-8.20, 37.00, -7.95, 37.15], 32629, "N36W009"),
+    # Northern diversity (boreal/tundra)
+    CityConfig("central_finland_bog", [25.30, 62.40, 25.55, 62.55], 32635, "N60E024"),
+    CityConfig("northern_sweden",     [19.40, 68.30, 19.65, 68.45], 32634, "N66E018"),
+    # Atlantic heathland
+    CityConfig("sw_ireland_heath",    [-10.00, 51.70, -9.75, 51.85],32629, "N51W012"),
+    # Extra urban diversity
+    CityConfig("dresden",             [13.65, 50.98, 13.90, 51.12], 32633, "N48E012"),
+    CityConfig("andalusia_sierra",    [-3.60, 36.90, -3.35, 37.05], 32630, "N36W006"),
+
+
 
     # === 6 VALIDATION CITIES (diverse biomes) ===
     CityConfig("munich",      [11.45, 48.08, 11.70, 48.22], 32632, "N48E009",
