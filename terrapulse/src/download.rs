@@ -33,13 +33,25 @@ pub async fn download_season(
 
     // 1. Search for scenes
     eprintln!("  [{year}/{season}] Searching STAC...");
-    let items = stac::search_with_fallback(client, bbox, year, season, MIN_SCENES).await?;
+    let mut items = stac::search_with_fallback(client, bbox, year, season, MIN_SCENES).await?;
     if items.is_empty() {
         eprintln!("  [{year}/{season}] WARNING: No scenes found -- skipping!");
         return Ok(None);
     }
+
+    // Cap scenes to prevent OOM on orbit-dense regions (e.g. Crete, equatorial).
+    // STAC results are sorted by cloud cover, so truncating keeps the best scenes.
+    const MAX_SCENES: usize = 20;
+    if items.len() > MAX_SCENES {
+        eprintln!(
+            "  [{year}/{season}] Capping {} scenes to {MAX_SCENES} (lowest cloud cover)",
+            items.len()
+        );
+        items.truncate(MAX_SCENES);
+    }
+
     eprintln!(
-        "  [{year}/{season}] Found {} scenes, signing...",
+        "  [{year}/{season}] Using {} scenes, signing...",
         items.len()
     );
 
