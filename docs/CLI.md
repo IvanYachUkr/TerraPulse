@@ -9,71 +9,60 @@ extract features, or run inference — directly from the command line.
 ## Quick Reference
 
 ```bash
-# Pull the image
-docker pull ghcr.io/ivanyachukr/terrapulse:latest
+# Download Nuremberg satellite imagery (2021) and save to your machine
+python download.py --bbox 10.95 49.38 11.20 49.52 --output ./satellite_data
 
-# See all commands
-docker run --rm --entrypoint terrapulse ghcr.io/ivanyachukr/terrapulse:latest --help
-
-# Easiest way: download Nuremberg 2021 imagery and save to your Desktop
-docker run --rm -v ~/Desktop/satellite_data:/output \
-  ghcr.io/ivanyachukr/terrapulse:latest \
-  python /app/easy_download.py \
-    --bbox 10.95 49.38 11.20 49.52 --years 2021 --output /output
+# Multiple years
+python download.py --bbox 10.95 49.38 11.20 49.52 --years 2023 2024 --output ./satellite_data
 ```
 
-| Subcommand | Description |
-|------------|-------------|
-| `download` | Download Sentinel-2 + Sentinel-1 composites via STAC |
-| `extract` | Extract spectral/SAR features from GeoTIFFs → Parquet |
-| `predict` | Run ONNX model inference on feature Parquets |
-| `pipeline` | Full end-to-end: download → extract → predict → labels → grid |
+That's it. The script handles Docker automatically — pulls the image, runs the pipeline,
+and saves GeoTIFF files to the folder you specified.
+
+> **Prerequisites**: [Python 3.7+](https://python.org) and [Docker](https://docker.com/get-started) installed and running.
 
 ---
 
-## Easy Download (Recommended for Beginners)
+## Easy Download
 
-The `easy_download.py` script is the **simplest way** to get satellite imagery.
-It handles all the technical details (anchor creation, EPSG detection) automatically.
-You only need to specify:
-- **Where** (bounding box in WGS84 degrees)
-- **When** (year, defaults to 2021)
-- **Save to** (any folder on your machine)
+### Step 1: Get the script
 
-**Linux / macOS:**
+Download [`download.py`](https://raw.githubusercontent.com/IvanYachUkr/TerraPulse/main/download.py)
+from the repository (it's a single file, no dependencies beyond Python stdlib).
+
+### Step 2: Run it
+
 ```bash
-docker run --rm -v /absolute/path/to/save:/output \
-  ghcr.io/ivanyachukr/terrapulse:latest \
-  python /app/easy_download.py \
-    --bbox 10.95 49.38 11.20 49.52 \
-    --years 2021 \
-    --output /output
-# → GeoTIFFs saved to /absolute/path/to/save/
+python download.py --bbox 10.95 49.38 11.20 49.52 --output ./nuremberg
 ```
 
-**Windows (PowerShell):**
-```powershell
-docker run --rm -v C:\Users\me\satellite_data:/output `
-  ghcr.io/ivanyachukr/terrapulse:latest `
-  python /app/easy_download.py `
-    --bbox 10.95 49.38 11.20 49.52 `
-    --years 2021 `
-    --output /output
-# → GeoTIFFs saved to C:\Users\me\satellite_data\
-```
+The script will:
+1. ✅ Check that Docker is installed and running
+2. ✅ Pull the TerraPulse image (first time only, ~400 MB)
+3. ✅ Auto-detect the correct map projection (EPSG)
+4. ✅ Create the required anchor reference file
+5. ✅ Download Sentinel-2 + Sentinel-1 imagery
+6. ✅ Save GeoTIFF files to your specified folder
 
 **Arguments:**
 
 | Argument | Required | Default | Description |
 |----------|:--------:|---------|-------------|
-| `--bbox` | ✅ | — | Bounding box `[west south east north]` in WGS84 |
-| `--years` | | `2021` | Space-separated years to download |
-| `--output` | ✅ | — | Where to save the GeoTIFF files |
+| `--bbox` | ✅ | — | Bounding box `[west south east north]` in WGS84 degrees |
+| `--years` | | `2021` | Years to download (space-separated) |
+| `--output` | ✅ | — | Any folder on your machine (absolute or relative path) |
 | `--region` | | `region` | Region name (used in filenames) |
 
-> **Note**: EPSG is auto-detected from the bbox center — works anywhere on Earth.
-> No anchor reference file is needed.
+**More examples:**
+```bash
+# Paris, 2023
+python download.py --bbox 2.25 48.81 2.42 48.90 --output ./paris --region paris
 
+# New York, 2022-2024
+python download.py --bbox -74.02 40.70 -73.93 40.78 --output C:\Users\me\nyc --region nyc --years 2022 2023 2024
+```
+
+> **Tip**: Use Google Maps to find coordinates — right-click any point to copy lat/lon.
 
 
 ---
