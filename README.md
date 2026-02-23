@@ -136,6 +136,8 @@ Detailed research-paper-style documentation for each component:
 | **[CLI Usage](docs/CLI.md)** | Standalone Rust binary usage — run `download`, `extract`, `predict`, or the full `pipeline` directly via Docker without the dashboard |
 
 Additional documentation:
+- [**Download Imagery Guide**](docs/DOWNLOAD.md) — get satellite imagery for any location with one command
+- [CLI Usage](docs/CLI.md) — standalone Rust binary usage for advanced users
 - [WorldCover Class Mapping](docs/worldcover_class_mapping.md) — ESA class → model class mapping
 - [Project Checklist](project_checklist.md) — Complete phase-by-phase progress tracker
 
