@@ -1,4 +1,4 @@
-export default function Header({ sidebarOpen, onToggleSidebar, showComparison, onToggleComparison, showEvaluation, onToggleEvaluation, showExplainability, onToggleExplainability, appMode, onAppModeChange }) {
+export default function Header({ sidebarOpen, onToggleSidebar, appMode, onAppModeChange }) {
     return (
         <header className="header">
             {appMode !== 'deploy' && (
@@ -32,30 +32,7 @@ export default function Header({ sidebarOpen, onToggleSidebar, showComparison, o
             </div>
             <div className="header-spacer" />
             {appMode !== 'deploy' && (
-                <>
-                    <button
-                        className={`header-btn ${showEvaluation ? 'active' : ''}`}
-                        onClick={onToggleEvaluation}
-                        title="Evaluation metrics"
-                    >
-                        &#128202; Eval
-                    </button>
-                    <button
-                        className={`header-btn ${showExplainability ? 'active' : ''}`}
-                        onClick={onToggleExplainability}
-                        title="Model explainability"
-                    >
-                        🔍 Explain
-                    </button>
-                    <button
-                        className={`header-btn ${showComparison ? 'active' : ''}`}
-                        onClick={onToggleComparison}
-                        title="Model comparison charts"
-                    >
-                        &#9776; Compare
-                    </button>
-                    <span className="header-badge">100m Grid &middot; 29,946 Cells</span>
-                </>
+                <span className="header-badge">100m Grid &middot; 29,946 Cells</span>
             )}
         </header>
     );
