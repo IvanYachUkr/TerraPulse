@@ -137,6 +137,13 @@ body {
   border: 1px solid rgba(59, 130, 246, 0.2);
 }
 
+.header-centered-text {
+  /* TODO */
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
 /* --- Sidebar --- */
 
 .sidebar {
@@ -180,6 +187,13 @@ body {
   text-transform: uppercase;
   letter-spacing: 1.2px;
   color: var(--text-muted);
+}
+
+/* TODO */
+.legend .section-title {
+  padding-bottom: 6px;
+  /* gap of 4 already set for legend elements
+  -> results in effective 10px gap like other section titles */
 }
 
 /* --- Select / Dropdown --- */
@@ -780,7 +794,7 @@ body {
   border: none;
   background: transparent;
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: 15px;
   cursor: pointer;
   border-radius: var(--radius-sm);
   transition: all 0.2s ease;
@@ -797,6 +811,7 @@ body {
   background: rgba(255, 255, 255, 0.08);
   color: var(--text-primary);
 }
+
 
 /* ---------------------------------------------------------------------------
    Deploy container & panel

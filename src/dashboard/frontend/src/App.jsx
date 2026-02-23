@@ -6,7 +6,10 @@ import CellInspector from './components/CellInspector.jsx';
 import DeployView from './components/DeployView.jsx';
 import { useApi } from './hooks/useApi.js';
 
-const CLASSES = ['tree_cover', 'shrubland', 'grassland', 'cropland', 'built_up', 'bare_sparse', 'water'];
+// TODO load nuremberg polygon
+//\src\dashboard\frontend\public\nuremberg_stat_bezirke_wgs84.geojson
+
+const CLASSES = ['tree_cover', 'shrubland', 'grassland', 'cropland', 'built_up', 'bare_sparse', 'water']; // TODO: remove Shrubland for Nuremberg header selection
 
 const CLASS_COLORS = {
     tree_cover: [45, 106, 79],
@@ -20,7 +23,7 @@ const CLASS_COLORS = {
 
 const CLASS_LABELS = {
     tree_cover: 'Tree Cover',
-    shrubland: 'Shrubland',
+    shrubland: 'Shrubland_TODO_REMOVE',
     grassland: 'Grassland',
     cropland: 'Cropland',
     built_up: 'Built-up',
