@@ -1,4 +1,23 @@
-export default function Header({ sidebarOpen, onToggleSidebar, appMode, onAppModeChange }) {
+export default function Header({
+    sidebarOpen,
+    onToggleSidebar,
+    appMode,
+    onAppModeChange,
+    nurembergDataMode,
+    nurembergYear,
+}) {
+    // Build context info text
+    let infoText = '';
+    if (appMode === 'analytical') {
+        if (nurembergDataMode === 'labels') {
+            infoText = `Ground Truth \u00b7 ESA WorldCover ${nurembergYear}`;
+        } else if (nurembergYear >= 2026) {
+            infoText = `Predictions \u00b7 Nuremberg ${nurembergYear} \u00b7 Future Forecast`;
+        } else {
+            infoText = `CatBoost V5 Predictions \u00b7 Nuremberg ${nurembergYear}`;
+        }
+    }
+
     return (
         <header className="header">
             {appMode !== 'deploy' && (
@@ -21,18 +40,25 @@ export default function Header({ sidebarOpen, onToggleSidebar, appMode, onAppMod
                     className={`header-mode-btn ${appMode === 'analytical' ? 'active' : ''}`}
                     onClick={() => onAppModeChange('analytical')}
                 >
-                    📊 Analytical
+                    🏰 Nuremberg
                 </button>
                 <button
                     className={`header-mode-btn ${appMode === 'deploy' ? 'active' : ''}`}
                     onClick={() => onAppModeChange('deploy')}
                 >
-                    🚀 Deploy
+                    🌍 Global
                 </button>
             </div>
-            <div className="header-spacer" />
-            {appMode !== 'deploy' && (
-                <span className="header-badge">100m Grid &middot; 29,946 Cells</span>
+
+            {/* Centered context info */}
+            <div className="header-info">
+                {infoText && (
+                    <span className="header-info-text">{infoText}</span>
+                )}
+            </div>
+
+            {appMode === 'analytical' && (
+                <span className="header-badge">Pixel-Level Land Cover</span>
             )}
         </header>
     );

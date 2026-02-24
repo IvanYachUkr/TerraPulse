@@ -1,0 +1,92 @@
+{
+  "wgs84_bounds": [
+    10.9551465,
+    49.30689,
+    11.3066135,
+    49.563067
+  ],
+  "wgs84_corners": [
+    [
+      10.960241,
+      49.566321
+    ],
+    [
+      11.312622,
+      49.559813
+    ],
+    [
+      11.300605,
+      49.303665
+    ],
+    [
+      10.950052,
+      49.310115
+    ]
+  ],
+  "classes": [
+    "tree_cover",
+    "grassland",
+    "cropland",
+    "built_up",
+    "bare_sparse",
+    "water"
+  ],
+  "label_years": [
+    2020,
+    2021
+  ],
+  "prediction_years": [
+    2018,
+    2019,
+    2020,
+    2021,
+    2022,
+    2023,
+    2024,
+    2025,
+    2026,
+    2027
+  ],
+  "resolutions": {
+    "res1": {
+      "width": 2550,
+      "height": 2850
+    },
+    "res2": {
+      "width": 1275,
+      "height": 1425
+    },
+    "res3": {
+      "width": 850,
+      "height": 950
+    },
+    "res4": {
+      "width": 637,
+      "height": 712
+    },
+    "res5": {
+      "width": 510,
+      "height": 570
+    },
+    "res6": {
+      "width": 425,
+      "height": 475
+    },
+    "res7": {
+      "width": 364,
+      "height": 407
+    },
+    "res8": {
+      "width": 318,
+      "height": 356
+    },
+    "res9": {
+      "width": 283,
+      "height": 316
+    },
+    "res10": {
+      "width": 255,
+      "height": 285
+    }
+  }
+}

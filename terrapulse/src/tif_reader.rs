@@ -3,7 +3,7 @@
 
 use anyhow::{Context, Result};
 use std::path::Path;
-use tiff::decoder::{Decoder, DecodingResult};
+use tiff::decoder::{Decoder, DecodingResult, Limits};
 
 /// Decode a GeoTIFF into raw pixel-interleaved float32 data.
 fn decode_interleaved_f32(path: &Path) -> Result<(usize, usize, Vec<f32>)> {
@@ -11,6 +11,11 @@ fn decode_interleaved_f32(path: &Path) -> Result<(usize, usize, Vec<f32>)> {
         .with_context(|| format!("Cannot open TIF: {}", path.display()))?;
     let mut decoder = Decoder::new(std::io::BufReader::new(file))
         .with_context(|| format!("Cannot decode TIF: {}", path.display()))?;
+    // Large anchors (e.g. 2550x2850 × 11 bands) exceed default decoder limits
+    let mut limits = Limits::default();
+    limits.decoding_buffer_size = 512 * 1024 * 1024; // 512 MB
+    limits.intermediate_buffer_size = 512 * 1024 * 1024;
+    decoder = decoder.with_limits(limits);
 
     let (w, h) = decoder
         .dimensions()
