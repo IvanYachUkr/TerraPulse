@@ -242,8 +242,6 @@ def shap_manifest():
     return _load_json("shap_plots/manifest.json")
 
 
-from fastapi.responses import FileResponse
-
 @app.get("/api/shap-plots/{filename}")
 def shap_plot_file(filename: str):
     """Serve SHAP plot PNG images."""
@@ -309,6 +307,71 @@ def meta():
             "water": "#0096c7",
         },
     }
+
+
+# ---------------------------------------------------------------------------
+# Nuremberg pixel-level endpoints
+# ---------------------------------------------------------------------------
+NUREMBERG_DIR = os.path.join(DATA_DIR, "nuremberg_dashboard")
+
+from fastapi.responses import FileResponse, StreamingResponse
+
+
+@lru_cache(maxsize=None)
+def get_nuremberg_meta():
+    path = os.path.join(NUREMBERG_DIR, "nuremberg_dashboard_meta.json")
+    with open(path, "r") as f:
+        return json.load(f)
+
+
+@app.get("/api/nuremberg/meta")
+def nuremberg_meta():
+    """Nuremberg pixel map metadata (bounds, classes, resolutions)."""
+    return get_nuremberg_meta()
+
+
+def _serve_binary(fpath, fname):
+    """Serve a binary file as streaming response."""
+    if not os.path.exists(fpath):
+        raise HTTPException(404, f"File not found: {fname}")
+    with open(fpath, "rb") as f:
+        data = f.read()
+    return StreamingResponse(
+        iter([data]),
+        media_type="application/octet-stream",
+        headers={"Content-Length": str(len(data))},
+    )
+
+
+@app.get("/api/nuremberg/labels/{year}/{resolution}")
+def nuremberg_labels(year: int, resolution: int):
+    """Binary uint8 label map for Nuremberg at a given resolution."""
+    if year not in (2020, 2021):
+        raise HTTPException(404, "Year must be 2020 or 2021")
+    if resolution < 1 or resolution > 10:
+        raise HTTPException(404, "Resolution must be 1-10")
+    fname = f"nuremberg_labels_{year}_res{resolution}.bin"
+    return _serve_binary(os.path.join(NUREMBERG_DIR, fname), fname)
+
+
+@app.get("/api/nuremberg/predictions/{year}/{resolution}")
+def nuremberg_predictions(year: int, resolution: int):
+    """Binary uint8 prediction map for Nuremberg at a given resolution."""
+    if resolution < 1 or resolution > 10:
+        raise HTTPException(404, "Resolution must be 1-10")
+    fname = f"nuremberg_pred_{year}_res{resolution}.bin"
+    return _serve_binary(os.path.join(NUREMBERG_DIR, fname), fname)
+
+
+@app.get("/api/nuremberg/boundary")
+def nuremberg_boundary():
+    """GeoJSON boundary of Nuremberg statistical districts."""
+    path = os.path.join(DATA_DIR, "nuremberg_boundary.geojson")
+    if not os.path.exists(path):
+        raise HTTPException(404, "Boundary file not found")
+    with open(path, "r") as f:
+        data = json.load(f)
+    return JSONResponse(content=data, media_type="application/geo+json")
 
 
 # ---------------------------------------------------------------------------

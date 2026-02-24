@@ -799,6 +799,44 @@ body {
 }
 
 /* ---------------------------------------------------------------------------
+   Resolution slider
+   --------------------------------------------------------------------------- */
+.resolution-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 6px;
+  background: var(--bg-tertiary);
+  border-radius: 3px;
+  outline: none;
+  cursor: pointer;
+}
+
+.resolution-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: grab;
+  box-shadow: 0 2px 6px rgba(59, 130, 246, 0.4);
+  transition: transform 0.15s ease;
+}
+
+.resolution-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+}
+
+.resolution-slider::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: grab;
+  border: none;
+  box-shadow: 0 2px 6px rgba(59, 130, 246, 0.4);
+}
+
+/* ---------------------------------------------------------------------------
    Deploy container & panel
    --------------------------------------------------------------------------- */
 .deploy-container {

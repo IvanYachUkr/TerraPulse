@@ -4,9 +4,13 @@ import Sidebar from './components/Sidebar.jsx';
 import MapView from './components/MapView.jsx';
 import CellInspector from './components/CellInspector.jsx';
 import DeployView from './components/DeployView.jsx';
+import NurembergMapView from './components/NurembergMapView.jsx';
 import { useApi } from './hooks/useApi.js';
 
 const CLASSES = ['tree_cover', 'shrubland', 'grassland', 'cropland', 'built_up', 'bare_sparse', 'water'];
+
+// Nuremberg classes (no shrubland — remapped to grassland)
+const NUREMBERG_CLASSES = ['tree_cover', 'grassland', 'cropland', 'built_up', 'bare_sparse', 'water'];
 
 const CLASS_COLORS = {
     tree_cover: [45, 106, 79],
@@ -48,11 +52,20 @@ export default function App() {
     const [sidebarOpen, setSidebarOpen] = useState(true);
     const [searchCellId, setSearchCellId] = useState(null);
 
+    // Nuremberg pixel mode state
+    const [nurembergResolution, setNurembergResolution] = useState(5);
+    const [nurembergYear, setNurembergYear] = useState(2021);
+    const [nurembergDataMode, setNurembergDataMode] = useState('labels');
+
     // Data fetching — labels (always loaded)
     const { data: grid, loading: gridLoading } = useApi('/api/grid');
     const { data: labels2020 } = useApi('/api/labels/2020');
     const { data: labels2021 } = useApi('/api/labels/2021');
     const { data: models } = useApi('/api/models');
+
+    // Nuremberg pixel mode data
+    const { data: nurembergMeta } = useApi('/api/nuremberg/meta');
+    const { data: nurembergBoundary } = useApi('/api/nuremberg/boundary');
 
     // Predictions: year-aware fetch for predictions view
     const predUrl = viewMode === 'predictions' && selectedYear > 2021
@@ -138,6 +151,7 @@ export default function App() {
                 <div className="app-layout">
                     {sidebarOpen && (
                         <Sidebar
+                            appMode={appMode}
                             models={models}
                             selectedModel={selectedModel}
                             onModelChange={setSelectedModel}
@@ -147,7 +161,7 @@ export default function App() {
                             onYearChange={setSelectedYear}
                             selectedClass={selectedClass}
                             onClassChange={setSelectedClass}
-                            classes={CLASSES}
+                            classes={NUREMBERG_CLASSES}
                             classLabels={CLASS_LABELS}
                             classColors={CLASS_COLORS}
                             labelYears={LABEL_YEARS}
@@ -158,38 +172,24 @@ export default function App() {
                             onChangeYearTo={setChangeYearTo}
                             searchCellId={searchCellId}
                             onSearchCellId={handleSearchCell}
+                            nurembergResolution={nurembergResolution}
+                            onResolutionChange={setNurembergResolution}
+                            nurembergYear={nurembergYear}
+                            onNurembergYearChange={setNurembergYear}
+                            nurembergDataMode={nurembergDataMode}
+                            onNurembergDataModeChange={setNurembergDataMode}
+                            nurembergMeta={nurembergMeta}
                         />
                     )}
-                    <MapView
-                        grid={grid}
-                        viewData={getViewData()}
-                        viewMode={viewMode}
-                        selectedYear={selectedYear}
+                    <NurembergMapView
+                        meta={nurembergMeta}
+                        boundary={nurembergBoundary}
+                        selectedYear={nurembergYear}
                         selectedClass={selectedClass}
-                        selectedModel={selectedModel}
-                        predictions={predictions}
-                        labels2020={labels2020}
-                        labels2021={labels2021}
-                        changeData={computedChangeData}
+                        resolution={nurembergResolution}
                         classColors={CLASS_COLORS}
-                        classes={CLASSES}
-                        classLabels={CLASS_LABELS}
-                        loading={gridLoading}
-                        onCellClick={setSelectedCell}
-                        selectedCell={selectedCell}
-                        isFutureYear={false}
-                        searchCellId={searchCellId}
-                    />
-                    <CellInspector
-                        cellDetail={cellDetail}
-                        selectedCell={selectedCell}
-                        onClose={() => setSelectedCell(null)}
-                        classLabels={CLASS_LABELS}
-                        classColors={CLASS_COLORS}
-                        classes={CLASSES}
-                        models={models}
-                        selectedModel={selectedModel}
-                        conformal={conformal}
+                        loading={!nurembergMeta}
+                        dataMode={nurembergDataMode}
                     />
                 </div>
             )}

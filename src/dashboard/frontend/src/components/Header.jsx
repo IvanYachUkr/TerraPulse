@@ -21,18 +21,18 @@ export default function Header({ sidebarOpen, onToggleSidebar, appMode, onAppMod
                     className={`header-mode-btn ${appMode === 'analytical' ? 'active' : ''}`}
                     onClick={() => onAppModeChange('analytical')}
                 >
-                    📊 Analytical
+                    🏰 Nuremberg
                 </button>
                 <button
                     className={`header-mode-btn ${appMode === 'deploy' ? 'active' : ''}`}
                     onClick={() => onAppModeChange('deploy')}
                 >
-                    🚀 Deploy
+                    🌍 Global
                 </button>
             </div>
             <div className="header-spacer" />
-            {appMode !== 'deploy' && (
-                <span className="header-badge">100m Grid &middot; 29,946 Cells</span>
+            {appMode === 'analytical' && (
+                <span className="header-badge">Pixel-Level Land Cover</span>
             )}
         </header>
     );
