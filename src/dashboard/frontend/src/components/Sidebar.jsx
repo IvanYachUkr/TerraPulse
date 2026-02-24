@@ -88,17 +88,29 @@ export default function Sidebar({
                 {/* Year */}
                 <div className="section">
                     <div className="section-title">Year</div>
-                    <div className="toggle-group">
-                        {visibleYears.map((y) => (
-                            <button
-                                key={y}
-                                className={`toggle-btn ${nurembergYear === y ? 'active' : ''}`}
-                                onClick={() => onNurembergYearChange(y)}
-                            >
-                                {y}
-                            </button>
-                        ))}
-                    </div>
+                    {visibleYears.length <= 3 ? (
+                        <div className="toggle-group">
+                            {visibleYears.map((y) => (
+                                <button
+                                    key={y}
+                                    className={`toggle-btn ${nurembergYear === y ? 'active' : ''}`}
+                                    onClick={() => onNurembergYearChange(y)}
+                                >
+                                    {y}
+                                </button>
+                            ))}
+                        </div>
+                    ) : (
+                        <select
+                            className="select"
+                            value={nurembergYear}
+                            onChange={(e) => onNurembergYearChange(Number(e.target.value))}
+                        >
+                            {visibleYears.map((y) => (
+                                <option key={y} value={y}>{y}</option>
+                            ))}
+                        </select>
+                    )}
                 </div>
 
                 {/* Resolution Slider */}
