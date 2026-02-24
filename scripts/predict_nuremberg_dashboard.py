@@ -54,7 +54,7 @@ MODEL_PATH = os.path.join(PROJECT_ROOT, "data", "cities", "models_pixel_v5",
 
 # Expanded bbox (must match anchor creation)
 BBOX = [10.96, 49.31, 11.30, 49.56]
-PREDICTION_YEARS = [2021]  # Only year-pair (2020, 2021) downloaded so far
+PREDICTION_YEARS = list(range(2018, 2026))  # 2018-2025
 LABEL_YEARS = [2020, 2021]
 MAX_RES = 10
 
