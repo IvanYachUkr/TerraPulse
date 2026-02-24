@@ -144,6 +144,8 @@ export default function App() {
                 onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
                 appMode={appMode}
                 onAppModeChange={setAppMode}
+                nurembergDataMode={nurembergDataMode}
+                nurembergYear={nurembergYear}
             />
             {appMode === 'deploy' ? (
                 <DeployView />

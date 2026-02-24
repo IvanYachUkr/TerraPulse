@@ -197,6 +197,39 @@ export default function NurembergMapView({
                     attributionControl={false}
                 />
             </DeckGL>
+            {/* Future year placeholder */}
+            {selectedYear >= 2026 && dataMode === 'predictions' && (
+                <div style={{
+                    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+                    display: 'flex', flexDirection: 'column',
+                    alignItems: 'center', justifyContent: 'center',
+                    background: 'rgba(15, 23, 42, 0.6)',
+                    backdropFilter: 'blur(2px)',
+                    pointerEvents: 'none', zIndex: 10,
+                }}>
+                    <div style={{
+                        background: 'rgba(15, 23, 42, 0.9)',
+                        borderRadius: 16, padding: '32px 48px',
+                        border: '1px solid rgba(59, 130, 246, 0.25)',
+                        textAlign: 'center', maxWidth: 420,
+                    }}>
+                        <div style={{ fontSize: 48, marginBottom: 12 }}>🔮</div>
+                        <div style={{
+                            fontSize: 22, fontWeight: 600,
+                            color: '#e2e8f0', marginBottom: 8,
+                        }}>
+                            Predicting Future Years
+                        </div>
+                        <div style={{
+                            fontSize: 14, color: '#94a3b8', lineHeight: 1.5,
+                        }}>
+                            Satellite data for <strong style={{ color: '#e2e8f0' }}>{selectedYear}</strong> is
+                            not yet available. Future predictions will appear here once
+                            Sentinel-2 imagery is captured and processed.
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Resolution legend */}
             <div style={{
