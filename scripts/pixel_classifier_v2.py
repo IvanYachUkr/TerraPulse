@@ -41,6 +41,10 @@ from rasterio.warp import Resampling, reproject
 warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", category=UserWarning)
 
+# Force unbuffered output so training progress is visible in real-time
+sys.stdout.reconfigure(line_buffering=True)
+sys.stderr.reconfigure(line_buffering=True)
+
 # ---------------------------------------------------------------------------
 # Project setup
 # ---------------------------------------------------------------------------
@@ -209,7 +213,7 @@ def _compute_indices(s2):
     }
 
 
-def build_pixel_features(city):
+def build_pixel_features(city, return_mask=False):
     """
     Build per-pixel feature matrix and labels.
     V2: parallel TIF loading + richer phenology features.
@@ -352,6 +356,9 @@ def build_pixel_features(city):
     valid = valid_label & valid_features
 
     n_valid = int(valid.sum())
+
+    if return_mask:
+        return valid
 
     X = feature_cube[valid]
     y = labels[valid].astype(np.int32)

@@ -176,7 +176,7 @@ def load_worldcover_pixels(city, year=2021):
 # Feature engineering (per-pixel, working on flat arrays)
 # ---------------------------------------------------------------------------
 
-def build_pixel_features(city):
+def build_pixel_features(city, return_mask=False):
     """
     Build per-pixel feature matrix and labels for a city.
 
@@ -321,6 +321,9 @@ def build_pixel_features(city):
     n_valid = valid.sum()
     print(f"  [{city.name}] Valid pixels: {n_valid:,} / {H*W:,} "
           f"({100*n_valid/(H*W):.1f}%)")
+
+    if return_mask:
+        return valid
 
     # Extract valid pixels
     X = feature_cube[valid]   # (N, F)

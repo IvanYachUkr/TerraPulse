@@ -23,6 +23,11 @@ Use this path to run any Python script or command:
 .\.venv\Scripts\python.exe scripts\some_script.py
 ```
 
+2. Run a long-running script with **real-time output** (unbuffered):
+```
+.\.venv\Scripts\python.exe -u scripts\some_script.py
+```
+
 2. Run a one-liner:
 ```
 .\.venv\Scripts\python.exe -c "print('hello')"
