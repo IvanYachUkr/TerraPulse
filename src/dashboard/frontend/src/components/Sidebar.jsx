@@ -1,7 +1,8 @@
 const VIEW_MODES = [
-    { key: 'labels', label: 'Labels' },
-    { key: 'predictions', label: 'Predicted' },
+    { key: 'labels', label: 'ESA' },
+    { key: 'predictions', label: 'Prediction' },
     { key: 'change', label: 'Change' },
+    { key: 'future', label: 'Future' },
 ];
 
 const MODEL_DISPLAY = {
@@ -12,6 +13,7 @@ const MODEL_DISPLAY = {
 
 // Years available for predictions (OOF 2021 + pipeline 2022-2025)
 const PREDICTION_YEARS = [2021, 2022, 2023, 2024, 2025];
+const FUTURE_YEARS = [2026, 2027]
 
 export default function Sidebar({
     appMode,
@@ -373,21 +375,21 @@ export default function Sidebar({
             {/* Legend */}
             {(
                 <div className="section">
-                    <div className="section-title">Legend</div>
                     {viewMode === 'change' ? (
                         <div className="legend">
+                            <div className="section-title">Probability to change</div>
                             <div className="legend-bar diverging" />
                             <div className="legend-labels">
-                                <span>-30%</span>
-                                <span>0</span>
-                                <span>+30%</span>
+                                <span>0%</span> /* TODO */
+                                <span>100%</span>
                             </div>
                         </div>
                     ) : (
                         <div className="legend">
+                            <div className="section-title">Purity of majority label</div>
                             <div className="legend-bar" />
                             <div className="legend-labels">
-                                <span>0%</span>
+                                <span>0%</span> /* TODO */
                                 <span>50%</span>
                                 <span>100%</span>
                             </div>
@@ -396,21 +398,36 @@ export default function Sidebar({
                 </div>
             )}
 
-            {/* Search Cell */}
+            {/* Search Cell */ /* TODO */}
             <div className="section">
-                <div className="section-title">Search Cell</div>
+                <div className="section-title">Coordinate Search</div>
                 <input
                     className="select"
                     type="number"
                     min="0"
                     max="29945"
-                    placeholder="Cell ID (0-29945)"
+                    placeholder="TODO"
                     value={searchCellId ?? ''}
                     onChange={(e) => {
                         const val = e.target.value;
                         onSearchCellId(val === '' ? null : Number(val));
                     }}
                 />
+            </div>
+
+            {/* Nuremberg District Selection */}
+            <div className="section">
+                <div className="section-title">Districts</div>
+                <div className="nuremberg-district-selection">
+                    {/* TODO: Add real district selection logic here */}
+                    <select multiple className="select">
+                        <option value="TODO">TODO</option>
+                        <option value="north">North</option>
+                        <option value="south">South</option>
+                        <option value="east">East</option>
+                        <option value="west">West</option>
+                    </select>
+                </div>
             </div>
 
             {/* Disclaimer */}

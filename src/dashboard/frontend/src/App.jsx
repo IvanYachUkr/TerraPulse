@@ -7,7 +7,10 @@ import DeployView from './components/DeployView.jsx';
 import NurembergMapView from './components/NurembergMapView.jsx';
 import { useApi } from './hooks/useApi.js';
 
-const CLASSES = ['tree_cover', 'shrubland', 'grassland', 'cropland', 'built_up', 'bare_sparse', 'water'];
+// TODO load nuremberg polygon
+//\src\dashboard\frontend\public\nuremberg_stat_bezirke_wgs84.geojson
+
+const CLASSES = ['tree_cover', 'shrubland', 'grassland', 'cropland', 'built_up', 'bare_sparse', 'water']; // TODO: remove Shrubland for Nuremberg header selection
 
 // Nuremberg classes (no shrubland — remapped to grassland)
 const NUREMBERG_CLASSES = ['tree_cover', 'grassland', 'cropland', 'built_up', 'bare_sparse', 'water'];
@@ -24,7 +27,7 @@ const CLASS_COLORS = {
 
 const CLASS_LABELS = {
     tree_cover: 'Tree Cover',
-    shrubland: 'Shrubland',
+    shrubland: 'Shrubland_TODO_REMOVE',
     grassland: 'Grassland',
     cropland: 'Cropland',
     built_up: 'Built-up',
