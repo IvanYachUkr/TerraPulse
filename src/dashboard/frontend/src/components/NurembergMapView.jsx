@@ -114,20 +114,11 @@ export default function NurembergMapView({
         const result = [];
 
         if (canvasImage && meta) {
-            // Use 4-corner coordinates for accurate UTM→WGS84 alignment
-            // Corners: [TL, TR, BR, BL] — each as [lng, lat]
-            const corners = meta.wgs84_corners;
-            const bounds = corners
-                ? [corners[0], corners[1], corners[2], corners[3]]
-                : (() => {
-                    // Fallback to envelope bounds
-                    const [west, south, east, north] = meta.wgs84_bounds;
-                    return [[west, north], [east, north], [east, south], [west, south]];
-                })();
+            const [west, south, east, north] = meta.wgs84_bounds;
             result.push(new BitmapLayer({
                 id: 'nuremberg-labels',
                 image: canvasImage,
-                bounds,
+                bounds: [west, south, east, north],
                 textureParameters: {
                     minFilter: 'nearest',
                     magFilter: 'nearest',
