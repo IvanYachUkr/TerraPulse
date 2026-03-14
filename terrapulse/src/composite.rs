@@ -427,11 +427,10 @@ async fn download_one_scene(
             )
         };
         // raw_pixels is dropped here — frees source tile memory immediately
-        for v in resampled.iter_mut() {
-            if *v == 0.0 {
-                *v = f32::NAN;
-            }
-        }
+        // NOTE: we intentionally do NOT convert 0.0 → NaN here.
+        // Reflectance = 0.0 is valid for dark surfaces (deep water, shadows).
+        // True NODATA (out-of-footprint) pixels already come back as NaN from
+        // the bilinear resampler, and cloudy pixels are masked via SCL below.
         bands.push(resampled);
     }
 
