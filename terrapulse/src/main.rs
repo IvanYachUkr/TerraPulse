@@ -279,6 +279,9 @@ fn run_predict(
     let mut mlp = predict::OnnxMlp::load(models_dir)?;
     println!("  Loaded in {:.1}s", t_load.elapsed().as_secs_f64());
 
+    // ---- Load model config (threshold) ----
+    let model_config = predict::ModelConfig::load(models_dir)?;
+
     // ---- Load scaler ----
     let scaler = predict::ScalerParams::load(&models_dir.join("mlp_scaler_0.json"))?;
     println!("Loaded scaler ({} features)", scaler.mean.len());
@@ -370,12 +373,15 @@ fn run_predict(
         // ---- Run MLP prediction ----
         println!("  Running MLP inference...");
         let t_pred = Instant::now();
-        let mlp_preds = mlp.predict(&mlp_features)?;
+        let mut mlp_preds = mlp.predict(&mlp_features)?;
         println!(
             "  MLP done: {} cells in {:.2}s",
             n_cells,
             t_pred.elapsed().as_secs_f64()
         );
+
+        // ---- Apply label threshold filtering ----
+        model_config.apply_threshold(&mut mlp_preds);
 
         // ---- Save predictions ----
         let mlp_out = output_dir.join(format!("pred_mlp_{yp}.parquet"));

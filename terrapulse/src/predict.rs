@@ -4,6 +4,65 @@ use std::path::Path;
 
 use crate::config::N_CLASSES;
 
+/// Model configuration loaded from model_config.json.
+#[derive(serde::Deserialize)]
+pub struct ModelConfig {
+    pub label_threshold: f32,
+    #[serde(default = "default_n_classes")]
+    pub n_classes: usize,
+}
+
+fn default_n_classes() -> usize {
+    N_CLASSES
+}
+
+impl ModelConfig {
+    /// Load model config from the ONNX directory.
+    pub fn load(onnx_dir: &Path) -> Result<Self> {
+        let path = onnx_dir.join("model_config.json");
+        if !path.exists() {
+            // Default: no threshold (backwards compatible)
+            println!("  No model_config.json found, using default threshold=0.0");
+            return Ok(Self {
+                label_threshold: 0.0,
+                n_classes: N_CLASSES,
+            });
+        }
+        let data = std::fs::read_to_string(&path)
+            .with_context(|| format!("Cannot read model config: {}", path.display()))?;
+        let cfg: Self = serde_json::from_str(&data)?;
+        println!(
+            "  Loaded model config: label_threshold={:.4}",
+            cfg.label_threshold
+        );
+        Ok(cfg)
+    }
+
+    /// Apply label threshold filtering to predictions:
+    /// - Zero out classes with probability below threshold
+    /// - Renormalize remaining classes to sum to 1.0
+    pub fn apply_threshold(&self, predictions: &mut [Vec<f32>]) {
+        if self.label_threshold <= 0.0 {
+            return;
+        }
+        for row in predictions.iter_mut() {
+            // Zero out below threshold
+            for val in row.iter_mut() {
+                if *val < self.label_threshold {
+                    *val = 0.0;
+                }
+            }
+            // Renormalize
+            let sum: f32 = row.iter().sum();
+            if sum > 0.0 {
+                for val in row.iter_mut() {
+                    *val /= sum;
+                }
+            }
+        }
+    }
+}
+
 /// Scaler parameters (mean + scale) for StandardScaler transform.
 #[derive(serde::Deserialize)]
 pub struct ScalerParams {

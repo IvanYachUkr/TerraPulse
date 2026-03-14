@@ -1,0 +1,9 @@
+{
+    "model_version": "v10_bohb_trial77",
+    "architecture": "T_1024_512_256_64",
+    "activation": "gelu",
+    "label_threshold": 0.021,
+    "n_features": 1764,
+    "n_classes": 7,
+    "class_names": ["tree_cover", "shrubland", "grassland", "cropland", "built_up", "bare_sparse", "water"]
+}
