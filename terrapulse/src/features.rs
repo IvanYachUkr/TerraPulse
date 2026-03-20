@@ -884,7 +884,8 @@ fn extract_cell_features(
     // EVI2
     for i in 0..N_PX {
         idx_px[i] = if nir[i].is_finite() && red[i].is_finite() {
-            2.5 * (nir[i] - red[i]) / (nir[i] + 2.4 * red[i] + 1.0 + EPS)
+            let denom = (nir[i] + 2.4 * red[i] + 1.0).max(1e-6);
+            2.5 * (nir[i] - red[i]) / denom
         } else {
             f32::NAN
         };
@@ -899,7 +900,9 @@ fn extract_cell_features(
         idx_px[i] =
             if re3[i].is_finite() && red[i].is_finite() && re1[i].is_finite() && re2[i].is_finite()
             {
-                (re3[i] - red[i]) / (re1[i] / (re2[i] + EPS) + EPS)
+                let re2_safe = re2[i].max(1e-6);
+                let denom = (re1[i] / re2_safe).max(1e-6);
+                (re3[i] - red[i]) / denom
             } else {
                 f32::NAN
             };
@@ -911,9 +914,10 @@ fn extract_cell_features(
 
     // CRI1
     for i in 0..N_PX {
-        idx_px[i] = if green[i].is_finite() && re1[i].is_finite() && green[i] > EPS && re1[i] > EPS
-        {
-            (1.0 / green[i]) - (1.0 / re1[i])
+        idx_px[i] = if green[i].is_finite() && re1[i].is_finite() {
+            let g = green[i].max(1e-6);
+            let r1 = re1[i].max(1e-6);
+            (1.0 / g) - (1.0 / r1)
         } else {
             f32::NAN
         };

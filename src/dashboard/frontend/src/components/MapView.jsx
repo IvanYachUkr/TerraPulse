@@ -269,7 +269,6 @@ export default function MapView({
             >
                 <Map
                     mapStyle="https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json"
-                    attributionControl={false}
                 />
             </DeckGL>
         </div>

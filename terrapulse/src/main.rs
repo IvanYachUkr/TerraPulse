@@ -352,6 +352,14 @@ fn run_predict(
             .map(|c| *col_index.get(c.as_str()).unwrap())
             .collect();
 
+        // Read nan_fraction column (data quality tracking)
+        let nan_frac_idx = col_index.get("nan_fraction");
+        let nan_fractions: Vec<f32> = if let Some(&idx) = nan_frac_idx {
+            all_rows.iter().map(|row| row[idx]).collect()
+        } else {
+            vec![0.0; n_cells] // no quality data → assume all good
+        };
+
         let mlp_features: Vec<Vec<f32>> = all_rows
             .iter()
             .map(|row| {
@@ -395,17 +403,40 @@ fn run_predict(
             let json_out = output_dir.parent().unwrap_or(output_dir).join(format!("predictions_{}.json", curr_year));
             
             let mut json_map = serde_json::Map::with_capacity(n_cells);
+            let mut nodata_count = 0usize;
+            let mut low_data_count = 0usize;
             for (i, row) in mlp_preds.iter().enumerate() {
-                let mut cell_map = serde_json::Map::with_capacity(CLASS_NAMES.len());
-                for (j, &val) in row.iter().enumerate() {
-                    let rounded = (val * 10000.0).round() / 10000.0;
-                    cell_map.insert(CLASS_NAMES[j].to_string(), serde_json::json!(rounded));
+                let nan_frac = nan_fractions[i];
+                let mut cell_map = serde_json::Map::with_capacity(CLASS_NAMES.len() + 1);
+
+                if nan_frac > 0.5 {
+                    // >50% features were NaN — mark as nodata, skip prediction
+                    cell_map.insert("_quality".to_string(), serde_json::json!("nodata"));
+                    nodata_count += 1;
+                } else {
+                    // Include predictions
+                    for (j, &val) in row.iter().enumerate() {
+                        let rounded = (val * 10000.0).round() / 10000.0;
+                        cell_map.insert(CLASS_NAMES[j].to_string(), serde_json::json!(rounded));
+                    }
+                    // Add quality flag
+                    if nan_frac > 0.0 {
+                        cell_map.insert("_quality".to_string(), serde_json::json!("low_data"));
+                        low_data_count += 1;
+                    } else {
+                        cell_map.insert("_quality".to_string(), serde_json::json!("good"));
+                    }
                 }
                 json_map.insert(i.to_string(), serde_json::Value::Object(cell_map));
             }
             let json_str = serde_json::to_string(&serde_json::Value::Object(json_map))?;
             std::fs::write(&json_out, json_str)?;
-            println!("  Wrote json {} ({} cells)", json_out.display(), n_cells);
+            println!(
+                "  Wrote json {} ({} cells: {} good, {} low_data, {} nodata)",
+                json_out.display(), n_cells,
+                n_cells - low_data_count - nodata_count,
+                low_data_count, nodata_count,
+            );
         }
     }
 

@@ -327,7 +327,11 @@ def get_nuremberg_meta():
 @app.get("/api/nuremberg/meta")
 def nuremberg_meta():
     """Nuremberg pixel map metadata (bounds, classes, resolutions)."""
-    return get_nuremberg_meta()
+    meta = get_nuremberg_meta()
+    # Check if experimental data exists
+    exp_path = os.path.join(NUREMBERG_DIR, "experimental_pred_2021_res1.bin")
+    meta["experimental_available"] = os.path.exists(exp_path)
+    return meta
 
 
 def _serve_binary(fpath, fname):
@@ -374,6 +378,160 @@ def nuremberg_boundary():
     return JSONResponse(content=data, media_type="application/geo+json")
 
 
+@lru_cache(maxsize=None)
+def get_district_stats():
+    path = os.path.join(NUREMBERG_DIR, "district_stats.json")
+    if not os.path.exists(path):
+        return None
+    with open(path, "r") as f:
+        return json.load(f)
+
+
+@app.get("/api/nuremberg/district-stats")
+def nuremberg_district_stats():
+    """Precomputed per-district class pixel counts."""
+    stats = get_district_stats()
+    if stats is None:
+        raise HTTPException(404, "District stats not found. Run precompute_district_stats.py first.")
+    return stats
+
+
+# ---------------------------------------------------------------------------
+# Experimental prediction endpoints
+# ---------------------------------------------------------------------------
+
+@app.get("/api/nuremberg/experimental/metrics")
+def nuremberg_experimental_metrics():
+    """Accuracy metrics for the experimental prediction."""
+    path = os.path.join(NUREMBERG_DIR, "experimental_metrics.json")
+    if not os.path.exists(path):
+        raise HTTPException(404, "Experimental metrics not found")
+    with open(path, "r") as f:
+        return json.load(f)
+
+
+@app.get("/api/nuremberg/experimental/heatmap/{resolution}")
+def nuremberg_experimental_heatmap(resolution: int):
+    """Binary uint8 heatmap of predicted change likelihood (0=no change, 254=change, 255=boundary)."""
+    if resolution < 1 or resolution > 10:
+        raise HTTPException(404, "Resolution must be 1-10")
+    fname = f"experimental_heatmap_res{resolution}.bin"
+    fpath = os.path.join(NUREMBERG_DIR, fname)
+    if not os.path.exists(fpath):
+        raise HTTPException(404, f"Experimental heatmap not found: {fname}")
+    return _serve_binary(fpath, fname)
+
+
+@app.get("/api/nuremberg/experimental/changes/{resolution}")
+def nuremberg_experimental_changes(resolution: int):
+    """Binary uint8 map of predicted changes only (class=0-5, 254=no change, 255=boundary)."""
+    if resolution < 1 or resolution > 10:
+        raise HTTPException(404, "Resolution must be 1-10")
+    fname = f"experimental_changes_res{resolution}.bin"
+    fpath = os.path.join(NUREMBERG_DIR, fname)
+    if not os.path.exists(fpath):
+        raise HTTPException(404, f"Experimental changes not found: {fname}")
+    return _serve_binary(fpath, fname)
+
+
+@app.get("/api/nuremberg/experimental/{resolution}")
+def nuremberg_experimental(resolution: int):
+    """Binary uint8 experimental prediction map at a given resolution."""
+    if resolution < 1 or resolution > 10:
+        raise HTTPException(404, "Resolution must be 1-10")
+    fname = f"experimental_pred_2021_res{resolution}.bin"
+    fpath = os.path.join(NUREMBERG_DIR, fname)
+    if not os.path.exists(fpath):
+        raise HTTPException(404, f"Experimental data not found: {fname}")
+    return _serve_binary(fpath, fname)
+
+
+@app.get("/api/nuremberg/accuracy")
+def nuremberg_accuracy():
+    """Pixel-level accuracy: predictions vs labels for years with ground truth (2020, 2021)."""
+    import numpy as np
+    label_years = [2020, 2021]
+    resolution = 1  # Use highest resolution for accurate measurement
+    results = {}
+    classes = ["tree_cover", "grassland", "cropland", "built_up", "bare_sparse", "water"]
+
+    for year in label_years:
+        label_path = os.path.join(NUREMBERG_DIR, f"nuremberg_labels_{year}_res{resolution}.bin")
+        pred_path = os.path.join(NUREMBERG_DIR, f"nuremberg_pred_{year}_res{resolution}.bin")
+        if not os.path.exists(label_path) or not os.path.exists(pred_path):
+            continue
+
+        labels = np.fromfile(label_path, dtype=np.uint8)
+        preds = np.fromfile(pred_path, dtype=np.uint8)
+
+        # Exclude boundary pixels (255)
+        mask = (labels != 255) & (preds != 255)
+        labels_valid = labels[mask]
+        preds_valid = preds[mask]
+
+        total = len(labels_valid)
+        correct = int(np.sum(labels_valid == preds_valid))
+        accuracy = correct / total if total > 0 else 0.0
+
+        # Per-class precision/recall/f1
+        per_class = {}
+        for i, cls in enumerate(classes):
+            tp = int(np.sum((preds_valid == i) & (labels_valid == i)))
+            fp = int(np.sum((preds_valid == i) & (labels_valid != i)))
+            fn = int(np.sum((preds_valid != i) & (labels_valid == i)))
+            precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+            recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+            f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0.0
+            per_class[cls] = {"precision": round(precision, 4), "recall": round(recall, 4), "f1": round(f1, 4)}
+
+        results[str(year)] = {
+            "accuracy": round(accuracy, 4),
+            "total_pixels": total,
+            "correct_pixels": correct,
+            "per_class": per_class,
+        }
+
+    return results
+
+
+@app.get("/api/nuremberg/predictions/diff/{year_from}/{year_to}/{resolution}")
+def nuremberg_predictions_diff(year_from: int, year_to: int, resolution: int):
+    """On-the-fly diff between two prediction years. Changed pixels → year_to class, unchanged → 254, boundary → 255."""
+    if resolution < 1 or resolution > 10:
+        raise HTTPException(404, "Resolution must be 1-10")
+    if year_from == year_to:
+        raise HTTPException(400, "Years must be different")
+
+    fname_from = f"nuremberg_pred_{year_from}_res{resolution}.bin"
+    fname_to = f"nuremberg_pred_{year_to}_res{resolution}.bin"
+    fpath_from = os.path.join(NUREMBERG_DIR, fname_from)
+    fpath_to = os.path.join(NUREMBERG_DIR, fname_to)
+
+    if not os.path.exists(fpath_from):
+        raise HTTPException(404, f"Prediction not found: {fname_from}")
+    if not os.path.exists(fpath_to):
+        raise HTTPException(404, f"Prediction not found: {fname_to}")
+
+    import numpy as np
+    pred_from = np.fromfile(fpath_from, dtype=np.uint8)
+    pred_to = np.fromfile(fpath_to, dtype=np.uint8)
+
+    boundary = (pred_from == 255) | (pred_to == 255)
+    changed = (pred_from != pred_to) & ~boundary
+
+    result = np.full_like(pred_from, 254)  # 254 = no change
+    result[changed] = pred_to[changed]      # changed → target class
+    result[boundary] = 255                  # boundary → transparent
+
+    data = result.tobytes()
+    return StreamingResponse(
+        iter([data]),
+        media_type="application/octet-stream",
+        headers={"Content-Length": str(len(data))},
+    )
+
+
+
 # ---------------------------------------------------------------------------
 # Deploy endpoints
 # ---------------------------------------------------------------------------
@@ -410,10 +568,11 @@ def deploy_status(job_id: str):
         "messages": job.messages[-20:],
         "error": job.error,
         "grid_cells": job.grid_cells,
-        "result_years": sorted(job.result_years),
+        "result_years": deploy_runner.get_available_years(job_id),
         "bbox": job.bbox,
         "epsg": job.epsg,
     }
+
 
 
 @app.get("/api/deploy/results/{job_id}/{year}")

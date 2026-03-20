@@ -11,7 +11,27 @@ build/
 
 # === Data (too large for git) ===
 data/
-!src/dashboard/data/
+!data/nuremberg_stats/
+!data/nuremberg_stats/bezirke_stats/
+!data/nuremberg_stats/geojsons_stats/nuremberg_stat_bezirke_wgs84.geojson
+
+# Dashboard data (Keep metadata, ignore large grids/predictions/binaries)
+src/dashboard/data/*.json
+src/dashboard/data/*.bin
+src/dashboard/data/nuremberg_dashboard/
+src/dashboard/data/shap_plots/
+src/dashboard/data/nuremberg/
+!src/dashboard/data/model_benchmark.json
+!src/dashboard/data/nuremberg_boundary.geojson
+!src/dashboard/data/conformal.json
+!src/dashboard/data/evaluation.json
+!src/dashboard/data/explainability.json
+!src/dashboard/data/failure_analysis.json
+!src/dashboard/data/stress_tests.json
+!src/dashboard/data/split.json
+!src/dashboard/data/nuremberg_dashboard/nuremberg_dashboard_meta.json
+!src/dashboard/data/nuremberg_dashboard/district_stats.json
+!src/dashboard/data/nuremberg_dashboard/experimental_metrics.json
 reports/figures/
 reports/phase6/
 reports/phase7/
@@ -81,3 +101,13 @@ models/final_mlp_pyv3/
 terrapulse/check_s1_compression.py
 terrapulse/s1_tags.txt
 old_rust.rs
+
+# ignore typ files
+*.typ
+
+#ignore bib files
+*.bib
+
+terrapulse_full_codebase.md
+# Model backup files
+*.bak_v*

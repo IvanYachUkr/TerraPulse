@@ -5,17 +5,24 @@ export default function Header({
     onAppModeChange,
     nurembergDataMode,
     nurembergYear,
+    nurembergSecondaryYear,
 }) {
     // Build context info text
     let infoText = '';
     if (appMode === 'analytical') {
         if (nurembergDataMode === 'labels') {
             infoText = `Ground Truth \u00b7 ESA WorldCover ${nurembergYear}`;
+        } else if (nurembergDataMode === 'experimental') {
+            infoText = `Experimental \u00b7 4-Fold Spatial CV \u00b7 2020\u21922021`;
+        } else if (nurembergSecondaryYear !== null) {
+            infoText = `Predictions · Nuremberg ${nurembergYear} → ${nurembergSecondaryYear} · Change Detection`;
         } else if (nurembergYear >= 2026) {
-            infoText = `Predictions \u00b7 Nuremberg ${nurembergYear} \u00b7 Future Forecast`;
+            infoText = `Predictions · Nuremberg ${nurembergYear} · Future Forecast`;
         } else {
-            infoText = `CatBoost V5 Predictions \u00b7 Nuremberg ${nurembergYear}`;
+            infoText = `CatBoost V5 Predictions · Nuremberg ${nurembergYear}`;
         }
+    } else if (appMode === 'deploy') {
+        infoText = `Global Predictions \u00b7 Regional Predictor`;
     }
 
     return (

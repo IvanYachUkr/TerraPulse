@@ -193,7 +193,7 @@ pub async fn download_and_composite(
                     for px in 0..n_pixels {
                         let v = scene.bands[bi][px];
                         if v.is_finite() && v > 0.0 {
-                            scene.bands[bi][px] = (v - boa_offset).max(0.0);
+                            scene.bands[bi][px] = (v - boa_offset).max(1.0);
                         }
                     }
                 }
@@ -416,7 +416,7 @@ async fn download_one_scene(
 
     // Consume spectral bands — each raw buffer is freed right after resampling
     for (raw_pixels, raw_w, raw_h, raw_gt) in band_data.into_iter() {
-        let mut resampled = if epsg_mismatch {
+        let resampled = if epsg_mismatch {
             reproject::resample_bilinear_cross_crs(
                 &raw_pixels, raw_w, raw_h, &raw_gt, src_epsg_for_bands,
                 dst_w, dst_h, dst_gt, dst_epsg,
@@ -427,11 +427,39 @@ async fn download_one_scene(
             )
         };
         // raw_pixels is dropped here — frees source tile memory immediately
-        // NOTE: we intentionally do NOT convert 0.0 → NaN here.
-        // Reflectance = 0.0 is valid for dark surfaces (deep water, shadows).
-        // True NODATA (out-of-footprint) pixels already come back as NaN from
-        // the bilinear resampler, and cloudy pixels are masked via SCL below.
         bands.push(resampled);
+    }
+
+    // ── Detect out-of-footprint pixels ──────────────────────────────────
+    // Sentinel-2 COGs write literal 0 for pixels outside the satellite's
+    // ground footprint.  After bilinear resampling, footprint-edge pixels
+    // get interpolated to near-zero across ALL bands.  If we keep them,
+    // the Q1 composite picks these zeros over real data from overlapping
+    // scenes, producing the "stripe" artifacts at orbit swath boundaries.
+    //
+    // Heuristic: if a pixel has *all 10 spectral bands* ≤ 1.0 (essentially
+    // zero after BOA correction), it is outside the footprint.  Even the
+    // darkest real surface (deep water) has ≥ 5–10 in at least one band
+    // (B02 blue).  Mark these as NaN so the compositor ignores them.
+    let footprint_threshold = 1.0f32;
+    let mut n_outside_footprint = 0usize;
+    for px in 0..n_pixels {
+        let all_near_zero = bands.iter().all(|b| {
+            let v = b[px];
+            !v.is_finite() || v.abs() <= footprint_threshold
+        });
+        if all_near_zero {
+            for band in bands.iter_mut() {
+                band[px] = f32::NAN;
+            }
+            n_outside_footprint += 1;
+        }
+    }
+    if n_outside_footprint > 0 {
+        let pct = 100.0 * n_outside_footprint as f64 / n_pixels as f64;
+        eprintln!(
+            "      Footprint mask: {n_outside_footprint}/{n_pixels} pixels outside scene ({pct:.1}%)"
+        );
     }
 
     // Process SCL band — nearest-neighbor (categorical mask)
@@ -448,13 +476,15 @@ async fn download_one_scene(
     };
     drop(scl_entry); // free SCL source data
 
-
-
     // Build cloud mask from SCL
     let mut valid_mask = vec![true; n_pixels];
     for px in 0..n_pixels {
         let scl_val = scl_resampled[px].round() as u8;
         if SCL_EXCLUDE.contains(&scl_val) || !scl_resampled[px].is_finite() {
+            valid_mask[px] = false;
+        }
+        // Also mark footprint-masked pixels as invalid
+        if !bands[0][px].is_finite() {
             valid_mask[px] = false;
         }
     }

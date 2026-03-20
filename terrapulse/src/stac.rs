@@ -99,7 +99,16 @@ pub async fn search_scenes(
         anyhow::bail!("STAC search returned {status}: {text}");
     }
 
-    let fc: StacFeatureCollection = resp.json().await.context("Failed to parse STAC response")?;
+    let mut fc: StacFeatureCollection = resp.json().await.context("Failed to parse STAC response")?;
+
+    // Sort by cloud cover ascending for deterministic, reproducible composites
+    fc.features.sort_by(|a, b| {
+        let ca = a.properties.cloud_cover.unwrap_or(f64::INFINITY);
+        let cb = b.properties.cloud_cover.unwrap_or(f64::INFINITY);
+        ca.partial_cmp(&cb).unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.id.cmp(&b.id))
+    });
+
     Ok(fc.features)
 }
 

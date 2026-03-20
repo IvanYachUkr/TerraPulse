@@ -385,8 +385,9 @@ pub async fn read_cog_region(
             let client = client.clone();
             let url = url.to_string();
             let idx = meta.tile_index(tx, ty);
-            let offset = meta.tile_offsets[idx];
-            let size = meta.tile_byte_counts[idx] as usize;
+            let in_bounds = idx < meta.tile_offsets.len() && idx < meta.tile_byte_counts.len();
+            let offset = if in_bounds { meta.tile_offsets[idx] } else { 0 };
+            let size = if in_bounds { meta.tile_byte_counts[idx] as usize } else { 0 };
             let compression = meta.compression;
             let bits = meta.bits_per_sample;
             let sample_fmt = meta.sample_format;
@@ -395,6 +396,10 @@ pub async fn read_cog_region(
             let tw = meta.tile_width as usize;
             let th = meta.tile_height as usize;
             async move {
+                if !in_bounds {
+                    // Out-of-bounds tile index — return NaN-filled tile
+                    return Ok::<_, anyhow::Error>((tx, ty, vec![f32::NAN; tw * th]));
+                }
                 let raw = download_range(&client, &url, offset as usize, size).await?;
                 let pixels = decode_tile(&raw, compression, bits, sample_fmt, predictor, tw, th, is_le)?;
                 Ok::<_, anyhow::Error>((tx, ty, pixels))

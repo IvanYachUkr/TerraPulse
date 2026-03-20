@@ -1,0 +1,3221 @@
+{
+  "01": {
+    "name": "Altstadt, St. Lorenz",
+    "id": "01",
+    "total_pixels": 346,
+    "labels_2020": {
+      "tree_cover": 24,
+      "grassland": 0,
+      "cropland": 0,
+      "built_up": 321,
+      "bare_sparse": 0,
+      "water": 1
+    },
+    "labels_2021": {
+      "tree_cover": 20,
+      "grassland": 0,
+      "cropland": 0,
+      "built_up": 325,
+      "bare_sparse": 0,
+      "water": 1
+    },
+    "predictions_2021": {
+      "tree_cover": 24,
+      "grassland": 0,
+      "cropland": 0,
+      "built_up": 319,
+      "bare_sparse": 0,
+      "water": 3
+    },
+    "experimental_2021": {
+      "tree_cover": 24,
+      "grassland": 0,
+      "cropland": 0,
+      "built_up": 321,
+      "bare_sparse": 0,
+      "water": 1
+    }
+  },
+  "02": {
+    "name": "Marienvorstadt",
+    "id": "02",
+    "total_pixels": 242,
+    "labels_2020": {
+      "tree_cover": 65,
+      "grassland": 18,
+      "cropland": 0,
+      "built_up": 157,
+      "bare_sparse": 1,
+      "water": 1
+    },
+    "labels_2021": {
+      "tree_cover": 71,
+      "grassland": 13,
+      "cropland": 0,
+      "built_up": 157,
+      "bare_sparse": 0,
+      "water": 1
+    },
+    "predictions_2021": {
+      "tree_cover": 70,
+      "grassland": 14,
+      "cropland": 0,
+      "built_up": 158,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "experimental_2021": {
+      "tree_cover": 65,
+      "grassland": 18,
+      "cropland": 0,
+      "built_up": 157,
+      "bare_sparse": 1,
+      "water": 1
+    }
+  },
+  "03": {
+    "name": "Tafelhof",
+    "id": "03",
+    "total_pixels": 257,
+    "labels_2020": {
+      "tree_cover": 4,
+      "grassland": 0,
+      "cropland": 0,
+      "built_up": 252,
+      "bare_sparse": 1,
+      "water": 0
+    },
+    "labels_2021": {
+      "tree_cover": 2,
+      "grassland": 0,
+      "cropland": 0,
+      "built_up": 255,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "predictions_2021": {
+      "tree_cover": 4,
+      "grassland": 0,
+      "cropland": 0,
+      "built_up": 253,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "experimental_2021": {
+      "tree_cover": 4,
+      "grassland": 0,
+      "cropland": 0,
+      "built_up": 252,
+      "bare_sparse": 1,
+      "water": 0
+    }
+  },
+  "04": {
+    "name": "Gostenhof",
+    "id": "04",
+    "total_pixels": 210,
+    "labels_2020": {
+      "tree_cover": 5,
+      "grassland": 0,
+      "cropland": 0,
+      "built_up": 205,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "labels_2021": {
+      "tree_cover": 5,
+      "grassland": 0,
+      "cropland": 0,
+      "built_up": 205,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "predictions_2021": {
+      "tree_cover": 2,
+      "grassland": 0,
+      "cropland": 0,
+      "built_up": 208,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "experimental_2021": {
+      "tree_cover": 5,
+      "grassland": 0,
+      "cropland": 0,
+      "built_up": 205,
+      "bare_sparse": 0,
+      "water": 0
+    }
+  },
+  "05": {
+    "name": "Himpfelshof",
+    "id": "05",
+    "total_pixels": 261,
+    "labels_2020": {
+      "tree_cover": 102,
+      "grassland": 5,
+      "cropland": 0,
+      "built_up": 151,
+      "bare_sparse": 0,
+      "water": 3
+    },
+    "labels_2021": {
+      "tree_cover": 90,
+      "grassland": 6,
+      "cropland": 0,
+      "built_up": 164,
+      "bare_sparse": 0,
+      "water": 1
+    },
+    "predictions_2021": {
+      "tree_cover": 88,
+      "grassland": 6,
+      "cropland": 0,
+      "built_up": 164,
+      "bare_sparse": 0,
+      "water": 3
+    },
+    "experimental_2021": {
+      "tree_cover": 102,
+      "grassland": 5,
+      "cropland": 0,
+      "built_up": 151,
+      "bare_sparse": 0,
+      "water": 3
+    }
+  },
+  "06": {
+    "name": "Altstadt, St. Sebald",
+    "id": "06",
+    "total_pixels": 317,
+    "labels_2020": {
+      "tree_cover": 52,
+      "grassland": 3,
+      "cropland": 0,
+      "built_up": 262,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "labels_2021": {
+      "tree_cover": 46,
+      "grassland": 0,
+      "cropland": 0,
+      "built_up": 271,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "predictions_2021": {
+      "tree_cover": 44,
+      "grassland": 0,
+      "cropland": 0,
+      "built_up": 273,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "experimental_2021": {
+      "tree_cover": 52,
+      "grassland": 3,
+      "cropland": 0,
+      "built_up": 262,
+      "bare_sparse": 0,
+      "water": 0
+    }
+  },
+  "07": {
+    "name": "St. Johannis",
+    "id": "07",
+    "total_pixels": 239,
+    "labels_2020": {
+      "tree_cover": 22,
+      "grassland": 2,
+      "cropland": 0,
+      "built_up": 215,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "labels_2021": {
+      "tree_cover": 16,
+      "grassland": 1,
+      "cropland": 0,
+      "built_up": 222,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "predictions_2021": {
+      "tree_cover": 22,
+      "grassland": 2,
+      "cropland": 0,
+      "built_up": 215,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "experimental_2021": {
+      "tree_cover": 22,
+      "grassland": 2,
+      "cropland": 0,
+      "built_up": 215,
+      "bare_sparse": 0,
+      "water": 0
+    }
+  },
+  "08": {
+    "name": "Pirckheimerstra\u00dfe",
+    "id": "08",
+    "total_pixels": 209,
+    "labels_2020": {
+      "tree_cover": 25,
+      "grassland": 2,
+      "cropland": 0,
+      "built_up": 182,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "labels_2021": {
+      "tree_cover": 26,
+      "grassland": 0,
+      "cropland": 0,
+      "built_up": 183,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "predictions_2021": {
+      "tree_cover": 25,
+      "grassland": 1,
+      "cropland": 0,
+      "built_up": 183,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "experimental_2021": {
+      "tree_cover": 25,
+      "grassland": 2,
+      "cropland": 0,
+      "built_up": 182,
+      "bare_sparse": 0,
+      "water": 0
+    }
+  },
+  "09": {
+    "name": "W\u00f6hrd",
+    "id": "09",
+    "total_pixels": 318,
+    "labels_2020": {
+      "tree_cover": 22,
+      "grassland": 3,
+      "cropland": 0,
+      "built_up": 293,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "labels_2021": {
+      "tree_cover": 27,
+      "grassland": 1,
+      "cropland": 0,
+      "built_up": 290,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "predictions_2021": {
+      "tree_cover": 25,
+      "grassland": 2,
+      "cropland": 0,
+      "built_up": 291,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "experimental_2021": {
+      "tree_cover": 22,
+      "grassland": 3,
+      "cropland": 0,
+      "built_up": 293,
+      "bare_sparse": 0,
+      "water": 0
+    }
+  },
+  "10": {
+    "name": "Ludwigsfeld",
+    "id": "10",
+    "total_pixels": 582,
+    "labels_2020": {
+      "tree_cover": 199,
+      "grassland": 54,
+      "cropland": 0,
+      "built_up": 326,
+      "bare_sparse": 2,
+      "water": 1
+    },
+    "labels_2021": {
+      "tree_cover": 205,
+      "grassland": 40,
+      "cropland": 0,
+      "built_up": 336,
+      "bare_sparse": 0,
+      "water": 1
+    },
+    "predictions_2021": {
+      "tree_cover": 201,
+      "grassland": 36,
+      "cropland": 0,
+      "built_up": 344,
+      "bare_sparse": 0,
+      "water": 1
+    },
+    "experimental_2021": {
+      "tree_cover": 199,
+      "grassland": 54,
+      "cropland": 0,
+      "built_up": 326,
+      "bare_sparse": 2,
+      "water": 1
+    }
+  },
+  "11": {
+    "name": "Glockenhof",
+    "id": "11",
+    "total_pixels": 329,
+    "labels_2020": {
+      "tree_cover": 10,
+      "grassland": 0,
+      "cropland": 0,
+      "built_up": 319,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "labels_2021": {
+      "tree_cover": 10,
+      "grassland": 0,
+      "cropland": 0,
+      "built_up": 319,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "predictions_2021": {
+      "tree_cover": 9,
+      "grassland": 0,
+      "cropland": 0,
+      "built_up": 320,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "experimental_2021": {
+      "tree_cover": 10,
+      "grassland": 0,
+      "cropland": 0,
+      "built_up": 319,
+      "bare_sparse": 0,
+      "water": 0
+    }
+  },
+  "12": {
+    "name": "Guntherstra\u00dfe",
+    "id": "12",
+    "total_pixels": 169,
+    "labels_2020": {
+      "tree_cover": 58,
+      "grassland": 1,
+      "cropland": 0,
+      "built_up": 110,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "labels_2021": {
+      "tree_cover": 55,
+      "grassland": 0,
+      "cropland": 0,
+      "built_up": 114,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "predictions_2021": {
+      "tree_cover": 53,
+      "grassland": 0,
+      "cropland": 0,
+      "built_up": 116,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "experimental_2021": {
+      "tree_cover": 58,
+      "grassland": 1,
+      "cropland": 0,
+      "built_up": 110,
+      "bare_sparse": 0,
+      "water": 0
+    }
+  },
+  "13": {
+    "name": "Galgenhof",
+    "id": "13",
+    "total_pixels": 341,
+    "labels_2020": {
+      "tree_cover": 6,
+      "grassland": 1,
+      "cropland": 0,
+      "built_up": 334,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "labels_2021": {
+      "tree_cover": 5,
+      "grassland": 0,
+      "cropland": 0,
+      "built_up": 336,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "predictions_2021": {
+      "tree_cover": 4,
+      "grassland": 0,
+      "cropland": 0,
+      "built_up": 337,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "experimental_2021": {
+      "tree_cover": 6,
+      "grassland": 1,
+      "cropland": 0,
+      "built_up": 334,
+      "bare_sparse": 0,
+      "water": 0
+    }
+  },
+  "14": {
+    "name": "Hummelstein",
+    "id": "14",
+    "total_pixels": 296,
+    "labels_2020": {
+      "tree_cover": 58,
+      "grassland": 8,
+      "cropland": 0,
+      "built_up": 230,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "labels_2021": {
+      "tree_cover": 57,
+      "grassland": 2,
+      "cropland": 0,
+      "built_up": 237,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "predictions_2021": {
+      "tree_cover": 62,
+      "grassland": 0,
+      "cropland": 0,
+      "built_up": 234,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "experimental_2021": {
+      "tree_cover": 58,
+      "grassland": 8,
+      "cropland": 0,
+      "built_up": 230,
+      "bare_sparse": 0,
+      "water": 0
+    }
+  },
+  "15": {
+    "name": "Gugelstra\u00dfe",
+    "id": "15",
+    "total_pixels": 257,
+    "labels_2020": {
+      "tree_cover": 2,
+      "grassland": 0,
+      "cropland": 0,
+      "built_up": 255,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "labels_2021": {
+      "tree_cover": 0,
+      "grassland": 0,
+      "cropland": 0,
+      "built_up": 257,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "predictions_2021": {
+      "tree_cover": 1,
+      "grassland": 0,
+      "cropland": 0,
+      "built_up": 256,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "experimental_2021": {
+      "tree_cover": 2,
+      "grassland": 0,
+      "cropland": 0,
+      "built_up": 255,
+      "bare_sparse": 0,
+      "water": 0
+    }
+  },
+  "16": {
+    "name": "Steinb\u00fchl",
+    "id": "16",
+    "total_pixels": 224,
+    "labels_2020": {
+      "tree_cover": 17,
+      "grassland": 1,
+      "cropland": 0,
+      "built_up": 206,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "labels_2021": {
+      "tree_cover": 14,
+      "grassland": 0,
+      "cropland": 0,
+      "built_up": 210,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "predictions_2021": {
+      "tree_cover": 13,
+      "grassland": 0,
+      "cropland": 0,
+      "built_up": 211,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "experimental_2021": {
+      "tree_cover": 17,
+      "grassland": 1,
+      "cropland": 0,
+      "built_up": 206,
+      "bare_sparse": 0,
+      "water": 0
+    }
+  },
+  "17": {
+    "name": "Gibitzenhof",
+    "id": "17",
+    "total_pixels": 171,
+    "labels_2020": {
+      "tree_cover": 31,
+      "grassland": 3,
+      "cropland": 0,
+      "built_up": 137,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "labels_2021": {
+      "tree_cover": 25,
+      "grassland": 0,
+      "cropland": 0,
+      "built_up": 146,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "predictions_2021": {
+      "tree_cover": 29,
+      "grassland": 0,
+      "cropland": 0,
+      "built_up": 142,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "experimental_2021": {
+      "tree_cover": 31,
+      "grassland": 3,
+      "cropland": 0,
+      "built_up": 137,
+      "bare_sparse": 0,
+      "water": 0
+    }
+  },
+  "18": {
+    "name": "Sandreuth",
+    "id": "18",
+    "total_pixels": 230,
+    "labels_2020": {
+      "tree_cover": 15,
+      "grassland": 5,
+      "cropland": 0,
+      "built_up": 210,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "labels_2021": {
+      "tree_cover": 16,
+      "grassland": 0,
+      "cropland": 0,
+      "built_up": 214,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "predictions_2021": {
+      "tree_cover": 15,
+      "grassland": 0,
+      "cropland": 0,
+      "built_up": 215,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "experimental_2021": {
+      "tree_cover": 15,
+      "grassland": 5,
+      "cropland": 0,
+      "built_up": 210,
+      "bare_sparse": 0,
+      "water": 0
+    }
+  },
+  "19": {
+    "name": "Schweinau",
+    "id": "19",
+    "total_pixels": 294,
+    "labels_2020": {
+      "tree_cover": 44,
+      "grassland": 10,
+      "cropland": 0,
+      "built_up": 237,
+      "bare_sparse": 3,
+      "water": 0
+    },
+    "labels_2021": {
+      "tree_cover": 48,
+      "grassland": 2,
+      "cropland": 0,
+      "built_up": 242,
+      "bare_sparse": 2,
+      "water": 0
+    },
+    "predictions_2021": {
+      "tree_cover": 52,
+      "grassland": 2,
+      "cropland": 0,
+      "built_up": 240,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "experimental_2021": {
+      "tree_cover": 44,
+      "grassland": 10,
+      "cropland": 0,
+      "built_up": 237,
+      "bare_sparse": 3,
+      "water": 0
+    }
+  },
+  "20": {
+    "name": "St. Leonhard",
+    "id": "20",
+    "total_pixels": 518,
+    "labels_2020": {
+      "tree_cover": 79,
+      "grassland": 13,
+      "cropland": 0,
+      "built_up": 425,
+      "bare_sparse": 1,
+      "water": 0
+    },
+    "labels_2021": {
+      "tree_cover": 82,
+      "grassland": 3,
+      "cropland": 0,
+      "built_up": 433,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "predictions_2021": {
+      "tree_cover": 83,
+      "grassland": 3,
+      "cropland": 0,
+      "built_up": 432,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "experimental_2021": {
+      "tree_cover": 79,
+      "grassland": 13,
+      "cropland": 0,
+      "built_up": 425,
+      "bare_sparse": 1,
+      "water": 0
+    }
+  },
+  "21": {
+    "name": "S\u00fcndersb\u00fchl",
+    "id": "21",
+    "total_pixels": 431,
+    "labels_2020": {
+      "tree_cover": 57,
+      "grassland": 36,
+      "cropland": 0,
+      "built_up": 338,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "labels_2021": {
+      "tree_cover": 69,
+      "grassland": 13,
+      "cropland": 0,
+      "built_up": 348,
+      "bare_sparse": 1,
+      "water": 0
+    },
+    "predictions_2021": {
+      "tree_cover": 75,
+      "grassland": 10,
+      "cropland": 2,
+      "built_up": 335,
+      "bare_sparse": 9,
+      "water": 0
+    },
+    "experimental_2021": {
+      "tree_cover": 57,
+      "grassland": 36,
+      "cropland": 0,
+      "built_up": 337,
+      "bare_sparse": 1,
+      "water": 0
+    }
+  },
+  "22": {
+    "name": "B\u00e4renschanze",
+    "id": "22",
+    "total_pixels": 435,
+    "labels_2020": {
+      "tree_cover": 114,
+      "grassland": 26,
+      "cropland": 0,
+      "built_up": 295,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "labels_2021": {
+      "tree_cover": 102,
+      "grassland": 16,
+      "cropland": 0,
+      "built_up": 317,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "predictions_2021": {
+      "tree_cover": 110,
+      "grassland": 17,
+      "cropland": 0,
+      "built_up": 308,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "experimental_2021": {
+      "tree_cover": 114,
+      "grassland": 26,
+      "cropland": 0,
+      "built_up": 295,
+      "bare_sparse": 0,
+      "water": 0
+    }
+  },
+  "23": {
+    "name": "Sandberg",
+    "id": "23",
+    "total_pixels": 284,
+    "labels_2020": {
+      "tree_cover": 33,
+      "grassland": 3,
+      "cropland": 0,
+      "built_up": 248,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "labels_2021": {
+      "tree_cover": 27,
+      "grassland": 2,
+      "cropland": 0,
+      "built_up": 255,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "predictions_2021": {
+      "tree_cover": 24,
+      "grassland": 3,
+      "cropland": 0,
+      "built_up": 257,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "experimental_2021": {
+      "tree_cover": 33,
+      "grassland": 3,
+      "cropland": 0,
+      "built_up": 248,
+      "bare_sparse": 0,
+      "water": 0
+    }
+  },
+  "24": {
+    "name": "Bielingplatz",
+    "id": "24",
+    "total_pixels": 254,
+    "labels_2020": {
+      "tree_cover": 58,
+      "grassland": 2,
+      "cropland": 0,
+      "built_up": 194,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "labels_2021": {
+      "tree_cover": 53,
+      "grassland": 0,
+      "cropland": 0,
+      "built_up": 201,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "predictions_2021": {
+      "tree_cover": 50,
+      "grassland": 0,
+      "cropland": 0,
+      "built_up": 204,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "experimental_2021": {
+      "tree_cover": 58,
+      "grassland": 2,
+      "cropland": 0,
+      "built_up": 194,
+      "bare_sparse": 0,
+      "water": 0
+    }
+  },
+  "25": {
+    "name": "Uhlandstra\u00dfe",
+    "id": "25",
+    "total_pixels": 283,
+    "labels_2020": {
+      "tree_cover": 34,
+      "grassland": 12,
+      "cropland": 0,
+      "built_up": 237,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "labels_2021": {
+      "tree_cover": 25,
+      "grassland": 8,
+      "cropland": 0,
+      "built_up": 250,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "predictions_2021": {
+      "tree_cover": 25,
+      "grassland": 7,
+      "cropland": 0,
+      "built_up": 251,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "experimental_2021": {
+      "tree_cover": 34,
+      "grassland": 12,
+      "cropland": 0,
+      "built_up": 237,
+      "bare_sparse": 0,
+      "water": 0
+    }
+  },
+  "26": {
+    "name": "Maxfeld",
+    "id": "26",
+    "total_pixels": 359,
+    "labels_2020": {
+      "tree_cover": 118,
+      "grassland": 12,
+      "cropland": 0,
+      "built_up": 227,
+      "bare_sparse": 1,
+      "water": 1
+    },
+    "labels_2021": {
+      "tree_cover": 114,
+      "grassland": 6,
+      "cropland": 0,
+      "built_up": 237,
+      "bare_sparse": 0,
+      "water": 2
+    },
+    "predictions_2021": {
+      "tree_cover": 105,
+      "grassland": 5,
+      "cropland": 0,
+      "built_up": 249,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "experimental_2021": {
+      "tree_cover": 118,
+      "grassland": 12,
+      "cropland": 0,
+      "built_up": 227,
+      "bare_sparse": 1,
+      "water": 1
+    }
+  },
+  "27": {
+    "name": "Veilhof",
+    "id": "27",
+    "total_pixels": 433,
+    "labels_2020": {
+      "tree_cover": 86,
+      "grassland": 8,
+      "cropland": 0,
+      "built_up": 251,
+      "bare_sparse": 8,
+      "water": 80
+    },
+    "labels_2021": {
+      "tree_cover": 98,
+      "grassland": 4,
+      "cropland": 0,
+      "built_up": 257,
+      "bare_sparse": 2,
+      "water": 72
+    },
+    "predictions_2021": {
+      "tree_cover": 94,
+      "grassland": 2,
+      "cropland": 0,
+      "built_up": 264,
+      "bare_sparse": 0,
+      "water": 73
+    },
+    "experimental_2021": {
+      "tree_cover": 86,
+      "grassland": 8,
+      "cropland": 0,
+      "built_up": 251,
+      "bare_sparse": 8,
+      "water": 80
+    }
+  },
+  "28": {
+    "name": "Tullnau",
+    "id": "28",
+    "total_pixels": 473,
+    "labels_2020": {
+      "tree_cover": 174,
+      "grassland": 19,
+      "cropland": 0,
+      "built_up": 260,
+      "bare_sparse": 2,
+      "water": 18
+    },
+    "labels_2021": {
+      "tree_cover": 185,
+      "grassland": 13,
+      "cropland": 0,
+      "built_up": 256,
+      "bare_sparse": 0,
+      "water": 19
+    },
+    "predictions_2021": {
+      "tree_cover": 175,
+      "grassland": 16,
+      "cropland": 0,
+      "built_up": 265,
+      "bare_sparse": 1,
+      "water": 16
+    },
+    "experimental_2021": {
+      "tree_cover": 174,
+      "grassland": 19,
+      "cropland": 0,
+      "built_up": 260,
+      "bare_sparse": 2,
+      "water": 18
+    }
+  },
+  "29": {
+    "name": "Glei\u00dfhammer",
+    "id": "29",
+    "total_pixels": 375,
+    "labels_2020": {
+      "tree_cover": 181,
+      "grassland": 20,
+      "cropland": 0,
+      "built_up": 174,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "labels_2021": {
+      "tree_cover": 201,
+      "grassland": 11,
+      "cropland": 0,
+      "built_up": 163,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "predictions_2021": {
+      "tree_cover": 198,
+      "grassland": 7,
+      "cropland": 0,
+      "built_up": 170,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "experimental_2021": {
+      "tree_cover": 181,
+      "grassland": 20,
+      "cropland": 0,
+      "built_up": 174,
+      "bare_sparse": 0,
+      "water": 0
+    }
+  },
+  "30": {
+    "name": "Dutzendteich",
+    "id": "30",
+    "total_pixels": 1420,
+    "labels_2020": {
+      "tree_cover": 624,
+      "grassland": 139,
+      "cropland": 8,
+      "built_up": 437,
+      "bare_sparse": 4,
+      "water": 208
+    },
+    "labels_2021": {
+      "tree_cover": 676,
+      "grassland": 108,
+      "cropland": 2,
+      "built_up": 430,
+      "bare_sparse": 1,
+      "water": 203
+    },
+    "predictions_2021": {
+      "tree_cover": 652,
+      "grassland": 106,
+      "cropland": 0,
+      "built_up": 448,
+      "bare_sparse": 4,
+      "water": 210
+    },
+    "experimental_2021": {
+      "tree_cover": 623,
+      "grassland": 140,
+      "cropland": 8,
+      "built_up": 438,
+      "bare_sparse": 4,
+      "water": 207
+    }
+  },
+  "31": {
+    "name": "Rangierbahnhof-Siedlung",
+    "id": "31",
+    "total_pixels": 309,
+    "labels_2020": {
+      "tree_cover": 134,
+      "grassland": 32,
+      "cropland": 0,
+      "built_up": 142,
+      "bare_sparse": 1,
+      "water": 0
+    },
+    "labels_2021": {
+      "tree_cover": 139,
+      "grassland": 17,
+      "cropland": 0,
+      "built_up": 153,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "predictions_2021": {
+      "tree_cover": 126,
+      "grassland": 26,
+      "cropland": 0,
+      "built_up": 157,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "experimental_2021": {
+      "tree_cover": 134,
+      "grassland": 32,
+      "cropland": 0,
+      "built_up": 142,
+      "bare_sparse": 1,
+      "water": 0
+    }
+  },
+  "32": {
+    "name": "Langwasser Nordwest",
+    "id": "32",
+    "total_pixels": 388,
+    "labels_2020": {
+      "tree_cover": 219,
+      "grassland": 18,
+      "cropland": 0,
+      "built_up": 149,
+      "bare_sparse": 2,
+      "water": 0
+    },
+    "labels_2021": {
+      "tree_cover": 231,
+      "grassland": 3,
+      "cropland": 0,
+      "built_up": 154,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "predictions_2021": {
+      "tree_cover": 222,
+      "grassland": 5,
+      "cropland": 0,
+      "built_up": 161,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "experimental_2021": {
+      "tree_cover": 219,
+      "grassland": 18,
+      "cropland": 0,
+      "built_up": 149,
+      "bare_sparse": 2,
+      "water": 0
+    }
+  },
+  "33": {
+    "name": "Langwasser Nordost",
+    "id": "33",
+    "total_pixels": 500,
+    "labels_2020": {
+      "tree_cover": 172,
+      "grassland": 15,
+      "cropland": 0,
+      "built_up": 312,
+      "bare_sparse": 1,
+      "water": 0
+    },
+    "labels_2021": {
+      "tree_cover": 177,
+      "grassland": 11,
+      "cropland": 0,
+      "built_up": 312,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "predictions_2021": {
+      "tree_cover": 163,
+      "grassland": 16,
+      "cropland": 0,
+      "built_up": 321,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "experimental_2021": {
+      "tree_cover": 172,
+      "grassland": 15,
+      "cropland": 0,
+      "built_up": 312,
+      "bare_sparse": 1,
+      "water": 0
+    }
+  },
+  "34": {
+    "name": "Beuthener Stra\u00dfe",
+    "id": "34",
+    "total_pixels": 568,
+    "labels_2020": {
+      "tree_cover": 207,
+      "grassland": 5,
+      "cropland": 0,
+      "built_up": 302,
+      "bare_sparse": 54,
+      "water": 0
+    },
+    "labels_2021": {
+      "tree_cover": 209,
+      "grassland": 2,
+      "cropland": 2,
+      "built_up": 332,
+      "bare_sparse": 23,
+      "water": 0
+    },
+    "predictions_2021": {
+      "tree_cover": 196,
+      "grassland": 5,
+      "cropland": 3,
+      "built_up": 360,
+      "bare_sparse": 2,
+      "water": 2
+    },
+    "experimental_2021": {
+      "tree_cover": 207,
+      "grassland": 5,
+      "cropland": 0,
+      "built_up": 302,
+      "bare_sparse": 54,
+      "water": 0
+    }
+  },
+  "35": {
+    "name": "Altenfurt Nord",
+    "id": "35",
+    "total_pixels": 905,
+    "labels_2020": {
+      "tree_cover": 607,
+      "grassland": 13,
+      "cropland": 0,
+      "built_up": 285,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "labels_2021": {
+      "tree_cover": 601,
+      "grassland": 10,
+      "cropland": 0,
+      "built_up": 294,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "predictions_2021": {
+      "tree_cover": 593,
+      "grassland": 14,
+      "cropland": 0,
+      "built_up": 297,
+      "bare_sparse": 0,
+      "water": 1
+    },
+    "experimental_2021": {
+      "tree_cover": 607,
+      "grassland": 13,
+      "cropland": 0,
+      "built_up": 285,
+      "bare_sparse": 0,
+      "water": 0
+    }
+  },
+  "36": {
+    "name": "Langwasser S\u00fcdost",
+    "id": "36",
+    "total_pixels": 1618,
+    "labels_2020": {
+      "tree_cover": 1171,
+      "grassland": 39,
+      "cropland": 0,
+      "built_up": 406,
+      "bare_sparse": 2,
+      "water": 0
+    },
+    "labels_2021": {
+      "tree_cover": 1144,
+      "grassland": 29,
+      "cropland": 0,
+      "built_up": 445,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "predictions_2021": {
+      "tree_cover": 1161,
+      "grassland": 33,
+      "cropland": 0,
+      "built_up": 424,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "experimental_2021": {
+      "tree_cover": 1170,
+      "grassland": 39,
+      "cropland": 0,
+      "built_up": 407,
+      "bare_sparse": 2,
+      "water": 0
+    }
+  },
+  "37": {
+    "name": "Langwasser S\u00fcdwest",
+    "id": "37",
+    "total_pixels": 1138,
+    "labels_2020": {
+      "tree_cover": 794,
+      "grassland": 16,
+      "cropland": 0,
+      "built_up": 305,
+      "bare_sparse": 7,
+      "water": 0
+    },
+    "labels_2021": {
+      "tree_cover": 782,
+      "grassland": 6,
+      "cropland": 0,
+      "built_up": 332,
+      "bare_sparse": 2,
+      "water": 0
+    },
+    "predictions_2021": {
+      "tree_cover": 771,
+      "grassland": 4,
+      "cropland": 0,
+      "built_up": 347,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "experimental_2021": {
+      "tree_cover": 795,
+      "grassland": 16,
+      "cropland": 0,
+      "built_up": 305,
+      "bare_sparse": 7,
+      "water": 0
+    }
+  },
+  "38": {
+    "name": "Altenfurt, Moorenbrunn",
+    "id": "38",
+    "total_pixels": 1208,
+    "labels_2020": {
+      "tree_cover": 420,
+      "grassland": 184,
+      "cropland": 5,
+      "built_up": 518,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "labels_2021": {
+      "tree_cover": 399,
+      "grassland": 172,
+      "cropland": 2,
+      "built_up": 554,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "predictions_2021": {
+      "tree_cover": 393,
+      "grassland": 171,
+      "cropland": 0,
+      "built_up": 563,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "experimental_2021": {
+      "tree_cover": 424,
+      "grassland": 184,
+      "cropland": 5,
+      "built_up": 521,
+      "bare_sparse": 0,
+      "water": 0
+    }
+  },
+  "39": {
+    "name": "Gewerbepark N\u00fcrnberg-Feucht",
+    "id": "39",
+    "total_pixels": 225,
+    "labels_2020": {
+      "tree_cover": 100,
+      "grassland": 7,
+      "cropland": 0,
+      "built_up": 72,
+      "bare_sparse": 1,
+      "water": 0
+    },
+    "labels_2021": {
+      "tree_cover": 106,
+      "grassland": 7,
+      "cropland": 0,
+      "built_up": 67,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "predictions_2021": {
+      "tree_cover": 99,
+      "grassland": 7,
+      "cropland": 0,
+      "built_up": 74,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "experimental_2021": {
+      "tree_cover": 104,
+      "grassland": 9,
+      "cropland": 0,
+      "built_up": 75,
+      "bare_sparse": 0,
+      "water": 0
+    }
+  },
+  "40": {
+    "name": "Hasenbuck",
+    "id": "40",
+    "total_pixels": 225,
+    "labels_2020": {
+      "tree_cover": 45,
+      "grassland": 3,
+      "cropland": 0,
+      "built_up": 173,
+      "bare_sparse": 4,
+      "water": 0
+    },
+    "labels_2021": {
+      "tree_cover": 46,
+      "grassland": 4,
+      "cropland": 0,
+      "built_up": 175,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "predictions_2021": {
+      "tree_cover": 40,
+      "grassland": 8,
+      "cropland": 0,
+      "built_up": 177,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "experimental_2021": {
+      "tree_cover": 45,
+      "grassland": 3,
+      "cropland": 0,
+      "built_up": 173,
+      "bare_sparse": 4,
+      "water": 0
+    }
+  },
+  "41": {
+    "name": "Rangierbahnhof",
+    "id": "41",
+    "total_pixels": 1101,
+    "labels_2020": {
+      "tree_cover": 209,
+      "grassland": 36,
+      "cropland": 11,
+      "built_up": 780,
+      "bare_sparse": 65,
+      "water": 0
+    },
+    "labels_2021": {
+      "tree_cover": 209,
+      "grassland": 70,
+      "cropland": 4,
+      "built_up": 763,
+      "bare_sparse": 55,
+      "water": 0
+    },
+    "predictions_2021": {
+      "tree_cover": 186,
+      "grassland": 81,
+      "cropland": 35,
+      "built_up": 758,
+      "bare_sparse": 41,
+      "water": 0
+    },
+    "experimental_2021": {
+      "tree_cover": 209,
+      "grassland": 36,
+      "cropland": 11,
+      "built_up": 781,
+      "bare_sparse": 64,
+      "water": 0
+    }
+  },
+  "42": {
+    "name": "Katzwanger Stra\u00dfe",
+    "id": "42",
+    "total_pixels": 467,
+    "labels_2020": {
+      "tree_cover": 37,
+      "grassland": 12,
+      "cropland": 1,
+      "built_up": 417,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "labels_2021": {
+      "tree_cover": 43,
+      "grassland": 7,
+      "cropland": 1,
+      "built_up": 416,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "predictions_2021": {
+      "tree_cover": 42,
+      "grassland": 12,
+      "cropland": 0,
+      "built_up": 413,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "experimental_2021": {
+      "tree_cover": 37,
+      "grassland": 12,
+      "cropland": 1,
+      "built_up": 417,
+      "bare_sparse": 0,
+      "water": 0
+    }
+  },
+  "43": {
+    "name": "Dianastra\u00dfe",
+    "id": "43",
+    "total_pixels": 192,
+    "labels_2020": {
+      "tree_cover": 7,
+      "grassland": 1,
+      "cropland": 0,
+      "built_up": 184,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "labels_2021": {
+      "tree_cover": 5,
+      "grassland": 0,
+      "cropland": 0,
+      "built_up": 187,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "predictions_2021": {
+      "tree_cover": 6,
+      "grassland": 0,
+      "cropland": 0,
+      "built_up": 186,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "experimental_2021": {
+      "tree_cover": 7,
+      "grassland": 1,
+      "cropland": 0,
+      "built_up": 184,
+      "bare_sparse": 0,
+      "water": 0
+    }
+  },
+  "44": {
+    "name": "Trierer Stra\u00dfe",
+    "id": "44",
+    "total_pixels": 1202,
+    "labels_2020": {
+      "tree_cover": 666,
+      "grassland": 78,
+      "cropland": 0,
+      "built_up": 456,
+      "bare_sparse": 2,
+      "water": 0
+    },
+    "labels_2021": {
+      "tree_cover": 693,
+      "grassland": 47,
+      "cropland": 0,
+      "built_up": 462,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "predictions_2021": {
+      "tree_cover": 692,
+      "grassland": 34,
+      "cropland": 0,
+      "built_up": 474,
+      "bare_sparse": 0,
+      "water": 2
+    },
+    "experimental_2021": {
+      "tree_cover": 666,
+      "grassland": 78,
+      "cropland": 0,
+      "built_up": 456,
+      "bare_sparse": 2,
+      "water": 0
+    }
+  },
+  "45": {
+    "name": "Gartenstadt",
+    "id": "45",
+    "total_pixels": 1252,
+    "labels_2020": {
+      "tree_cover": 761,
+      "grassland": 106,
+      "cropland": 0,
+      "built_up": 383,
+      "bare_sparse": 2,
+      "water": 0
+    },
+    "labels_2021": {
+      "tree_cover": 776,
+      "grassland": 79,
+      "cropland": 0,
+      "built_up": 397,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "predictions_2021": {
+      "tree_cover": 798,
+      "grassland": 39,
+      "cropland": 3,
+      "built_up": 412,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "experimental_2021": {
+      "tree_cover": 761,
+      "grassland": 106,
+      "cropland": 0,
+      "built_up": 383,
+      "bare_sparse": 2,
+      "water": 0
+    }
+  },
+  "46": {
+    "name": "Werderau",
+    "id": "46",
+    "total_pixels": 609,
+    "labels_2020": {
+      "tree_cover": 143,
+      "grassland": 68,
+      "cropland": 1,
+      "built_up": 396,
+      "bare_sparse": 1,
+      "water": 0
+    },
+    "labels_2021": {
+      "tree_cover": 155,
+      "grassland": 47,
+      "cropland": 1,
+      "built_up": 406,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "predictions_2021": {
+      "tree_cover": 168,
+      "grassland": 36,
+      "cropland": 1,
+      "built_up": 404,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "experimental_2021": {
+      "tree_cover": 143,
+      "grassland": 68,
+      "cropland": 1,
+      "built_up": 396,
+      "bare_sparse": 1,
+      "water": 0
+    }
+  },
+  "47": {
+    "name": "Maiach",
+    "id": "47",
+    "total_pixels": 2011,
+    "labels_2020": {
+      "tree_cover": 246,
+      "grassland": 92,
+      "cropland": 17,
+      "built_up": 1542,
+      "bare_sparse": 18,
+      "water": 96
+    },
+    "labels_2021": {
+      "tree_cover": 245,
+      "grassland": 64,
+      "cropland": 8,
+      "built_up": 1587,
+      "bare_sparse": 8,
+      "water": 99
+    },
+    "predictions_2021": {
+      "tree_cover": 258,
+      "grassland": 78,
+      "cropland": 7,
+      "built_up": 1564,
+      "bare_sparse": 6,
+      "water": 98
+    },
+    "experimental_2021": {
+      "tree_cover": 246,
+      "grassland": 92,
+      "cropland": 17,
+      "built_up": 1543,
+      "bare_sparse": 18,
+      "water": 95
+    }
+  },
+  "48": {
+    "name": "Katzwang, Reichelsdorf Ost, Reichelsdorfer Keller",
+    "id": "48",
+    "total_pixels": 3584,
+    "labels_2020": {
+      "tree_cover": 2059,
+      "grassland": 380,
+      "cropland": 132,
+      "built_up": 776,
+      "bare_sparse": 8,
+      "water": 0
+    },
+    "labels_2021": {
+      "tree_cover": 2071,
+      "grassland": 319,
+      "cropland": 142,
+      "built_up": 823,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "predictions_2021": {
+      "tree_cover": 2051,
+      "grassland": 332,
+      "cropland": 148,
+      "built_up": 824,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "experimental_2021": {
+      "tree_cover": 2069,
+      "grassland": 384,
+      "cropland": 132,
+      "built_up": 774,
+      "bare_sparse": 8,
+      "water": 0
+    }
+  },
+  "49": {
+    "name": "Kornburg, Worzeldorf",
+    "id": "49",
+    "total_pixels": 7763,
+    "labels_2020": {
+      "tree_cover": 3922,
+      "grassland": 1131,
+      "cropland": 1300,
+      "built_up": 1049,
+      "bare_sparse": 106,
+      "water": 227
+    },
+    "labels_2021": {
+      "tree_cover": 4001,
+      "grassland": 1043,
+      "cropland": 1355,
+      "built_up": 1111,
+      "bare_sparse": 7,
+      "water": 218
+    },
+    "predictions_2021": {
+      "tree_cover": 4011,
+      "grassland": 1001,
+      "cropland": 1369,
+      "built_up": 1135,
+      "bare_sparse": 1,
+      "water": 218
+    },
+    "experimental_2021": {
+      "tree_cover": 3925,
+      "grassland": 1135,
+      "cropland": 1300,
+      "built_up": 1051,
+      "bare_sparse": 104,
+      "water": 226
+    }
+  },
+  "50": {
+    "name": "Hohe Marter",
+    "id": "50",
+    "total_pixels": 672,
+    "labels_2020": {
+      "tree_cover": 95,
+      "grassland": 25,
+      "cropland": 2,
+      "built_up": 545,
+      "bare_sparse": 5,
+      "water": 0
+    },
+    "labels_2021": {
+      "tree_cover": 104,
+      "grassland": 11,
+      "cropland": 2,
+      "built_up": 555,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "predictions_2021": {
+      "tree_cover": 90,
+      "grassland": 23,
+      "cropland": 2,
+      "built_up": 557,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "experimental_2021": {
+      "tree_cover": 95,
+      "grassland": 25,
+      "cropland": 2,
+      "built_up": 545,
+      "bare_sparse": 5,
+      "water": 0
+    }
+  },
+  "51": {
+    "name": "R\u00f6thenbach West",
+    "id": "51",
+    "total_pixels": 613,
+    "labels_2020": {
+      "tree_cover": 258,
+      "grassland": 20,
+      "cropland": 1,
+      "built_up": 318,
+      "bare_sparse": 0,
+      "water": 16
+    },
+    "labels_2021": {
+      "tree_cover": 219,
+      "grassland": 12,
+      "cropland": 1,
+      "built_up": 362,
+      "bare_sparse": 0,
+      "water": 19
+    },
+    "predictions_2021": {
+      "tree_cover": 222,
+      "grassland": 18,
+      "cropland": 1,
+      "built_up": 352,
+      "bare_sparse": 0,
+      "water": 20
+    },
+    "experimental_2021": {
+      "tree_cover": 259,
+      "grassland": 20,
+      "cropland": 1,
+      "built_up": 318,
+      "bare_sparse": 0,
+      "water": 15
+    }
+  },
+  "52": {
+    "name": "R\u00f6thenbach Ost",
+    "id": "52",
+    "total_pixels": 850,
+    "labels_2020": {
+      "tree_cover": 218,
+      "grassland": 91,
+      "cropland": 5,
+      "built_up": 509,
+      "bare_sparse": 11,
+      "water": 16
+    },
+    "labels_2021": {
+      "tree_cover": 208,
+      "grassland": 66,
+      "cropland": 9,
+      "built_up": 548,
+      "bare_sparse": 1,
+      "water": 18
+    },
+    "predictions_2021": {
+      "tree_cover": 214,
+      "grassland": 48,
+      "cropland": 15,
+      "built_up": 557,
+      "bare_sparse": 0,
+      "water": 16
+    },
+    "experimental_2021": {
+      "tree_cover": 219,
+      "grassland": 91,
+      "cropland": 5,
+      "built_up": 509,
+      "bare_sparse": 11,
+      "water": 15
+    }
+  },
+  "53": {
+    "name": "Eibach",
+    "id": "53",
+    "total_pixels": 1280,
+    "labels_2020": {
+      "tree_cover": 541,
+      "grassland": 72,
+      "cropland": 59,
+      "built_up": 527,
+      "bare_sparse": 1,
+      "water": 1
+    },
+    "labels_2021": {
+      "tree_cover": 534,
+      "grassland": 41,
+      "cropland": 55,
+      "built_up": 571,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "predictions_2021": {
+      "tree_cover": 519,
+      "grassland": 45,
+      "cropland": 59,
+      "built_up": 577,
+      "bare_sparse": 0,
+      "water": 1
+    },
+    "experimental_2021": {
+      "tree_cover": 544,
+      "grassland": 71,
+      "cropland": 60,
+      "built_up": 528,
+      "bare_sparse": 1,
+      "water": 1
+    }
+  },
+  "54": {
+    "name": "Reichelsdorf",
+    "id": "54",
+    "total_pixels": 957,
+    "labels_2020": {
+      "tree_cover": 383,
+      "grassland": 302,
+      "cropland": 6,
+      "built_up": 264,
+      "bare_sparse": 1,
+      "water": 1
+    },
+    "labels_2021": {
+      "tree_cover": 412,
+      "grassland": 268,
+      "cropland": 7,
+      "built_up": 270,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "predictions_2021": {
+      "tree_cover": 385,
+      "grassland": 287,
+      "cropland": 10,
+      "built_up": 274,
+      "bare_sparse": 0,
+      "water": 1
+    },
+    "experimental_2021": {
+      "tree_cover": 383,
+      "grassland": 302,
+      "cropland": 6,
+      "built_up": 264,
+      "bare_sparse": 1,
+      "water": 1
+    }
+  },
+  "55": {
+    "name": "Krottenbach, M\u00fchlhof",
+    "id": "55",
+    "total_pixels": 1873,
+    "labels_2020": {
+      "tree_cover": 471,
+      "grassland": 178,
+      "cropland": 790,
+      "built_up": 118,
+      "bare_sparse": 2,
+      "water": 0
+    },
+    "labels_2021": {
+      "tree_cover": 508,
+      "grassland": 131,
+      "cropland": 788,
+      "built_up": 132,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "predictions_2021": {
+      "tree_cover": 493,
+      "grassland": 138,
+      "cropland": 793,
+      "built_up": 135,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "experimental_2021": {
+      "tree_cover": 480,
+      "grassland": 185,
+      "cropland": 793,
+      "built_up": 117,
+      "bare_sparse": 2,
+      "water": 0
+    }
+  },
+  "60": {
+    "name": "Gro\u00dfreuth b. Schweinau",
+    "id": "60",
+    "total_pixels": 1011,
+    "labels_2020": {
+      "tree_cover": 185,
+      "grassland": 71,
+      "cropland": 179,
+      "built_up": 527,
+      "bare_sparse": 49,
+      "water": 0
+    },
+    "labels_2021": {
+      "tree_cover": 209,
+      "grassland": 36,
+      "cropland": 218,
+      "built_up": 539,
+      "bare_sparse": 9,
+      "water": 0
+    },
+    "predictions_2021": {
+      "tree_cover": 189,
+      "grassland": 51,
+      "cropland": 206,
+      "built_up": 565,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "experimental_2021": {
+      "tree_cover": 185,
+      "grassland": 71,
+      "cropland": 179,
+      "built_up": 527,
+      "bare_sparse": 49,
+      "water": 0
+    }
+  },
+  "61": {
+    "name": "Gebersdorf",
+    "id": "61",
+    "total_pixels": 911,
+    "labels_2020": {
+      "tree_cover": 217,
+      "grassland": 88,
+      "cropland": 51,
+      "built_up": 429,
+      "bare_sparse": 7,
+      "water": 58
+    },
+    "labels_2021": {
+      "tree_cover": 230,
+      "grassland": 62,
+      "cropland": 53,
+      "built_up": 444,
+      "bare_sparse": 0,
+      "water": 61
+    },
+    "predictions_2021": {
+      "tree_cover": 210,
+      "grassland": 74,
+      "cropland": 51,
+      "built_up": 461,
+      "bare_sparse": 0,
+      "water": 54
+    },
+    "experimental_2021": {
+      "tree_cover": 218,
+      "grassland": 92,
+      "cropland": 51,
+      "built_up": 428,
+      "bare_sparse": 9,
+      "water": 56
+    }
+  },
+  "62": {
+    "name": "Gaismannshof",
+    "id": "62",
+    "total_pixels": 815,
+    "labels_2020": {
+      "tree_cover": 149,
+      "grassland": 103,
+      "cropland": 44,
+      "built_up": 510,
+      "bare_sparse": 9,
+      "water": 0
+    },
+    "labels_2021": {
+      "tree_cover": 178,
+      "grassland": 47,
+      "cropland": 52,
+      "built_up": 538,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "predictions_2021": {
+      "tree_cover": 196,
+      "grassland": 54,
+      "cropland": 45,
+      "built_up": 520,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "experimental_2021": {
+      "tree_cover": 149,
+      "grassland": 103,
+      "cropland": 44,
+      "built_up": 510,
+      "bare_sparse": 9,
+      "water": 0
+    }
+  },
+  "63": {
+    "name": "H\u00f6fen",
+    "id": "63",
+    "total_pixels": 1110,
+    "labels_2020": {
+      "tree_cover": 49,
+      "grassland": 28,
+      "cropland": 47,
+      "built_up": 878,
+      "bare_sparse": 25,
+      "water": 0
+    },
+    "labels_2021": {
+      "tree_cover": 49,
+      "grassland": 34,
+      "cropland": 57,
+      "built_up": 883,
+      "bare_sparse": 4,
+      "water": 0
+    },
+    "predictions_2021": {
+      "tree_cover": 52,
+      "grassland": 66,
+      "cropland": 20,
+      "built_up": 889,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "experimental_2021": {
+      "tree_cover": 50,
+      "grassland": 28,
+      "cropland": 46,
+      "built_up": 879,
+      "bare_sparse": 26,
+      "water": 0
+    }
+  },
+  "64": {
+    "name": "Eberhardshof",
+    "id": "64",
+    "total_pixels": 497,
+    "labels_2020": {
+      "tree_cover": 162,
+      "grassland": 33,
+      "cropland": 0,
+      "built_up": 300,
+      "bare_sparse": 0,
+      "water": 2
+    },
+    "labels_2021": {
+      "tree_cover": 158,
+      "grassland": 28,
+      "cropland": 2,
+      "built_up": 309,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "predictions_2021": {
+      "tree_cover": 167,
+      "grassland": 23,
+      "cropland": 1,
+      "built_up": 305,
+      "bare_sparse": 0,
+      "water": 1
+    },
+    "experimental_2021": {
+      "tree_cover": 162,
+      "grassland": 33,
+      "cropland": 0,
+      "built_up": 300,
+      "bare_sparse": 0,
+      "water": 2
+    }
+  },
+  "65": {
+    "name": "Muggenhof",
+    "id": "65",
+    "total_pixels": 369,
+    "labels_2020": {
+      "tree_cover": 81,
+      "grassland": 54,
+      "cropland": 2,
+      "built_up": 224,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "labels_2021": {
+      "tree_cover": 90,
+      "grassland": 36,
+      "cropland": 0,
+      "built_up": 235,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "predictions_2021": {
+      "tree_cover": 102,
+      "grassland": 42,
+      "cropland": 2,
+      "built_up": 212,
+      "bare_sparse": 0,
+      "water": 3
+    },
+    "experimental_2021": {
+      "tree_cover": 81,
+      "grassland": 56,
+      "cropland": 2,
+      "built_up": 222,
+      "bare_sparse": 0,
+      "water": 0
+    }
+  },
+  "70": {
+    "name": "Westfriedhof",
+    "id": "70",
+    "total_pixels": 391,
+    "labels_2020": {
+      "tree_cover": 231,
+      "grassland": 7,
+      "cropland": 11,
+      "built_up": 142,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "labels_2021": {
+      "tree_cover": 211,
+      "grassland": 4,
+      "cropland": 9,
+      "built_up": 167,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "predictions_2021": {
+      "tree_cover": 218,
+      "grassland": 6,
+      "cropland": 7,
+      "built_up": 160,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "experimental_2021": {
+      "tree_cover": 231,
+      "grassland": 7,
+      "cropland": 11,
+      "built_up": 142,
+      "bare_sparse": 0,
+      "water": 0
+    }
+  },
+  "71": {
+    "name": "Schniegling",
+    "id": "71",
+    "total_pixels": 464,
+    "labels_2020": {
+      "tree_cover": 64,
+      "grassland": 26,
+      "cropland": 85,
+      "built_up": 227,
+      "bare_sparse": 13,
+      "water": 0
+    },
+    "labels_2021": {
+      "tree_cover": 59,
+      "grassland": 14,
+      "cropland": 89,
+      "built_up": 253,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "predictions_2021": {
+      "tree_cover": 67,
+      "grassland": 7,
+      "cropland": 91,
+      "built_up": 250,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "experimental_2021": {
+      "tree_cover": 68,
+      "grassland": 27,
+      "cropland": 86,
+      "built_up": 226,
+      "bare_sparse": 11,
+      "water": 0
+    }
+  },
+  "72": {
+    "name": "Wetzendorf",
+    "id": "72",
+    "total_pixels": 1532,
+    "labels_2020": {
+      "tree_cover": 240,
+      "grassland": 189,
+      "cropland": 504,
+      "built_up": 555,
+      "bare_sparse": 44,
+      "water": 0
+    },
+    "labels_2021": {
+      "tree_cover": 274,
+      "grassland": 161,
+      "cropland": 490,
+      "built_up": 607,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "predictions_2021": {
+      "tree_cover": 338,
+      "grassland": 109,
+      "cropland": 469,
+      "built_up": 616,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "experimental_2021": {
+      "tree_cover": 244,
+      "grassland": 186,
+      "cropland": 497,
+      "built_up": 566,
+      "bare_sparse": 39,
+      "water": 0
+    }
+  },
+  "73": {
+    "name": "Buch",
+    "id": "73",
+    "total_pixels": 2513,
+    "labels_2020": {
+      "tree_cover": 52,
+      "grassland": 195,
+      "cropland": 1674,
+      "built_up": 418,
+      "bare_sparse": 169,
+      "water": 0
+    },
+    "labels_2021": {
+      "tree_cover": 94,
+      "grassland": 285,
+      "cropland": 1654,
+      "built_up": 471,
+      "bare_sparse": 1,
+      "water": 3
+    },
+    "predictions_2021": {
+      "tree_cover": 143,
+      "grassland": 165,
+      "cropland": 1638,
+      "built_up": 560,
+      "bare_sparse": 0,
+      "water": 2
+    },
+    "experimental_2021": {
+      "tree_cover": 56,
+      "grassland": 207,
+      "cropland": 1658,
+      "built_up": 434,
+      "bare_sparse": 154,
+      "water": 0
+    }
+  },
+  "74": {
+    "name": "Thon",
+    "id": "74",
+    "total_pixels": 874,
+    "labels_2020": {
+      "tree_cover": 116,
+      "grassland": 63,
+      "cropland": 293,
+      "built_up": 385,
+      "bare_sparse": 17,
+      "water": 0
+    },
+    "labels_2021": {
+      "tree_cover": 114,
+      "grassland": 76,
+      "cropland": 273,
+      "built_up": 411,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "predictions_2021": {
+      "tree_cover": 152,
+      "grassland": 27,
+      "cropland": 228,
+      "built_up": 467,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "experimental_2021": {
+      "tree_cover": 122,
+      "grassland": 60,
+      "cropland": 287,
+      "built_up": 389,
+      "bare_sparse": 16,
+      "water": 0
+    }
+  },
+  "75": {
+    "name": "Almoshof",
+    "id": "75",
+    "total_pixels": 983,
+    "labels_2020": {
+      "tree_cover": 29,
+      "grassland": 320,
+      "cropland": 260,
+      "built_up": 341,
+      "bare_sparse": 33,
+      "water": 0
+    },
+    "labels_2021": {
+      "tree_cover": 51,
+      "grassland": 326,
+      "cropland": 226,
+      "built_up": 373,
+      "bare_sparse": 7,
+      "water": 0
+    },
+    "predictions_2021": {
+      "tree_cover": 101,
+      "grassland": 248,
+      "cropland": 227,
+      "built_up": 407,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "experimental_2021": {
+      "tree_cover": 33,
+      "grassland": 325,
+      "cropland": 246,
+      "built_up": 348,
+      "bare_sparse": 31,
+      "water": 0
+    }
+  },
+  "76": {
+    "name": "Kraftshof",
+    "id": "76",
+    "total_pixels": 955,
+    "labels_2020": {
+      "tree_cover": 111,
+      "grassland": 104,
+      "cropland": 428,
+      "built_up": 144,
+      "bare_sparse": 71,
+      "water": 1
+    },
+    "labels_2021": {
+      "tree_cover": 126,
+      "grassland": 111,
+      "cropland": 464,
+      "built_up": 156,
+      "bare_sparse": 0,
+      "water": 2
+    },
+    "predictions_2021": {
+      "tree_cover": 141,
+      "grassland": 94,
+      "cropland": 438,
+      "built_up": 186,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "experimental_2021": {
+      "tree_cover": 121,
+      "grassland": 107,
+      "cropland": 431,
+      "built_up": 145,
+      "bare_sparse": 65,
+      "water": 1
+    }
+  },
+  "77": {
+    "name": "Neunhof",
+    "id": "77",
+    "total_pixels": 1616,
+    "labels_2020": {
+      "tree_cover": 243,
+      "grassland": 360,
+      "cropland": 453,
+      "built_up": 161,
+      "bare_sparse": 76,
+      "water": 0
+    },
+    "labels_2021": {
+      "tree_cover": 264,
+      "grassland": 360,
+      "cropland": 498,
+      "built_up": 171,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "predictions_2021": {
+      "tree_cover": 244,
+      "grassland": 406,
+      "cropland": 477,
+      "built_up": 166,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "experimental_2021": {
+      "tree_cover": 245,
+      "grassland": 377,
+      "cropland": 449,
+      "built_up": 162,
+      "bare_sparse": 67,
+      "water": 0
+    }
+  },
+  "78": {
+    "name": "Boxdorf",
+    "id": "78",
+    "total_pixels": 1375,
+    "labels_2020": {
+      "tree_cover": 168,
+      "grassland": 162,
+      "cropland": 650,
+      "built_up": 336,
+      "bare_sparse": 59,
+      "water": 0
+    },
+    "labels_2021": {
+      "tree_cover": 168,
+      "grassland": 158,
+      "cropland": 675,
+      "built_up": 372,
+      "bare_sparse": 0,
+      "water": 2
+    },
+    "predictions_2021": {
+      "tree_cover": 205,
+      "grassland": 142,
+      "cropland": 658,
+      "built_up": 368,
+      "bare_sparse": 0,
+      "water": 2
+    },
+    "experimental_2021": {
+      "tree_cover": 169,
+      "grassland": 156,
+      "cropland": 651,
+      "built_up": 341,
+      "bare_sparse": 58,
+      "water": 0
+    }
+  },
+  "79": {
+    "name": "Gro\u00dfgr\u00fcndlach",
+    "id": "79",
+    "total_pixels": 2026,
+    "labels_2020": {
+      "tree_cover": 218,
+      "grassland": 352,
+      "cropland": 645,
+      "built_up": 357,
+      "bare_sparse": 43,
+      "water": 9
+    },
+    "labels_2021": {
+      "tree_cover": 245,
+      "grassland": 351,
+      "cropland": 628,
+      "built_up": 391,
+      "bare_sparse": 1,
+      "water": 8
+    },
+    "predictions_2021": {
+      "tree_cover": 258,
+      "grassland": 390,
+      "cropland": 571,
+      "built_up": 396,
+      "bare_sparse": 0,
+      "water": 9
+    },
+    "experimental_2021": {
+      "tree_cover": 228,
+      "grassland": 366,
+      "cropland": 642,
+      "built_up": 355,
+      "bare_sparse": 41,
+      "water": 9
+    }
+  },
+  "80": {
+    "name": "Schleifweg",
+    "id": "80",
+    "total_pixels": 194,
+    "labels_2020": {
+      "tree_cover": 42,
+      "grassland": 9,
+      "cropland": 0,
+      "built_up": 142,
+      "bare_sparse": 1,
+      "water": 0
+    },
+    "labels_2021": {
+      "tree_cover": 47,
+      "grassland": 2,
+      "cropland": 0,
+      "built_up": 145,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "predictions_2021": {
+      "tree_cover": 42,
+      "grassland": 0,
+      "cropland": 1,
+      "built_up": 151,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "experimental_2021": {
+      "tree_cover": 43,
+      "grassland": 8,
+      "cropland": 0,
+      "built_up": 142,
+      "bare_sparse": 1,
+      "water": 0
+    }
+  },
+  "81": {
+    "name": "Schoppershof",
+    "id": "81",
+    "total_pixels": 364,
+    "labels_2020": {
+      "tree_cover": 92,
+      "grassland": 32,
+      "cropland": 0,
+      "built_up": 239,
+      "bare_sparse": 1,
+      "water": 0
+    },
+    "labels_2021": {
+      "tree_cover": 96,
+      "grassland": 20,
+      "cropland": 0,
+      "built_up": 248,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "predictions_2021": {
+      "tree_cover": 89,
+      "grassland": 9,
+      "cropland": 0,
+      "built_up": 266,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "experimental_2021": {
+      "tree_cover": 97,
+      "grassland": 25,
+      "cropland": 0,
+      "built_up": 242,
+      "bare_sparse": 0,
+      "water": 0
+    }
+  },
+  "82": {
+    "name": "Schafhof",
+    "id": "82",
+    "total_pixels": 1105,
+    "labels_2020": {
+      "tree_cover": 509,
+      "grassland": 22,
+      "cropland": 0,
+      "built_up": 519,
+      "bare_sparse": 4,
+      "water": 0
+    },
+    "labels_2021": {
+      "tree_cover": 520,
+      "grassland": 9,
+      "cropland": 0,
+      "built_up": 525,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "predictions_2021": {
+      "tree_cover": 511,
+      "grassland": 8,
+      "cropland": 0,
+      "built_up": 535,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "experimental_2021": {
+      "tree_cover": 517,
+      "grassland": 19,
+      "cropland": 0,
+      "built_up": 520,
+      "bare_sparse": 3,
+      "water": 0
+    }
+  },
+  "83": {
+    "name": "Marienberg",
+    "id": "83",
+    "total_pixels": 922,
+    "labels_2020": {
+      "tree_cover": 358,
+      "grassland": 238,
+      "cropland": 4,
+      "built_up": 309,
+      "bare_sparse": 12,
+      "water": 1
+    },
+    "labels_2021": {
+      "tree_cover": 377,
+      "grassland": 212,
+      "cropland": 4,
+      "built_up": 327,
+      "bare_sparse": 0,
+      "water": 2
+    },
+    "predictions_2021": {
+      "tree_cover": 371,
+      "grassland": 217,
+      "cropland": 2,
+      "built_up": 327,
+      "bare_sparse": 1,
+      "water": 4
+    },
+    "experimental_2021": {
+      "tree_cover": 359,
+      "grassland": 243,
+      "cropland": 4,
+      "built_up": 308,
+      "bare_sparse": 7,
+      "water": 1
+    }
+  },
+  "84": {
+    "name": "Ziegelstein",
+    "id": "84",
+    "total_pixels": 771,
+    "labels_2020": {
+      "tree_cover": 481,
+      "grassland": 56,
+      "cropland": 1,
+      "built_up": 200,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "labels_2021": {
+      "tree_cover": 485,
+      "grassland": 37,
+      "cropland": 0,
+      "built_up": 216,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "predictions_2021": {
+      "tree_cover": 482,
+      "grassland": 32,
+      "cropland": 0,
+      "built_up": 224,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "experimental_2021": {
+      "tree_cover": 484,
+      "grassland": 56,
+      "cropland": 1,
+      "built_up": 200,
+      "bare_sparse": 0,
+      "water": 0
+    }
+  },
+  "85": {
+    "name": "Mooshof",
+    "id": "85",
+    "total_pixels": 656,
+    "labels_2020": {
+      "tree_cover": 257,
+      "grassland": 136,
+      "cropland": 1,
+      "built_up": 254,
+      "bare_sparse": 8,
+      "water": 0
+    },
+    "labels_2021": {
+      "tree_cover": 279,
+      "grassland": 118,
+      "cropland": 6,
+      "built_up": 253,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "predictions_2021": {
+      "tree_cover": 276,
+      "grassland": 128,
+      "cropland": 6,
+      "built_up": 246,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "experimental_2021": {
+      "tree_cover": 260,
+      "grassland": 132,
+      "cropland": 1,
+      "built_up": 255,
+      "bare_sparse": 8,
+      "water": 0
+    }
+  },
+  "86": {
+    "name": "Buchenb\u00fchl",
+    "id": "86",
+    "total_pixels": 1243,
+    "labels_2020": {
+      "tree_cover": 802,
+      "grassland": 94,
+      "cropland": 1,
+      "built_up": 160,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "labels_2021": {
+      "tree_cover": 828,
+      "grassland": 61,
+      "cropland": 1,
+      "built_up": 167,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "predictions_2021": {
+      "tree_cover": 837,
+      "grassland": 38,
+      "cropland": 0,
+      "built_up": 182,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "experimental_2021": {
+      "tree_cover": 815,
+      "grassland": 89,
+      "cropland": 0,
+      "built_up": 160,
+      "bare_sparse": 0,
+      "water": 0
+    }
+  },
+  "87": {
+    "name": "Flughafen",
+    "id": "87",
+    "total_pixels": 1469,
+    "labels_2020": {
+      "tree_cover": 409,
+      "grassland": 690,
+      "cropland": 7,
+      "built_up": 230,
+      "bare_sparse": 12,
+      "water": 0
+    },
+    "labels_2021": {
+      "tree_cover": 425,
+      "grassland": 644,
+      "cropland": 17,
+      "built_up": 242,
+      "bare_sparse": 0,
+      "water": 20
+    },
+    "predictions_2021": {
+      "tree_cover": 435,
+      "grassland": 683,
+      "cropland": 17,
+      "built_up": 183,
+      "bare_sparse": 0,
+      "water": 30
+    },
+    "experimental_2021": {
+      "tree_cover": 417,
+      "grassland": 689,
+      "cropland": 7,
+      "built_up": 228,
+      "bare_sparse": 12,
+      "water": 0
+    }
+  },
+  "90": {
+    "name": "St. Jobst",
+    "id": "90",
+    "total_pixels": 738,
+    "labels_2020": {
+      "tree_cover": 384,
+      "grassland": 12,
+      "cropland": 0,
+      "built_up": 277,
+      "bare_sparse": 6,
+      "water": 59
+    },
+    "labels_2021": {
+      "tree_cover": 373,
+      "grassland": 7,
+      "cropland": 0,
+      "built_up": 300,
+      "bare_sparse": 0,
+      "water": 58
+    },
+    "predictions_2021": {
+      "tree_cover": 372,
+      "grassland": 8,
+      "cropland": 0,
+      "built_up": 301,
+      "bare_sparse": 0,
+      "water": 57
+    },
+    "experimental_2021": {
+      "tree_cover": 384,
+      "grassland": 12,
+      "cropland": 0,
+      "built_up": 277,
+      "bare_sparse": 6,
+      "water": 59
+    }
+  },
+  "91": {
+    "name": "Erlenstegen",
+    "id": "91",
+    "total_pixels": 1374,
+    "labels_2020": {
+      "tree_cover": 991,
+      "grassland": 238,
+      "cropland": 0,
+      "built_up": 110,
+      "bare_sparse": 2,
+      "water": 0
+    },
+    "labels_2021": {
+      "tree_cover": 1008,
+      "grassland": 206,
+      "cropland": 0,
+      "built_up": 127,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "predictions_2021": {
+      "tree_cover": 998,
+      "grassland": 216,
+      "cropland": 0,
+      "built_up": 127,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "experimental_2021": {
+      "tree_cover": 997,
+      "grassland": 238,
+      "cropland": 0,
+      "built_up": 109,
+      "bare_sparse": 2,
+      "water": 0
+    }
+  },
+  "92": {
+    "name": "M\u00f6geldorf",
+    "id": "92",
+    "total_pixels": 684,
+    "labels_2020": {
+      "tree_cover": 277,
+      "grassland": 59,
+      "cropland": 0,
+      "built_up": 347,
+      "bare_sparse": 0,
+      "water": 1
+    },
+    "labels_2021": {
+      "tree_cover": 284,
+      "grassland": 48,
+      "cropland": 0,
+      "built_up": 351,
+      "bare_sparse": 0,
+      "water": 1
+    },
+    "predictions_2021": {
+      "tree_cover": 276,
+      "grassland": 54,
+      "cropland": 1,
+      "built_up": 352,
+      "bare_sparse": 1,
+      "water": 0
+    },
+    "experimental_2021": {
+      "tree_cover": 277,
+      "grassland": 59,
+      "cropland": 0,
+      "built_up": 347,
+      "bare_sparse": 0,
+      "water": 1
+    }
+  },
+  "93": {
+    "name": "Schmausenbuckstra\u00dfe",
+    "id": "93",
+    "total_pixels": 651,
+    "labels_2020": {
+      "tree_cover": 366,
+      "grassland": 63,
+      "cropland": 0,
+      "built_up": 204,
+      "bare_sparse": 1,
+      "water": 0
+    },
+    "labels_2021": {
+      "tree_cover": 363,
+      "grassland": 39,
+      "cropland": 0,
+      "built_up": 232,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "predictions_2021": {
+      "tree_cover": 365,
+      "grassland": 61,
+      "cropland": 0,
+      "built_up": 208,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "experimental_2021": {
+      "tree_cover": 372,
+      "grassland": 63,
+      "cropland": 0,
+      "built_up": 203,
+      "bare_sparse": 1,
+      "water": 0
+    }
+  },
+  "94": {
+    "name": "Laufamholz",
+    "id": "94",
+    "total_pixels": 1043,
+    "labels_2020": {
+      "tree_cover": 484,
+      "grassland": 138,
+      "cropland": 0,
+      "built_up": 336,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "labels_2021": {
+      "tree_cover": 499,
+      "grassland": 101,
+      "cropland": 0,
+      "built_up": 358,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "predictions_2021": {
+      "tree_cover": 494,
+      "grassland": 101,
+      "cropland": 0,
+      "built_up": 363,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "experimental_2021": {
+      "tree_cover": 490,
+      "grassland": 143,
+      "cropland": 0,
+      "built_up": 332,
+      "bare_sparse": 0,
+      "water": 0
+    }
+  },
+  "95": {
+    "name": "Zerzabelshof",
+    "id": "95",
+    "total_pixels": 1416,
+    "labels_2020": {
+      "tree_cover": 941,
+      "grassland": 55,
+      "cropland": 0,
+      "built_up": 394,
+      "bare_sparse": 3,
+      "water": 5
+    },
+    "labels_2021": {
+      "tree_cover": 949,
+      "grassland": 50,
+      "cropland": 4,
+      "built_up": 388,
+      "bare_sparse": 0,
+      "water": 7
+    },
+    "predictions_2021": {
+      "tree_cover": 929,
+      "grassland": 45,
+      "cropland": 3,
+      "built_up": 414,
+      "bare_sparse": 1,
+      "water": 6
+    },
+    "experimental_2021": {
+      "tree_cover": 946,
+      "grassland": 54,
+      "cropland": 0,
+      "built_up": 395,
+      "bare_sparse": 3,
+      "water": 5
+    }
+  },
+  "96": {
+    "name": "Fischbach",
+    "id": "96",
+    "total_pixels": 1044,
+    "labels_2020": {
+      "tree_cover": 354,
+      "grassland": 173,
+      "cropland": 57,
+      "built_up": 338,
+      "bare_sparse": 10,
+      "water": 0
+    },
+    "labels_2021": {
+      "tree_cover": 360,
+      "grassland": 140,
+      "cropland": 55,
+      "built_up": 376,
+      "bare_sparse": 1,
+      "water": 0
+    },
+    "predictions_2021": {
+      "tree_cover": 357,
+      "grassland": 153,
+      "cropland": 46,
+      "built_up": 376,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "experimental_2021": {
+      "tree_cover": 358,
+      "grassland": 172,
+      "cropland": 61,
+      "built_up": 338,
+      "bare_sparse": 10,
+      "water": 0
+    }
+  },
+  "97": {
+    "name": "Brunn",
+    "id": "97",
+    "total_pixels": 1588,
+    "labels_2020": {
+      "tree_cover": 1009,
+      "grassland": 153,
+      "cropland": 56,
+      "built_up": 51,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "labels_2021": {
+      "tree_cover": 1015,
+      "grassland": 140,
+      "cropland": 53,
+      "built_up": 61,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "predictions_2021": {
+      "tree_cover": 1011,
+      "grassland": 157,
+      "cropland": 49,
+      "built_up": 52,
+      "bare_sparse": 0,
+      "water": 0
+    },
+    "experimental_2021": {
+      "tree_cover": 1013,
+      "grassland": 156,
+      "cropland": 55,
+      "built_up": 57,
+      "bare_sparse": 0,
+      "water": 0
+    }
+  }
+}

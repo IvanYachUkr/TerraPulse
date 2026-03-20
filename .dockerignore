@@ -16,6 +16,9 @@ terrapulse/target/
 # Node modules (rebuilt inside Docker)
 src/dashboard/frontend/node_modules/
 
+# Frontend dist (rebuilt inside Docker — stale local copy overwrites fresh build)
+src/dashboard/frontend/dist/
+
 # IDE
 .vscode/
 .idea/

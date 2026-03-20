@@ -4,12 +4,12 @@ import { Map } from 'react-map-gl/maplibre';
 import { GeoJsonLayer } from '@deck.gl/layers';
 import DeployPanel from './DeployPanel.jsx';
 
-const API = 'http://localhost:8000';
+const API = import.meta.env.VITE_API_URL || '';
 
 const INITIAL_VIEW = {
     longitude: 11.08,
     latitude: 49.45,
-    zoom: 10,
+    zoom: 12,
     pitch: 0,
     bearing: 0,
 };
@@ -54,9 +54,15 @@ export default function DeployView() {
     const [results, setResults] = useState({});  // { year: data }
     const [labels, setLabels] = useState({});     // { year: data }
     const [viewMode, setViewMode] = useState('predictions'); // predictions | labels | change
+    const [mapStyle, setMapStyle] = useState('dark'); // dark | satellite
+
+
+    // Persistent completed jobs — survives across redraws
+    const [completedJobs, setCompletedJobs] = useState([]);
 
     const pollingRef = useRef(null);
     const mapRef = useRef(null);
+    const [viewState, setViewState] = useState(INITIAL_VIEW);
 
     // Polling for job status
     useEffect(() => {
@@ -65,61 +71,90 @@ export default function DeployView() {
         const poll = async () => {
             try {
                 const res = await fetch(`${API}/api/deploy/status/${jobId}`);
+                if (!res.ok) return;
                 const data = await res.json();
                 setJobStatus(data);
 
-                if (data.status === 'complete') {
-                    clearInterval(pollingRef.current);
-                    // Fetch grid
-                    const gridRes = await fetch(`${API}/api/deploy/grid/${jobId}`);
-                    const gridData = await gridRes.json();
-                    setGrid(gridData);
+                // Fetch grid if not loaded
+                if (data.grid_cells > 0 && !grid) {
+                    const gRes = await fetch(`${API}/api/deploy/grid/${jobId}`);
+                    if (gRes.ok) {
+                        const gData = await gRes.json();
+                        setGrid(gData);
 
-                    // Fetch all available year results
-                    for (const year of data.result_years) {
-                        const resResult = await fetch(`${API}/api/deploy/results/${jobId}/${year}`);
-                        const resData = await resResult.json();
-                        setResults(prev => ({ ...prev, [year]: resData }));
-
-                        // Try fetching labels (will 404 for future years)
-                        try {
-                            const labRes = await fetch(`${API}/api/deploy/labels/${jobId}/${year}`);
-                            if (labRes.ok) {
-                                const labData = await labRes.json();
-                                setLabels(prev => ({ ...prev, [year]: labData }));
-                            }
-                        } catch (e) { /* no labels for this year */ }
+                        // Auto-center on grid removed as per user request
                     }
+                }
 
-                    // Also fetch labels for label-only years (2020, 2021) that might not be in result_years
-                    for (const year of [2020, 2021]) {
-                        if (!data.result_years.includes(year)) {
-                            try {
-                                const labRes = await fetch(`${API}/api/deploy/labels/${jobId}/${year}`);
-                                if (labRes.ok) {
-                                    const labData = await labRes.json();
-                                    setLabels(prev => ({ ...prev, [year]: labData }));
-                                }
-                            } catch (e) { /* no labels */ }
+                // Fetch newly available results and labels
+                for (const year of data.result_years) {
+                    if (!results[year]) {
+                        console.log(`[Deploy] Fetching results for ${year}...`);
+                        const rRes = await fetch(`${API}/api/deploy/results/${jobId}/${year}`);
+                        if (rRes.ok) {
+                            const rData = await rRes.json();
+                            const isEmpty = Object.keys(rData).length === 0;
+                            if (!isEmpty) {
+                                setResults(prev => ({ ...prev, [year]: rData }));
+                                setSelectedYear(current => current || year);
+                            }
                         }
                     }
-
-                    // Select first available year
-                    if (data.result_years.length > 0 && !selectedYear) {
-                        setSelectedYear(data.result_years[data.result_years.length - 1]);
+                    if (!labels[year]) {
+                        const lRes = await fetch(`${API}/api/deploy/labels/${jobId}/${year}`);
+                        if (lRes.ok) {
+                            const lData = await lRes.json();
+                            setLabels(prev => ({ ...prev, [year]: lData }));
+                        }
                     }
-                } else if (data.status === 'error') {
-                    clearInterval(pollingRef.current);
+                }
+
+                // Periodic check for ground truth (2020, 2021) only if job is complete
+                // or if specifically marked available
+                if (data.status === 'complete') {
+                    for (const year of [2020, 2021]) {
+                        if (!labels[year]) {
+                            const lRes = await fetch(`${API}/api/deploy/labels/${jobId}/${year}`);
+                            if (lRes.ok) {
+                                const lData = await lRes.json();
+                                setLabels(prev => ({ ...prev, [year]: lData }));
+                            }
+                        }
+                    }
+                }
+
+
+                if (data.status === 'complete' || data.status === 'error') {
+                    if (pollingRef.current) clearInterval(pollingRef.current);
                 }
             } catch (e) {
                 console.error('Poll error:', e);
             }
         };
 
+        const interval = setInterval(poll, 2000);
+        pollingRef.current = interval;
         poll();
-        pollingRef.current = setInterval(poll, 2000);
-        return () => clearInterval(pollingRef.current);
+        return () => clearInterval(interval);
     }, [jobId]);
+
+    // Save completed job to persistent list
+    useEffect(() => {
+        if (jobStatus?.status === 'complete' && grid && Object.keys(results).length > 0) {
+            // Only save if not already saved (check jobId)
+            setCompletedJobs(prev => {
+                if (prev.some(j => j.jobId === jobId)) return prev;
+                return [...prev, {
+                    jobId,
+                    grid: grid,
+                    results: { ...results },
+                    labels: { ...labels },
+                    bbox: bbox,
+                    selectedYear: selectedYear,
+                }];
+            });
+        }
+    }, [jobStatus?.status, grid, results]);
 
     // Handle map clicks for drawing
     const onMapClick = useCallback((info, event) => {
@@ -143,6 +178,7 @@ export default function DeployView() {
     // Submit job
     const submitJob = async (yearList) => {
         if (!bbox) return;
+        // Reset only active job state — keep completedJobs
         setJobStatus(null);
         setGrid(null);
         setResults({});
@@ -162,7 +198,7 @@ export default function DeployView() {
         }
     };
 
-    // Reset drawing
+    // Reset drawing (only active job — completed jobs persist)
     const resetDraw = () => {
         setDrawStart(null);
         setDrawEnd(null);
@@ -175,6 +211,12 @@ export default function DeployView() {
         setSelectedYear(null);
     };
 
+    // Clear all persisted results
+    const clearAll = () => {
+        resetDraw();
+        setCompletedJobs([]);
+    };
+
     // Get current display data
     const getCurrentData = () => {
         if (!selectedYear) return null;
@@ -182,8 +224,100 @@ export default function DeployView() {
         return results[selectedYear] || labels[selectedYear] || null;
     };
 
+    // Helper: build a grid layer from job data
+    const buildGridLayer = (id, gridData, jobResults, jobLabels, jobYear, opacity = 1.0, pickable = true) => {
+        const jobViewData = jobYear
+            ? (viewMode === 'labels' ? jobLabels[jobYear] : jobResults[jobYear] || jobLabels[jobYear])
+            : null;
+
+        return new GeoJsonLayer({
+            id,
+            data: gridData,
+            filled: true,
+            stroked: true,
+            pickable,
+            getFillColor: (feature) => {
+                const props = feature.properties;
+                const cellIdNum = props.cell_id !== undefined ? props.cell_id : props.cellID;
+                const cellId = String(cellIdNum ?? '');
+
+                if (!jobViewData) return [30, 41, 59, Math.round(20 * opacity)];
+                const data = jobViewData[cellId];
+                if (!data) return [30, 41, 59, Math.round(40 * opacity)];
+
+                // Nodata cells: grey
+                if (data._quality === 'nodata') return [80, 80, 80, Math.round(120 * opacity)];
+
+                if (selectedClass !== 'all') {
+                    const val = data[selectedClass] ?? 0;
+                    const color = CLASS_COLORS[selectedClass] || [71, 85, 105];
+                    const intensity = Math.min(val, 1);
+                    return [
+                        Math.round(color[0] * intensity + 30 * (1 - intensity)),
+                        Math.round(color[1] * intensity + 41 * (1 - intensity)),
+                        Math.round(color[2] * intensity + 59 * (1 - intensity)),
+                        Math.round((180 * intensity + 40 * (1 - intensity)) * opacity),
+                    ];
+                }
+
+                let maxVal = -1, maxClass = null;
+                for (const cls of CLASSES) {
+                    const v = data[cls] ?? 0;
+                    if (v > maxVal) { maxVal = v; maxClass = cls; }
+                }
+                if (!maxClass) return [30, 41, 59, Math.round(100 * opacity)];
+                const color = CLASS_COLORS[maxClass] || [255, 255, 255];
+                const alpha = Math.min(Math.max(maxVal * 150 + 100, 120), 240);
+                return [...color, Math.round(alpha * opacity)];
+            },
+            getLineColor: (feature) => {
+                const props = feature.properties;
+                const cellIdNum = props.cell_id !== undefined ? props.cell_id : props.cellID;
+                const cellId = String(cellIdNum ?? '');
+                if (!jobViewData) return [0, 0, 0, 0];
+                const data = jobViewData[cellId];
+                if (!data) return [0, 0, 0, 0];
+                if (data._quality === 'nodata') return [120, 120, 120, Math.round(180 * opacity)];
+                if (data._quality === 'low_data') return [220, 50, 50, Math.round(200 * opacity)];
+                return [0, 0, 0, 0];
+            },
+            getLineWidth: (feature) => {
+                const props = feature.properties;
+                const cellIdNum = props.cell_id !== undefined ? props.cell_id : props.cellID;
+                const cellId = String(cellIdNum ?? '');
+                if (!jobViewData) return 0;
+                const data = jobViewData[cellId];
+                if (!data) return 0;
+                if (data._quality === 'nodata' || data._quality === 'low_data') return 2;
+                return 0;
+            },
+            lineWidthUnits: 'pixels',
+            updateTriggers: {
+                getFillColor: [jobYear, selectedClass, viewMode, jobViewData, opacity],
+                getLineColor: [jobYear, jobViewData, opacity],
+                getLineWidth: [jobYear, jobViewData],
+            },
+        });
+    };
+
     // Build layers
     const layers = [];
+
+    // Completed jobs — rendered as dimmed background layers
+    completedJobs.forEach((job, idx) => {
+        // Skip the active job if it's already in completedJobs
+        if (job.jobId === jobId) return;
+        const year = job.selectedYear || Object.keys(job.results)[0];
+        layers.push(buildGridLayer(
+            `completed-grid-${idx}`,
+            job.grid,
+            job.results,
+            job.labels,
+            parseInt(year),
+            0.6, // dimmed
+            false, // not pickable
+        ));
+    });
 
     // Bbox rectangle layer
     if (bbox) {
@@ -234,62 +368,106 @@ export default function DeployView() {
         }));
     }
 
-    // Results grid layer
+    // Active job results grid layer
     const viewData = getCurrentData();
-    if (grid && viewData) {
+    if (grid) {
         layers.push(new GeoJsonLayer({
             id: 'deploy-grid-layer',
             data: grid,
             filled: true,
-            stroked: false,
+            stroked: true,
             pickable: true,
             getFillColor: (feature) => {
-                const cellId = String(feature.properties.cell_id);
+                const props = feature.properties;
+                const cellIdNum = props.cell_id !== undefined ? props.cell_id : props.cellID;
+                const cellId = String(cellIdNum ?? '');
+
+                if (viewData === null) return [30, 41, 59, 20];
                 const data = viewData[cellId];
-                if (!data) return [30, 41, 59, 60];
+                if (data === null || data === undefined) return [30, 41, 59, 40];
+
+                // Nodata cells: grey
+                if (data._quality === 'nodata') return [80, 80, 80, 120];
 
                 if (selectedClass !== 'all') {
                     const val = data[selectedClass] ?? 0;
-                    const color = CLASS_COLORS[selectedClass];
-                    const intensity = Math.min(val * 100 / 100, 1);
+                    const color = CLASS_COLORS[selectedClass] || [71, 85, 105];
+                    const intensity = Math.min(val, 1);
                     return [
                         Math.round(color[0] * intensity + 30 * (1 - intensity)),
                         Math.round(color[1] * intensity + 41 * (1 - intensity)),
                         Math.round(color[2] * intensity + 59 * (1 - intensity)),
-                        180,
+                        Math.round(180 * intensity + 40 * (1 - intensity)),
                     ];
                 }
 
-                // Dominant class coloring
                 let maxVal = -1, maxClass = null;
                 for (const cls of CLASSES) {
                     const v = data[cls] ?? 0;
-                    if (v > maxVal) {
-                        maxVal = v;
-                        maxClass = cls;
-                    }
+                    if (v > maxVal) { maxVal = v; maxClass = cls; }
                 }
-                if (!maxClass) return [30, 41, 59, 60];
-                const color = CLASS_COLORS[maxClass];
-                const alpha = Math.min(Math.max(maxVal * 200 + 50, 80), 220);
+                if (!maxClass) return [30, 41, 59, 100];
+                const color = CLASS_COLORS[maxClass] || [255, 255, 255];
+                const alpha = Math.min(Math.max(maxVal * 150 + 100, 120), 240);
                 return [...color, alpha];
             },
-            getTooltip: ({ object }) => {
-                if (!object) return null;
-                const cellId = String(object.properties.cell_id);
+            getLineColor: (feature) => {
+                const props = feature.properties;
+                const cellIdNum = props.cell_id !== undefined ? props.cell_id : props.cellID;
+                const cellId = String(cellIdNum ?? '');
+                if (!viewData) return [0, 0, 0, 0];
                 const data = viewData[cellId];
-                if (!data) return null;
+                if (!data) return [0, 0, 0, 0];
+                if (data._quality === 'nodata') return [120, 120, 120, 180];
+                if (data._quality === 'low_data') return [220, 50, 50, 200];
+                return [0, 0, 0, 0];
+            },
+            getLineWidth: (feature) => {
+                const props = feature.properties;
+                const cellIdNum = props.cell_id !== undefined ? props.cell_id : props.cellID;
+                const cellId = String(cellIdNum ?? '');
+                if (!viewData) return 0;
+                const data = viewData[cellId];
+                if (!data) return 0;
+                if (data._quality === 'nodata' || data._quality === 'low_data') return 2;
+                return 0;
+            },
+            lineWidthUnits: 'pixels',
+            getTooltip: (info) => {
+                const { object } = info;
+                if (!object) return null;
+                const activeData = getCurrentData();
+                const props = object.properties || {};
+                const idNum = props.cell_id !== undefined ? props.cell_id : props.cellID;
+                const cellId = String(idNum ?? '');
+                const data = activeData ? activeData[cellId] : null;
+
+                if (!data) return `Cell ${cellId} (Processing...)`;
+
+                if (data._quality === 'nodata') {
+                    return {
+                        html: `<div class="tooltip-title">Cell ${cellId}</div>
+                               <div style="font-size:11px;color:#ef4444">⚠ No Data — insufficient satellite coverage</div>`,
+                        className: 'deck-tooltip',
+                    };
+                }
+
+                const qualityTag = data._quality === 'low_data'
+                    ? '<div style="font-size:10px;color:#f59e0b;margin-top:4px">⚠ Partial data — some features imputed</div>'
+                    : '';
                 const lines = CLASSES.map(c =>
                     `${CLASS_LABELS[c]}: ${((data[c] ?? 0) * 100).toFixed(1)}%`
                 ).join('<br/>');
                 return {
                     html: `<div class="tooltip-title">Cell ${cellId}</div>
-                           <div style="font-size:11px">${lines}</div>`,
+                           <div style="font-size:11px">${lines}</div>${qualityTag}`,
                     className: 'deck-tooltip',
                 };
             },
             updateTriggers: {
                 getFillColor: [selectedYear, selectedClass, viewMode, viewData],
+                getLineColor: [selectedYear, viewData],
+                getLineWidth: [selectedYear, viewData],
             },
         }));
     }
@@ -310,6 +488,7 @@ export default function DeployView() {
                 }}
                 bbox={bbox}
                 onReset={resetDraw}
+                onClearAll={completedJobs.length > 0 ? clearAll : null}
                 onSubmit={submitJob}
                 jobStatus={jobStatus}
                 selectedYear={selectedYear}
@@ -324,31 +503,35 @@ export default function DeployView() {
             />
             <div className="deploy-map">
                 <DeckGL
-                    initialViewState={INITIAL_VIEW}
+                    viewState={viewState}
+                    onViewStateChange={({ viewState }) => setViewState(viewState)}
                     controller={!drawMode}
                     layers={layers}
                     onClick={onMapClick}
                     getCursor={getCursor}
-                    getTooltip={({ object }) => {
-                        if (!object) return null;
-                        const cellId = String(object.properties?.cell_id);
-                        const data = viewData?.[cellId];
-                        if (!data) return null;
-                        const lines = CLASSES.map(c =>
-                            `${CLASS_LABELS[c]}: ${((data[c] ?? 0) * 100).toFixed(1)}%`
-                        ).join('<br/>');
-                        return {
-                            html: `<div class="tooltip-title">Cell ${cellId}</div>
-                                   <div style="font-size:11px">${lines}</div>`,
-                            className: 'deck-tooltip',
-                        };
-                    }}
                 >
                     <Map
                         ref={mapRef}
-                        mapStyle="https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json"
+                        mapStyle={mapStyle === 'satellite'
+                            ? { version: 8, sources: { 'esri-satellite': { type: 'raster', tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'], tileSize: 256, attribution: '© Esri' } }, layers: [{ id: 'esri-satellite-layer', type: 'raster', source: 'esri-satellite', minzoom: 0, maxzoom: 19 }] }
+                            : 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json'
+                        }
                     />
                 </DeckGL>
+
+                <button
+                    onClick={() => setMapStyle(s => s === 'dark' ? 'satellite' : 'dark')}
+                    style={{
+                        position: 'absolute', top: 70, right: 20, zIndex: 10,
+                        background: 'rgba(30,30,40,0.85)', color: '#fff',
+                        border: '1px solid rgba(255,255,255,0.2)', borderRadius: 8,
+                        padding: '8px 14px', cursor: 'pointer', fontSize: 13,
+                        backdropFilter: 'blur(8px)', transition: 'all 0.2s',
+                    }}
+                    title={mapStyle === 'dark' ? 'Switch to satellite view' : 'Switch to dark map'}
+                >
+                    {mapStyle === 'dark' ? '🛰️ Satellite' : '🗺️ Dark Map'}
+                </button>
 
                 {drawMode && (
                     <div className="draw-hint">

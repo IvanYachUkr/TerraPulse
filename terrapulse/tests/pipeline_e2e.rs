@@ -1,9 +1,9 @@
 use anyhow::Result;
-use assert_cmd::cargo_bin_cmd;
+use assert_cmd::Command;
 
 #[test]
 fn test_terrapulse_cli_help() -> Result<()> {
-    let mut cmd = cargo_bin_cmd!("terrapulse");
+    let mut cmd = Command::cargo_bin("terrapulse")?;
     let assert = cmd.arg("--help").assert();
     assert.success()
           .stdout(predicates::str::contains("Fast TerraPulse inference pipeline"));

@@ -1,7 +1,8 @@
 const VIEW_MODES = [
-    { key: 'labels', label: 'Labels' },
-    { key: 'predictions', label: 'Predicted' },
+    { key: 'labels', label: 'ESA' },
+    { key: 'predictions', label: 'Prediction' },
     { key: 'change', label: 'Change' },
+    { key: 'future', label: 'Future' },
 ];
 
 const MODEL_DISPLAY = {
@@ -12,6 +13,7 @@ const MODEL_DISPLAY = {
 
 // Years available for predictions (OOF 2021 + pipeline 2022-2025)
 const PREDICTION_YEARS = [2021, 2022, 2023, 2024, 2025];
+const FUTURE_YEARS = [2026, 2027]
 
 export default function Sidebar({
     appMode,
@@ -39,9 +41,21 @@ export default function Sidebar({
     onResolutionChange,
     nurembergYear,
     onNurembergYearChange,
+    nurembergSecondaryYear,
+    onNurembergSecondaryYearChange,
     nurembergDataMode,
     onNurembergDataModeChange,
     nurembergMeta,
+    selectedDistricts,
+    onDistrictChange,
+    nurembergDistricts,
+    experimentalMetrics,
+    nurembergExperimentalView,
+    onNurembergExperimentalViewChange,
+    districtStats,
+    hoveredDistrict,
+    nurembergDataMode_forStats,
+    predictionAccuracy,
 }) {
     if (appMode === 'analytical') {
         const labelYearsN = nurembergMeta?.label_years || [2020, 2021];
@@ -77,42 +91,153 @@ export default function Sidebar({
                         >
                             🤖 Predictions
                         </button>
+                        <button
+                            className={`toggle-btn ${nurembergDataMode === 'experimental' ? 'active' : ''}`}
+                            onClick={() => {
+                                onNurembergDataModeChange('experimental');
+                                onNurembergYearChange(2021);
+                            }}
+                        >
+                            🧪 Experimental
+                        </button>
                     </div>
                     <div className="info-badge" style={{ marginTop: 6 }}>
                         {nurembergDataMode === 'labels'
                             ? 'ESA WorldCover · Ground Truth'
-                            : 'CatBoost V5 · Pixel Classifier'}
+                            : nurembergDataMode === 'experimental'
+                                ? '🧪 4-Fold Spatial CV · RF 2-Stage'
+                                : 'CatBoost V5 · Pixel Classifier'}
                     </div>
                 </div>
 
-                {/* Year */}
-                <div className="section">
-                    <div className="section-title">Year</div>
-                    {visibleYears.length <= 3 ? (
-                        <div className="toggle-group">
-                            {visibleYears.map((y) => (
-                                <button
-                                    key={y}
-                                    className={`toggle-btn ${nurembergYear === y ? 'active' : ''}`}
-                                    onClick={() => onNurembergYearChange(y)}
+                {/* Year Selection */}
+                {nurembergDataMode === 'labels' && (
+                    <div className="section">
+                        <div className="section-title">Year</div>
+                        {visibleYears.length <= 3 ? (
+                            <div className="toggle-group">
+                                {visibleYears.map((y) => (
+                                    <button
+                                        key={y}
+                                        className={`toggle-btn ${nurembergYear === y ? 'active' : ''}`}
+                                        onClick={() => onNurembergYearChange(y)}
+                                    >
+                                        {y}
+                                    </button>
+                                ))}
+                            </div>
+                        ) : (
+                            <select
+                                className="select"
+                                value={nurembergYear}
+                                onChange={(e) => onNurembergYearChange(Number(e.target.value))}
+                            >
+                                {visibleYears.map((y) => (
+                                    <option key={y} value={y}>{y}</option>
+                                ))}
+                            </select>
+                        )}
+                    </div>
+                )}
+
+                {nurembergDataMode === 'predictions' && (
+                    <div className="section">
+                        <div className="section-title">Select Year | Compare Years</div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                            <div>
+                                <div style={{ fontSize: 10, opacity: 0.5, marginBottom: 4, fontWeight: 600, textTransform: 'uppercase' }}>Year</div>
+                                <select
+                                    className="select"
+                                    value={nurembergYear}
+                                    onChange={(e) => onNurembergYearChange(Number(e.target.value))}
                                 >
-                                    {y}
-                                </button>
+                                    {visibleYears.map((y) => (
+                                        <option key={y} value={y}>{y}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div>
+                                <div style={{ fontSize: 10, opacity: 0.5, marginBottom: 4, fontWeight: 600, textTransform: 'uppercase' }}>Compare to</div>
+                                <select
+                                    className="select"
+                                    value={nurembergSecondaryYear ?? 'none'}
+                                    onChange={(e) => onNurembergSecondaryYearChange(e.target.value === 'none' ? null : Number(e.target.value))}
+                                >
+                                    <option value="none">None</option>
+                                    {visibleYears
+                                        .filter((y) => y !== nurembergYear)
+                                        .map((y) => (
+                                            <option key={y} value={y}>{y}</option>
+                                        ))}
+                                </select>
+                            </div>
+                        </div>
+                        {nurembergSecondaryYear !== null && (
+                            <div className="info-badge" style={{ marginTop: 8, background: 'rgba(59, 130, 246, 0.15)', borderColor: 'rgba(59, 130, 246, 0.3)' }}>
+                                🔄 Showing changes: {nurembergYear} → {nurembergSecondaryYear}
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {/* Prediction Accuracy Card */}
+                {nurembergDataMode === 'predictions' && predictionAccuracy && Object.keys(predictionAccuracy).length > 0 && (
+                    <div className="section" style={{ borderLeft: '3px solid #10b981', paddingLeft: 12 }}>
+                        <div className="section-title">📊 Model Accuracy vs Ground Truth</div>
+                        <div style={{
+                            background: 'linear-gradient(135deg, rgba(16,185,129,0.1), rgba(59,130,246,0.08))',
+                            border: '1px solid rgba(16,185,129,0.25)',
+                            borderRadius: 10, padding: '12px 14px',
+                            fontSize: 12, color: '#e2e8f0',
+                        }}>
+                            {Object.entries(predictionAccuracy).map(([year, data]) => (
+                                <div key={year} style={{ marginBottom: 10 }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
+                                        <span style={{ fontWeight: 600, fontSize: 13 }}>{year}</span>
+                                        <span style={{
+                                            fontSize: 22, fontWeight: 800,
+                                            color: data.accuracy >= 0.8 ? '#10b981' : data.accuracy >= 0.6 ? '#f59e0b' : '#ef4444',
+                                            fontFamily: 'monospace',
+                                            letterSpacing: '-0.5px',
+                                        }}>
+                                            {(data.accuracy * 100).toFixed(1)}%
+                                        </span>
+                                    </div>
+                                    <div style={{
+                                        height: 6, borderRadius: 3, background: 'rgba(255,255,255,0.08)',
+                                        overflow: 'hidden', marginBottom: 8,
+                                    }}>
+                                        <div style={{
+                                            width: `${data.accuracy * 100}%`, height: '100%', borderRadius: 3,
+                                            background: data.accuracy >= 0.8
+                                                ? 'linear-gradient(90deg, #10b981, #34d399)'
+                                                : data.accuracy >= 0.6
+                                                    ? 'linear-gradient(90deg, #f59e0b, #fbbf24)'
+                                                    : 'linear-gradient(90deg, #ef4444, #f87171)',
+                                            transition: 'width 0.5s ease',
+                                        }} />
+                                    </div>
+                                    <div style={{ fontSize: 10, opacity: 0.5, marginBottom: 4 }}>
+                                        {data.correct_pixels?.toLocaleString()} / {data.total_pixels?.toLocaleString()} pixels correct
+                                    </div>
+                                    {data.per_class && (
+                                        <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 4 }}>
+                                            {Object.entries(data.per_class).map(([cls, m]) => (
+                                                <div key={cls} style={{
+                                                    display: 'flex', justifyContent: 'space-between',
+                                                    padding: '1px 0', fontSize: 10, opacity: 0.8,
+                                                }}>
+                                                    <span>{cls.replace(/_/g, ' ')}</span>
+                                                    <span style={{ fontFamily: 'monospace' }}>F1 {(m.f1 * 100).toFixed(1)}%</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
                             ))}
                         </div>
-                    ) : (
-                        <select
-                            className="select"
-                            value={nurembergYear}
-                            onChange={(e) => onNurembergYearChange(Number(e.target.value))}
-                        >
-                            {visibleYears.map((y) => (
-                                <option key={y} value={y}>{y}</option>
-                            ))}
-                        </select>
-                    )}
-                </div>
-
+                    </div>
+                )}
                 {/* Resolution Slider */}
                 <div className="section">
                     <div className="section-title">
@@ -135,6 +260,33 @@ export default function Sidebar({
                         <span>100m (cell)</span>
                     </div>
                 </div>
+
+                {/* Model Stage Selection */}
+                {nurembergDataMode === 'experimental' && (
+                    <div className="section" style={{ borderLeft: '3px solid #10b981', paddingLeft: 12 }}>
+                        <div className="section-title">Model Stage Selection</div>
+                        <div className="toggle-group vertical">
+                            <button
+                                className={`toggle-btn ${nurembergExperimentalView === 'heatmap' ? 'active' : ''}`}
+                                onClick={() => onNurembergExperimentalViewChange('heatmap')}
+                            >
+                                🔥 Change Likelihood
+                            </button>
+                            <button
+                                className={`toggle-btn ${nurembergExperimentalView === 'changes' ? 'active' : ''}`}
+                                onClick={() => onNurembergExperimentalViewChange('changes')}
+                            >
+                                📍 Predicted Changes
+                            </button>
+                            <button
+                                className={`toggle-btn ${nurembergExperimentalView === 'map' ? 'active' : ''}`}
+                                onClick={() => onNurembergExperimentalViewChange('map')}
+                            >
+                                🗺️ Full Prediction Map
+                            </button>
+                        </div>
+                    </div>
+                )}
 
                 {/* Class Filter */}
                 <div className="section">
@@ -188,6 +340,186 @@ export default function Sidebar({
                         })}
                     </div>
                 </div>
+
+                {/* Experimental metrics panel */}
+                {nurembergDataMode === 'experimental' && experimentalMetrics && (
+                    <div className="section">
+                        <div className="section-title">Model Accuracy</div>
+                        <div style={{
+                            background: 'rgba(16, 185, 129, 0.1)',
+                            border: '1px solid rgba(16, 185, 129, 0.3)',
+                            borderRadius: 8, padding: '10px 12px',
+                            fontSize: 12, color: '#e2e8f0',
+                        }}>
+                            <div style={{ fontSize: 18, fontWeight: 700, color: '#10b981', marginBottom: 6 }}>
+                                {(experimentalMetrics.overall_accuracy * 100).toFixed(1)}% Overall
+                            </div>
+                            <div style={{ fontSize: 11, opacity: 0.7, marginBottom: 8 }}>
+                                {experimentalMetrics.n_folds}-fold spatial CV · {experimentalMetrics.model}
+                            </div>
+                            {experimentalMetrics.per_class && Object.entries(experimentalMetrics.per_class).map(([cls, m]) => (
+                                <div key={cls} style={{
+                                    display: 'flex', justifyContent: 'space-between',
+                                    padding: '2px 0', borderTop: '1px solid rgba(255,255,255,0.05)',
+                                }}>
+                                    <span>{cls.replace('_', ' ')}</span>
+                                    <span style={{ fontFamily: 'monospace' }}>F1={m.f1.toFixed(3)}</span>
+                                </div>
+                            ))}
+                            {experimentalMetrics.fold_metrics && (
+                                <div style={{ marginTop: 8, borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: 6 }}>
+                                    <div style={{ fontWeight: 600, marginBottom: 4 }}>Per-Fold Accuracy</div>
+                                    {experimentalMetrics.fold_metrics.map((fm) => (
+                                        <div key={fm.fold} style={{ display: 'flex', justifyContent: 'space-between', padding: '1px 0' }}>
+                                            <span>Fold {fm.fold}</span>
+                                            <span style={{ fontFamily: 'monospace' }}>{(fm.accuracy * 100).toFixed(1)}%</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                )}
+
+
+
+                {/* District Selection & Stats */}
+                {districtStats && (() => {
+                    // Build list of districts from the stats
+                    const districtEntries = Object.entries(districtStats)
+                        .sort((a, b) => a[1].id.localeCompare(b[1].id, undefined, { numeric: true }));
+
+                    // Determine data key for stats
+                    let dataKey = 'labels_2021';
+                    if (nurembergDataMode_forStats === 'labels') {
+                        dataKey = `labels_${nurembergYear}`;
+                    } else if (nurembergDataMode_forStats === 'predictions') {
+                        dataKey = 'predictions_2021';
+                    } else if (nurembergDataMode_forStats === 'experimental') {
+                        dataKey = 'experimental_2021';
+                    }
+
+                    // Aggregate stats for selected districts
+                    const aggStats = {};
+                    let aggTotal = 0;
+                    const CLASS_ORDER_LOCAL = ['tree_cover', 'grassland', 'cropland', 'built_up', 'bare_sparse', 'water'];
+                    CLASS_ORDER_LOCAL.forEach(c => aggStats[c] = 0);
+                    for (const id of selectedDistricts) {
+                        const d = districtStats[id];
+                        if (!d || !d[dataKey]) continue;
+                        aggTotal += d.total_pixels || 0;
+                        CLASS_ORDER_LOCAL.forEach(c => aggStats[c] += (d[dataKey][c] || 0));
+                    }
+
+                    return (<>
+                        <div className="section">
+                            <div className="section-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span>Districts ({selectedDistricts.length})</span>
+                                <div style={{ display: 'flex', gap: 4 }}>
+                                    {selectedDistricts.length > 0 && (
+                                        <button
+                                            onClick={() => onDistrictChange('__clear__')}
+                                            style={{
+                                                background: 'rgba(239,68,68,0.2)', border: '1px solid rgba(239,68,68,0.4)',
+                                                color: '#fca5a5', borderRadius: 4, padding: '2px 8px',
+                                                fontSize: 10, cursor: 'pointer',
+                                            }}
+                                        >
+                                            Clear
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                            <div style={{
+                                maxHeight: 200, overflowY: 'auto', border: '1px solid rgba(255,255,255,0.1)',
+                                borderRadius: 8, padding: 4, background: 'rgba(15,23,42,0.5)',
+                            }}>
+                                {districtEntries.map(([id, d]) => {
+                                    const isSelected = selectedDistricts.includes(id);
+                                    const isHovered = hoveredDistrict === id;
+                                    return (
+                                        <div
+                                            key={id}
+                                            onClick={() => onDistrictChange(id)}
+                                            style={{
+                                                display: 'flex', alignItems: 'center', gap: 6,
+                                                padding: '4px 8px', cursor: 'pointer', borderRadius: 4,
+                                                fontSize: 11, color: isSelected ? '#93c5fd' : '#e2e8f0',
+                                                background: isHovered ? 'rgba(255,255,255,0.08)'
+                                                    : isSelected ? 'rgba(59,130,246,0.12)' : 'transparent',
+                                                transition: 'background 0.15s',
+                                            }}
+                                        >
+                                            <span style={{
+                                                width: 14, height: 14, borderRadius: 3, flexShrink: 0,
+                                                border: isSelected ? '2px solid #3b82f6' : '1px solid rgba(255,255,255,0.2)',
+                                                background: isSelected ? '#3b82f6' : 'transparent',
+                                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                fontSize: 9, color: '#fff',
+                                            }}>
+                                                {isSelected ? '✓' : ''}
+                                            </span>
+                                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                {d.id} {d.name}
+                                            </span>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+
+                        {/* Stats panel for selected districts */}
+                        {selectedDistricts.length > 0 && aggTotal > 0 && (
+                            <div className="section">
+                                <div className="section-title">
+                                    District Stats
+                                    <span style={{ fontSize: 10, opacity: 0.5, marginLeft: 6 }}>
+                                        ({selectedDistricts.length} selected · {aggTotal.toLocaleString()} px)
+                                    </span>
+                                </div>
+                                <div style={{
+                                    background: 'rgba(59, 130, 246, 0.08)',
+                                    border: '1px solid rgba(59, 130, 246, 0.2)',
+                                    borderRadius: 8, padding: '8px 10px',
+                                }}>
+                                    {CLASS_ORDER_LOCAL.map(c => {
+                                        const count = aggStats[c];
+                                        const pct = aggTotal > 0 ? (count / aggTotal * 100) : 0;
+                                        const [r, g, b] = classColors[c];
+                                        return (
+                                            <div key={c} style={{
+                                                display: 'flex', alignItems: 'center', gap: 6,
+                                                padding: '3px 0', fontSize: 11,
+                                            }}>
+                                                <span style={{
+                                                    width: 10, height: 10, borderRadius: 2,
+                                                    background: `rgb(${r},${g},${b})`, flexShrink: 0,
+                                                }} />
+                                                <span style={{ flex: 1, color: '#e2e8f0' }}>{classLabels[c]}</span>
+                                                <div style={{
+                                                    width: 60, height: 6, borderRadius: 3,
+                                                    background: 'rgba(255,255,255,0.08)', overflow: 'hidden',
+                                                }}>
+                                                    <div style={{
+                                                        width: `${pct}%`, height: '100%', borderRadius: 3,
+                                                        background: `rgb(${r},${g},${b})`,
+                                                        transition: 'width 0.3s ease',
+                                                    }} />
+                                                </div>
+                                                <span style={{
+                                                    fontFamily: 'monospace', fontSize: 10, color: '#94a3b8',
+                                                    width: 36, textAlign: 'right',
+                                                }}>
+                                                    {pct.toFixed(1)}%
+                                                </span>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        )}
+                    </>);
+                })()}
 
                 <div className="section">
                     <div className="disclaimer">
@@ -373,21 +705,21 @@ export default function Sidebar({
             {/* Legend */}
             {(
                 <div className="section">
-                    <div className="section-title">Legend</div>
                     {viewMode === 'change' ? (
                         <div className="legend">
+                            <div className="section-title">Probability to change</div>
                             <div className="legend-bar diverging" />
                             <div className="legend-labels">
-                                <span>-30%</span>
-                                <span>0</span>
-                                <span>+30%</span>
+                                <span>0%</span> /* TODO */
+                                <span>100%</span>
                             </div>
                         </div>
                     ) : (
                         <div className="legend">
+                            <div className="section-title">Purity of majority label</div>
                             <div className="legend-bar" />
                             <div className="legend-labels">
-                                <span>0%</span>
+                                <span>0%</span> /* TODO */
                                 <span>50%</span>
                                 <span>100%</span>
                             </div>
@@ -396,21 +728,42 @@ export default function Sidebar({
                 </div>
             )}
 
-            {/* Search Cell */}
+            {/* Search Cell */ /* TODO */}
             <div className="section">
-                <div className="section-title">Search Cell</div>
+                <div className="section-title">Coordinate Search</div>
                 <input
                     className="select"
                     type="number"
                     min="0"
                     max="29945"
-                    placeholder="Cell ID (0-29945)"
+                    placeholder="TODO"
                     value={searchCellId ?? ''}
                     onChange={(e) => {
                         const val = e.target.value;
                         onSearchCellId(val === '' ? null : Number(val));
                     }}
                 />
+            </div>
+
+            {/* Nuremberg District Selection */}
+            <div className="section">
+                <div className="section-title">Districts</div>
+                <div className="nuremberg-district-selection">
+                    {/* TODO: Add real district selection logic here */}
+                    <select multiple
+                        className="select"
+                        value={selectedDistricts}
+                        onChange={onDistrictChange}
+                    >
+                        <option>TODO - GEOJSON in Map Component</option>
+                        <option key="All" value="All">All</option>
+                        {nurembergDistricts.map(d => (
+                            <option key={d} value={d}>
+                                {d}
+                            </option>
+                        ))}
+                    </select>
+                </div>
             </div>
 
             {/* Disclaimer */}

@@ -319,12 +319,9 @@ pub fn extract_year_pair(
     {
         let n_optical = n_seasons * features::N_FEAT;
         let n_sar_per_season = if has_sar { sar_features::N_SAR_FEAT } else { 0 };
-        let _n_sar_total_cols = n_seasons * n_sar_per_season;
         let n_row_len = rows.first().map_or(0, |r| r.len());
 
         let mut temporal_fills = 0u64;
-        let mut spatial_fills = 0u64;
-        let mut zero_fills = 0u64;
 
         // --- Step 1: Temporal fill ---
         // For each feature in each season, if NaN, try same feature from same
@@ -371,68 +368,15 @@ pub fn extract_year_pair(
             }
         }
 
-        // --- Step 2: Spatial NN fill ---
-        // For remaining NaN: search ring 1 first (immediate 8 neighbors),
-        // then expand to ring 5. Use median of valid neighbors.
-        let n_grid_rows = nr;
-        let n_grid_cols = nc;
-        let max_ring = 5usize;
-
-        for col in 0..n_row_len {
-            // Check if this column has any NaN
-            let has_any_nan = rows.iter().any(|r| col < r.len() && !r[col].is_finite());
-            if !has_any_nan {
-                continue;
-            }
-
-            for ci in 0..n_cells {
-                if col >= rows[ci].len() || rows[ci][col].is_finite() {
-                    continue;
-                }
-
-                let cr = ci / n_grid_cols;
-                let cc = ci % n_grid_cols;
-                let mut found = f32::NAN;
-
-                'rings: for ring in 1..=max_ring {
-                    let mut ring_vals: Vec<f32> = Vec::new();
-                    let r_min = cr.saturating_sub(ring);
-                    let r_max = (cr + ring).min(n_grid_rows - 1);
-                    let c_min = cc.saturating_sub(ring);
-                    let c_max = (cc + ring).min(n_grid_cols - 1);
-
-                    for r in r_min..=r_max {
-                        for c in c_min..=c_max {
-                            if r == r_min || r == r_max || c == c_min || c == c_max {
-                                let ni = r * n_grid_cols + c;
-                                if ni < n_cells && col < rows[ni].len() {
-                                    let v = rows[ni][col];
-                                    if v.is_finite() {
-                                        ring_vals.push(v);
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    if !ring_vals.is_empty() {
-                        ring_vals.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
-                        found = ring_vals[ring_vals.len() / 2];
-                        break 'rings;
-                    }
-                }
-
-                if found.is_finite() {
-                    rows[ci][col] = found;
-                    spatial_fills += 1;
-                } else {
-                    rows[ci][col] = 0.0;
-                    zero_fills += 1;
-                }
-            }
-        }
-
-        println!("    NaN fill: {temporal_fills} temporal, {spatial_fills} spatial NN, {zero_fills} zero fallback");
+        // NOTE: Spatial NN fill (cross-cell) was removed — it leaked land
+        // features into water/coastal cells. Remaining NaN will be zero-filled
+        // in the final pass below.
+        let remaining_nan = rows
+            .iter()
+            .flat_map(|r| r.iter())
+            .filter(|v| !v.is_finite())
+            .count();
+        println!("    NaN fill: {temporal_fills} temporal, {remaining_nan} still missing before final zero-fill");
     }
 
     // =========================================================================
@@ -670,10 +614,32 @@ pub fn extract_year_pair(
         }
     }
 
+    // Compute per-cell NaN fraction BEFORE final zero-fill.
+    // This tracks data quality: 0.0 = all features valid, 1.0 = all features were NaN.
+    let n_all_cols = rows.first().map_or(0, |r| r.len());
+    let mut nan_fractions: Vec<f32> = Vec::with_capacity(n_cells);
+    for row in rows.iter() {
+        let nan_count = row.iter().filter(|v| !v.is_finite()).count();
+        let frac = if n_all_cols > 0 {
+            nan_count as f32 / n_all_cols as f32
+        } else {
+            0.0
+        };
+        nan_fractions.push(frac);
+    }
+
+    let nan_cells_above_50 = nan_fractions.iter().filter(|&&f| f > 0.5).count();
+    let nan_cells_above_0 = nan_fractions.iter().filter(|&&f| f > 0.0).count();
+    println!(
+        "    Data quality: {}/{} cells fully valid, {} partially missing, {} >50% missing (nodata)",
+        n_cells - nan_cells_above_0,
+        n_cells,
+        nan_cells_above_0 - nan_cells_above_50,
+        nan_cells_above_50,
+    );
+
     // Final NaN safety net: any remaining NaN (e.g. from pheno features
     // where all 3 seasons were still NaN after fill) gets zero-filled.
-    // This should be rare after temporal + spatial fill.
-    let n_all_cols = rows.first().map_or(0, |r| r.len());
     let mut final_nan_count = 0u64;
     for row in rows.iter_mut() {
         for col in 0..n_all_cols.min(row.len()) {
@@ -687,9 +653,13 @@ pub fn extract_year_pair(
         println!("    Final zero-fill for {final_nan_count} remaining NaN values");
     }
 
-    // Add cell_id, valid_fraction columns
+    // Add cell_id, valid_fraction, nan_fraction columns
     let mut extra_cols = vec!["cell_id".to_string()];
     let mut extra_data: Vec<Vec<f32>> = vec![(0..n_cells as u32).map(|i| i as f32).collect()];
+
+    // Always add nan_fraction
+    extra_cols.push("nan_fraction".to_string());
+    extra_data.push(nan_fractions);
 
     if let Some(ref vf) = vf_min {
         // Aggregate valid fraction per cell (mean of GP×GP pixels)

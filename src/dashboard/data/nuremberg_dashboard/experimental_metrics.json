@@ -1,0 +1,126 @@
+{
+  "overall_accuracy": 0.8842,
+  "fold_metrics": [
+    {
+      "fold": 1,
+      "accuracy": 0.8308,
+      "change_accuracy": 0.025
+    },
+    {
+      "fold": 2,
+      "accuracy": 0.9004,
+      "change_accuracy": 0.0025
+    },
+    {
+      "fold": 3,
+      "accuracy": 0.8966,
+      "change_accuracy": 0.0024
+    },
+    {
+      "fold": 4,
+      "accuracy": 0.909,
+      "change_accuracy": 0.001
+    }
+  ],
+  "per_class": {
+    "tree_cover": {
+      "precision": 0.931,
+      "recall": 0.905,
+      "f1": 0.9178,
+      "support": 714709
+    },
+    "grassland": {
+      "precision": 0.6735,
+      "recall": 0.8006,
+      "f1": 0.7316,
+      "support": 195943
+    },
+    "cropland": {
+      "precision": 0.8778,
+      "recall": 0.8117,
+      "f1": 0.8435,
+      "support": 211921
+    },
+    "built_up": {
+      "precision": 0.9602,
+      "recall": 0.9082,
+      "f1": 0.9335,
+      "support": 726130
+    },
+    "bare_sparse": {
+      "precision": 0.068,
+      "recall": 0.6759,
+      "f1": 0.1236,
+      "support": 4348
+    },
+    "water": {
+      "precision": 0.9269,
+      "recall": 0.8989,
+      "f1": 0.9127,
+      "support": 21348
+    }
+  },
+  "confusion_matrix": [
+    [
+      646821,
+      40396,
+      3193,
+      17650,
+      5731,
+      918
+    ],
+    [
+      5394,
+      156881,
+      18749,
+      5282,
+      9223,
+      414
+    ],
+    [
+      3162,
+      13688,
+      172022,
+      2899,
+      20140,
+      10
+    ],
+    [
+      38592,
+      21494,
+      1646,
+      659461,
+      4817,
+      120
+    ],
+    [
+      53,
+      223,
+      351,
+      730,
+      2939,
+      52
+    ],
+    [
+      752,
+      244,
+      17,
+      774,
+      372,
+      19189
+    ]
+  ],
+  "class_names": [
+    "tree_cover",
+    "grassland",
+    "cropland",
+    "built_up",
+    "bare_sparse",
+    "water"
+  ],
+  "n_folds": 4,
+  "feature_year": 2020,
+  "label_year": 2021,
+  "model": "RandomForest (2-stage: detector + classifier)",
+  "description": "4-fold spatial CV on exact Nuremberg boundary pixels"
+}

@@ -25,7 +25,7 @@ const CLASS_COLORS_HEX = {
 const AVAILABLE_YEARS = [2020, 2021, 2022, 2023, 2024, 2025];
 
 export default function DeployPanel({
-    drawMode, onToggleDraw, bbox, onReset, onSubmit,
+    drawMode, onToggleDraw, bbox, onReset, onClearAll, onSubmit,
     jobStatus, selectedYear, onYearChange,
     selectedClass, onClassChange,
     viewMode, onViewModeChange,
@@ -96,6 +96,12 @@ export default function DeployPanel({
                         <button className="deploy-btn deploy-btn-ghost" onClick={() => { onReset(); }}>
                             ↺ Redraw
                         </button>
+                        {onClearAll && (
+                            <button className="deploy-btn deploy-btn-ghost" onClick={onClearAll}
+                                style={{ marginTop: '4px', opacity: 0.7, fontSize: '0.85em' }}>
+                                🗑️ Clear All Regions
+                            </button>
+                        )}
                     </div>
                 )}
             </div>
