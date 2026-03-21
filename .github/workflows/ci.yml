@@ -125,4 +125,5 @@ jobs:
           az containerapp update \
             --name terrapulse \
             --resource-group terrapulse-rg \
-            --image ghcr.io/ivanyachukr/terrapulse:latest
+            --image ghcr.io/ivanyachukr/terrapulse:latest \
+            --revision-suffix ${{ github.sha }}
