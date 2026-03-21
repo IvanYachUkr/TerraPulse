@@ -3,6 +3,7 @@ import DeckGL from '@deck.gl/react';
 import { Map } from 'react-map-gl/maplibre';
 import { GeoJsonLayer } from '@deck.gl/layers';
 import DeployPanel from './DeployPanel.jsx';
+import { REGIONS_GEOJSON, REGION_COLORS } from '../data/trainingRegions.js';
 
 const API = import.meta.env.VITE_API_URL || '';
 
@@ -55,6 +56,7 @@ export default function DeployView() {
     const [labels, setLabels] = useState({});     // { year: data }
     const [viewMode, setViewMode] = useState('predictions'); // predictions | labels | change
     const [mapStyle, setMapStyle] = useState('dark'); // dark | satellite
+    const [showRegions, setShowRegions] = useState(false);
 
 
     // Persistent completed jobs — survives across redraws
@@ -292,6 +294,26 @@ export default function DeployView() {
                 return 0;
             },
             lineWidthUnits: 'pixels',
+            ...(pickable ? {
+                getTooltip: (info) => {
+                    const { object } = info;
+                    if (!object) return null;
+                    const props = object.properties || {};
+                    const idNum = props.cell_id !== undefined ? props.cell_id : props.cellID;
+                    const cellId = String(idNum ?? '');
+                    const data = jobViewData ? jobViewData[cellId] : null;
+                    if (!data) return `Cell ${cellId} (no data)`;
+                    if (data._quality === 'nodata') {
+                        return { html: `<div class="tooltip-title">Cell ${cellId}</div><div style="font-size:11px;color:#ef4444">⚠ No Data</div>`, className: 'deck-tooltip' };
+                    }
+                    const qualityTag = data._quality === 'low_data'
+                        ? '<div style="font-size:10px;color:#f59e0b;margin-top:4px">⚠ Partial data</div>' : '';
+                    const lines = CLASSES.map(c =>
+                        `${CLASS_LABELS[c]}: ${((data[c] ?? 0) * 100).toFixed(1)}%`
+                    ).join('<br/>');
+                    return { html: `<div class="tooltip-title">Cell ${cellId}</div><div style="font-size:11px">${lines}</div>${qualityTag}`, className: 'deck-tooltip' };
+                },
+            } : {}),
             updateTriggers: {
                 getFillColor: [jobYear, selectedClass, viewMode, jobViewData, opacity],
                 getLineColor: [jobYear, jobViewData, opacity],
@@ -304,6 +326,30 @@ export default function DeployView() {
     const layers = [];
 
     // Completed jobs — rendered as dimmed background layers
+    // Training region overlay
+    if (showRegions) {
+        layers.push(new GeoJsonLayer({
+            id: 'training-regions-layer',
+            data: REGIONS_GEOJSON,
+            filled: true,
+            stroked: true,
+            pickable: true,
+            getFillColor: (f) => REGION_COLORS[f.properties.role]?.fill || [100, 100, 100, 30],
+            getLineColor: (f) => REGION_COLORS[f.properties.role]?.stroke || [100, 100, 100, 150],
+            getLineWidth: 2,
+            lineWidthUnits: 'pixels',
+            getTooltip: (info) => {
+                if (!info.object) return null;
+                const { name, role } = info.object.properties;
+                const roleLabel = REGION_COLORS[role]?.label || role;
+                return {
+                    html: `<div class="tooltip-title">${name}</div><div style="font-size:11px;opacity:0.8">${roleLabel} Region</div>`,
+                    className: 'deck-tooltip',
+                };
+            },
+        }));
+    }
+
     completedJobs.forEach((job, idx) => {
         // Skip the active job if it's already in completedJobs
         if (job.jobId === jobId) return;
@@ -315,7 +361,7 @@ export default function DeployView() {
             job.labels,
             parseInt(year),
             0.6, // dimmed
-            false, // not pickable
+            true, // pickable — enables hover tooltips on completed jobs
         ));
     });
 
@@ -477,6 +523,58 @@ export default function DeployView() {
         return isDragging ? 'grabbing' : 'grab';
     };
 
+    // Unified tooltip handler for all pickable layers
+    const getTooltip = useCallback((info) => {
+        if (!info.object) return null;
+        const layerId = info.layer?.id || '';
+
+        // Training regions layer
+        if (layerId === 'training-regions-layer') {
+            const { name, role } = info.object.properties || {};
+            const roleLabel = REGION_COLORS[role]?.label || role;
+            return {
+                html: `<div class="tooltip-title">${name}</div><div style="font-size:11px;opacity:0.8">${roleLabel} Region</div>`,
+                className: 'deck-tooltip',
+            };
+        }
+
+        // Grid layers (active or completed)
+        if (layerId === 'deploy-grid-layer' || layerId.startsWith('completed-grid-')) {
+            const props = info.object.properties || {};
+            const idNum = props.cell_id !== undefined ? props.cell_id : props.cellID;
+            const cellId = String(idNum ?? '');
+
+            // For the active grid, use getCurrentData()
+            // For completed grids, find the matching completed job
+            let cellData = null;
+            if (layerId === 'deploy-grid-layer') {
+                const activeData = getCurrentData();
+                cellData = activeData ? activeData[cellId] : null;
+            } else {
+                const idx = parseInt(layerId.replace('completed-grid-', ''), 10);
+                const job = completedJobs.filter(j => j.jobId !== jobId)[idx];
+                if (job) {
+                    const year = job.selectedYear || Object.keys(job.results)[0];
+                    const jData = viewMode === 'labels' ? job.labels[year] : (job.results[year] || job.labels[year]);
+                    cellData = jData ? jData[cellId] : null;
+                }
+            }
+
+            if (!cellData) return { html: `<div class="tooltip-title">Cell ${cellId}</div><div style="font-size:11px;opacity:0.6">Processing…</div>`, className: 'deck-tooltip' };
+            if (cellData._quality === 'nodata') {
+                return { html: `<div class="tooltip-title">Cell ${cellId}</div><div style="font-size:11px;color:#ef4444">⚠ No Data — insufficient satellite coverage</div>`, className: 'deck-tooltip' };
+            }
+            const qualityTag = cellData._quality === 'low_data'
+                ? '<div style="font-size:10px;color:#f59e0b;margin-top:4px">⚠ Partial data — some features imputed</div>' : '';
+            const lines = CLASSES.map(c =>
+                `${CLASS_LABELS[c]}: ${((cellData[c] ?? 0) * 100).toFixed(1)}%`
+            ).join('<br/>');
+            return { html: `<div class="tooltip-title">Cell ${cellId}</div><div style="font-size:11px">${lines}</div>${qualityTag}`, className: 'deck-tooltip' };
+        }
+
+        return null;
+    }, [viewMode, completedJobs, jobId, selectedYear, results, labels, grid, viewData]);
+
     return (
         <div className="deploy-container">
             <DeployPanel
@@ -493,6 +591,8 @@ export default function DeployView() {
                 jobStatus={jobStatus}
                 selectedYear={selectedYear}
                 onYearChange={setSelectedYear}
+                showRegions={showRegions}
+                onToggleRegions={() => setShowRegions(s => !s)}
                 selectedClass={selectedClass}
                 onClassChange={setSelectedClass}
                 viewMode={viewMode}
@@ -509,6 +609,7 @@ export default function DeployView() {
                     layers={layers}
                     onClick={onMapClick}
                     getCursor={getCursor}
+                    getTooltip={getTooltip}
                 >
                     <Map
                         ref={mapRef}

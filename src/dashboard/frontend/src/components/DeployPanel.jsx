@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { REGION_COLORS } from '../data/trainingRegions.js';
 
 const CLASS_LABELS = {
     tree_cover: 'Tree Cover',
@@ -27,6 +28,7 @@ const AVAILABLE_YEARS = [2020, 2021, 2022, 2023, 2024, 2025];
 export default function DeployPanel({
     drawMode, onToggleDraw, bbox, onReset, onClearAll, onSubmit,
     jobStatus, selectedYear, onYearChange,
+    showRegions, onToggleRegions,
     selectedClass, onClassChange,
     viewMode, onViewModeChange,
     results, labels, viewData,
@@ -73,6 +75,33 @@ export default function DeployPanel({
                 <p className="deploy-hint">
                     Draw a rectangle on the map, then run the pipeline to generate predictions.
                 </p>
+            </div>
+
+            {/* Training regions toggle + legend */}
+            <div className="deploy-panel-section">
+                <h4 className="deploy-section-subtitle">Training Data</h4>
+                <button
+                    className={`deploy-btn ${showRegions ? 'deploy-btn-active' : 'deploy-btn-ghost'}`}
+                    onClick={onToggleRegions}
+                    style={{ marginBottom: showRegions ? 8 : 0 }}
+                >
+                    {showRegions ? '🗺️ Hide Training Regions' : '🗺️ Show Training Regions'}
+                </button>
+                {showRegions && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 4 }}>
+                        {Object.entries(REGION_COLORS).map(([role, cfg]) => (
+                            <div key={role} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
+                                <span style={{
+                                    width: 14, height: 14, borderRadius: 3,
+                                    background: cfg.hex, opacity: 0.85,
+                                    border: `2px solid ${cfg.hex}`,
+                                    display: 'inline-block', flexShrink: 0,
+                                }} />
+                                <span style={{ color: 'rgba(255,255,255,0.85)' }}>{cfg.label}</span>
+                            </div>
+                        ))}
+                    </div>
+                )}
             </div>
 
             {/* Drawing controls */}
