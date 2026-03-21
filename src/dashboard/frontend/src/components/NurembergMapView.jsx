@@ -4,7 +4,7 @@ import DeckGL from '@deck.gl/react';
 import { BitmapLayer, GeoJsonLayer } from '@deck.gl/layers';
 import 'maplibre-gl/dist/maplibre-gl.css';
 
-const API = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const API = import.meta.env.VITE_API_URL || '';
 
 const INITIAL_VIEW = {
     longitude: 11.076,
