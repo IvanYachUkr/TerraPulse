@@ -6,6 +6,14 @@
   title: [🌍 TerraPulse - Final Project Report WS25/26],
   abstract: [
     We be trollin', they hatin'.
+
+    We’re excited to present **TerraPulse** — our machine learning–based application for predicting land-cover composition and land-cover change.
+
+    Our project focuses on the city of Nuremberg, while also demonstrating how our approach can generalize to locations across the globe.
+
+    TerraPulse is built on the ESA WorldCover datasets from 2020 and 2021, which provide global land-cover information at an 10-meter resolution. Using this data, we analyze current land-cover patterns and generate predictive insights through machine learning.
+    Add link to azure?
+
   ],
   authors: (
     (
@@ -47,7 +55,36 @@
     #body
   ]
 ]
+= TODO LIST:
 
+- Ivan:
+  - Finish Dashboard + Sections in the report
+  - Rerun script from Clemens + upload precomputed maps to docker to make experimental tab work
+  - Stress Testing (Satellite pixel dropout randomly)
+  - Section with features we tried
+  - Model section cleanup (formulas in appendix)
+  - Training, Testing, Evaluation area shown in global tab
+- Clemens:
+  - Model section cleanup (formulas in appendix)
+  - Diagramms to visualize and make it easier to grasp
+  - What kind of hyperparameter tuning did you use?
+  - Fix heatmap coloring for predicted likelihood
+- Claudius:
+  - Record Video of video and share result
+  - Add citations for the social data
+  - Add Abstract (2-3 sentences)
+  - Use airport as misleading interpretation (missleadingly interpretated as construction area)
+  - Cube One area is predicted to have a lot of change (actual construction area)
+  - Search for picutres of sentinile
+  - Use this "word by word": Your system must explain to a non-expert:
+    ● What changed
+    ● Where it changed
+    ● How confident the system is
+  - Write secion on explainability & trust as beeing a non-expert
+
+- Robin:
+  - Do decision making chapter
+  - add Citation for Nuremberg Geo-Mosaics
 
 
 TODO Ivan, Clemens, Robin, Claudius: Code / Repo cleanup?!
@@ -65,6 +102,36 @@ The ESA WorldCover datasets of the years 2020 @worldcover2020 and 2021 @worldcov
 As a result, we´re able to derive the land-cover composition of a satellite image and provide the land-cover change when comparing label classification from multiple satellite images of different years. We even experimented with predicting future label changes within Nuremberg.
 
 In general, sectors like urban planning, environmental monitoring, climate policy as well as business decisions rely on land-cover data. As we've been instructed to focus on Nuremberg, the dashboard shows in the first tab the map of Nuremberg with its districts to provide easy access via the city´s structure level. _TerraPulse_ is also valuable for users outside of Nuremberg as the second tab "Global" allows to select a desired region worldwide, run the classification pipeline for multiple years and evaluate the land-cover classification labels as well.
+
+
+= Technical Stack
+
+== Machine learning
+
+All training and experimentation is done in *Python*.
+The pixel-wise classification model (Model 1) uses *CatBoost* with GPU training (CUDA).
+The global MLP (Model 2) is built in *PyTorch* (mixed-precision FP16, CUDA) and exported to *ONNX* for deployment.
+Hyperparameter optimization uses *Optuna* (Model 1) and a custom *BOHB* sweep (Model 2).
+Feature importance and model interpretability are handled with *SHAP*.
+Geospatial data access relies on *pystac-client* and *stackstac* (Microsoft Planetary Computer STAC API), with *rasterio*, *geopandas*, and *xarray* for raster I/O and coordinate transforms.
+
+At inference time, a standalone *Rust* binary (_terrapulse_) replaces the entire Python pipeline.
+It downloads Sentinel-1/2 imagery, builds cloud-free composites, extracts all 1,764 features per cell, and runs the ONNX model.
+Parallelism is provided by *Rayon* (CPU) and ONNX Runtime (the _ort_ crate with dynamic loading).
+
+== Application
+
+The dashboard is a single-page application.
+
+*Frontend*: React 19 + TypeScript, built with Vite.
+Maps are rendered with *deck.gl* (GPU-accelerated WebGL layers) on top of *MapLibre GL*.
+Charts use *Chart.js* via react-chartjs-2.
+
+*Backend*: A *FastAPI* server (Python, Uvicorn) exposes a REST API.
+For the Global tab, the API spawns the Rust _terrapulse_ binary as a subprocess to run the full satellite-download → feature-extraction → inference pipeline on demand.
+Precomputed Nuremberg data is served directly from Parquet/JSON files.
+
+*Deployment*: A multi-stage *Docker* image (Rust build → Node.js build → Python runtime) packages everything into a single container, deployed on *Azure Container Apps*.
 
 
 = Data
@@ -95,6 +162,157 @@ We map the original 11 ESA classes to a reduced set of 7: tree cover, shrubland,
 We did not limit ourselves to specific land-cover classes and kept the 10 m pixel grid as spatial unit, aggregating 10×10 pixel patches into cells for the classification model.
 
 
+= Feature Engineering <feature-engineering>
+
+All models share a common feature engineering pipeline built on Sentinel-2 L2A surface reflectance.
+The base input is 10 spectral bands: B02 (blue), B03 (green), B04 (red), B05–B07 (red-edge 1–3), B08 (NIR), B8A (narrow NIR), B11 (SWIR1), B12 (SWIR2).
+20m bands (B05, B06, B07, B8A, B11, B12) are upsampled to 10m to match the native pixel grid.
+For the cell-level models, 20m bands are block-reduced to 5×5 via 2×2 mean pooling before computing statistics.
+
+== Spectral indices (deployed)
+
+15 normalized indices are computed per pixel (or per cell).
+Model 1 uses 9 of these; Model 2 uses all 15.
+
+=== Vegetation indices
+
+$ "NDVI" = (B_08 - B_04) / (B_08 + B_04) $
+$ "EVI2" = 2.5 dot (B_08 - B_04) / (B_08 + 2.4 dot B_04 + 1) $
+$ "SAVI" = 1.5 dot (B_08 - B_04) / (B_08 + B_04 + 0.5) $
+$ "GNDVI" = (B_08 - B_03) / (B_08 + B_03) $
+
+NDVI and EVI2 measure vegetation vigor.
+SAVI reduces bare-soil background influence on the vegetation signal.
+GNDVI is more sensitive to chlorophyll concentration than NDVI.
+
+=== Red-edge indices
+
+$ "NDRE1" = (B_08 - B_05) / (B_08 + B_05) $
+$ "NDRE2" = (B_08 - B_06) / (B_08 + B_06) $
+$ "IRECI" = (B_07 - B_04) / (B_05 / (B_06 + epsilon)) $
+$ "CRI1" = 1 / B_03 - 1 / B_05 $
+
+NDRE1/NDRE2 separate shrubland from grassland where NDVI saturates.
+IRECI measures chlorophyll content using the red-edge inflection.
+CRI1 detects carotenoid concentration (vegetation stress).
+
+=== Water and surface indices
+
+$ "NDWI" = (B_03 - B_08) / (B_03 + B_08) $
+$ "MNDWI" = (B_03 - B_11) / (B_03 + B_11) $
+$ "NDBI" = (B_11 - B_08) / (B_11 + B_08) $
+$ "NDMI" = (B_08 - B_11) / (B_08 + B_11) $
+$ "NBR" = (B_08 - B_12) / (B_08 + B_12) $
+$ "BSI" = ((B_11 + B_04) - (B_08 + B_02)) / ((B_11 + B_04) + (B_08 + B_02)) $
+$ "NDTI" = (B_11 - B_12) / (B_11 + B_12) $
+
+NDWI and MNDWI detect open water (MNDWI is better in urban areas).
+NDBI highlights built-up/impervious surfaces.
+NDMI and NBR capture vegetation moisture and burn scars.
+BSI separates bare or sparsely vegetated ground.
+NDTI distinguishes crop residue and tillage from naturally bare ground.
+
+== Tasseled Cap transformation (deployed)
+
+The Nedkov (2017) coefficients project the 10-band reflectance into three axes:
+$ T_k = sum_(i=1)^(10) c_(k,i) dot B_i , quad k in {"Brightness", "Greenness", "Wetness"} $
+Per cell, mean and standard deviation of each component are stored (6 features).
+
+== Spatial statistics (deployed, Model 2 only)
+
+- *Sobel edge magnitude*: 3×3 Sobel filter on NIR → mean, std, max (3 features)
+- *Laplacian*: 3×3 Laplacian on NIR → mean absolute value, std (2 features)
+- *Moran's I* on NIR: spatial autocorrelation with 4-neighbor weights:
+$ I = N / W dot (sum_(i tilde j) z_i z_j) / (sum_i z_i^2) , quad z_i = x_i - overline(x) $
+where $N$ is the count of valid pixels, $W$ is the count of valid neighbor pairs, and $i tilde j$ denotes horizontal/vertical adjacency (1 feature)
+- *NDVI intra-cell range* and *IQR* (2 features)
+
+These features hurt tree models (overfitting to specific landscapes) but improved MLP accuracy.
+
+== Local Binary Patterns (deployed, Model 2 only)
+
+Rotation-invariant uniform LBP computed on five images: NIR, NDVI, EVI2, SWIR1, NDTI.
+$ "LBP"(x_c) = sum_(p=0)^(7) s(g_p - g_c) dot 2^p , quad s(x) = cases(1 "if" x >= 0, 0 "otherwise") $
+Patterns with ≤2 bit transitions are _uniform_ (bins 0–8 by popcount); all others map to bin 9.
+Per band per cell: 10-bin normalized histogram + Shannon entropy ($H = -sum p_b ln p_b$) → 11 × 5 = 55 features/season.
+
+== SAR features (deployed, Model 2 only)
+
+Sentinel-1 C-band SAR features per season: VV and VH backscatter, cross-polarization ratio $"CR" = "VV" / "VH"$, and Radar Vegetation Index:
+$ "RVI" = (4 dot "VH") / ("VV" + "VH") $
+Cross-season SAR features: summer/winter ratios (VV, VH, CR), temporal std (VV, VH, CR), temporal CV (VV, VH).
+
+SAR responds to surface roughness and structure rather than colour, providing indirect texture information that is natively compatible with tree splits.
+
+== Temporal and phenological features (deployed)
+
+=== Intra-annual differences
+
+For index $I$, seasons $s_1, s_2$ in year $y$:
+$ Delta I^"intra"_(s_1 arrow s_2, y) = I_(s_2, y) - I_(s_1, y) $
+Computed for (spring→summer) and (summer→autumn) for all 9 indices, both years (Model 1: 36 features).
+
+=== Inter-annual differences
+
+$ Delta I^"inter"_(s) = I_(s, 2021) - I_(s, 2020) $
+For all 9 indices and 3 seasons (Model 1: 27 features).
+
+=== Growing-season range
+
+$ R_(I, y) = I_("autumn", y) - I_("spring", y) $
+For NDVI, NDWI, EVI2, BSI per year (Model 1: 8 features).
+
+=== Phenological descriptors (Model 2)
+
+Derived from the seasonal trajectory (spring → summer → autumn) for each index and SAR channel:
+- *Amplitude*: max − min of the three seasonal values
+- *Peak season*: argmax (encoded as 0/1/2)
+- *Slope*: linear trend across seasons
+- *Curvature*: second-order difference (concavity of the seasonal arc)
+
+These capture crop phenology, deciduous leaf cycles, and seasonal flooding patterns.
+
+== Features tried and rejected
+
+The following feature groups were implemented and tested but excluded from the final models because they either hurt accuracy (tree-model overfitting to landscape-specific patterns) or provided no measurable improvement over the deployed features.
+
+=== GLCM texture
+
+Gray-Level Co-occurrence Matrix computed on NIR and NDVI (quantized to 32 levels), with distances $d = 1$ and angles $0, pi/4, pi/2, 3pi/4$.
+Five Haralick properties extracted per image: contrast, homogeneity, energy, correlation, dissimilarity.
+10 features per season per cell.
+_Rejected_: no accuracy improvement for either tree or MLP models, and the 32-level quantization on a 10×10 pixel patch produced unreliable statistics.
+
+=== Gabor wavelets
+
+Bank of 12 Gabor filters (3 scales $sigma in {1, 2, 4}$ × 4 orientations $theta in {0°, 45°, 90°, 135°}$, frequency 0.3) applied to normalized NIR.
+We tried both the real-part response and the full complex-valued response (magnitude and phase), extracting mean and std of each per cell → up to 48 features per season.
+_Rejected_: no improvement with either variant; on a 10×10 patch the receptive field exceeds the cell, making filter responses dominated by edge effects.
+
+=== HOG (Histogram of Oriented Gradients)
+
+8-orientation HOG with 5×5 pixel cells and 1×1 block normalization on NIR.
+Produces a feature vector of length 32 plus mean and std → 34 features per season.
+_Rejected_: the 10×10 patch is too small for meaningful gradient histograms. HOG is designed for object detection in larger image regions.
+
+=== Morphological profiles
+
+Opening, closing, and morphological gradient (closing − opening) on NDVI at disk radii $r in {1, 2, 3}$.
+9 features per season.
+_Rejected_: collapsed to near-constant values on 10×10 patches. Morphological profiles require larger spatial context to capture structure.
+
+=== Semivariogram
+
+Empirical semivariance at lags 1–4 on NIR, plus exponential model fit ($"nugget" + "sill" dot (1 - e^(-h/"range"))$).
+7 features per season (4 gamma values + 3 fit parameters).
+_Rejected_: unstable fits on small patches (only 10×10 = 100 pixels). Range estimates frequently hit the upper bound.
+
+=== OSM (OpenStreetMap) features
+
+Spatial features from OSM vector data: building count, building area fraction, mean building area, road count and total length, dominant landuse type (one-hot encoded), and distance to nearest water body.
+~15 features per cell (time-invariant).
+_Rejected_: they violate the design goal of a self-contained, globally deployable pipeline. OSM coverage is inconsistent across countries and would require maintaining a separate vector data dependency.
+
 
 = Models
 
@@ -115,66 +333,19 @@ Inverse-frequency class weights are used to compensate for label imbalance in th
 
 === Feature vector
 
-Each pixel is represented by a fixed-length vector of 217 features, constructed from multi-temporal, multi-sensor satellite observations.
+Each pixel is represented by a fixed-length vector of 217 features, constructed from multi-temporal, multi-sensor satellite observations (see @feature-engineering for all formulas and definitions).
 The feature vector covers two years (2020, 2021) and three seasons (spring, summer, autumn), giving six temporal slots.
 
 For each of the six time slots, we extract:
 - 10 raw *Sentinel-2 L2A surface reflectance* bands: B02, B03, B04, B05, B06, B07, B08, B8A, B11, B12 (60 features total)
-- 9 *spectral indices* computed from these bands (54 features total):
-
-$ "NDVI" = (B_08 - B_04) / (B_08 + B_04) $
-$ "NDWI" = (B_03 - B_08) / (B_03 + B_08) $
-$ "NDBI" = (B_11 - B_08) / (B_11 + B_08) $
-$ "NDMI" = (B_08 - B_11) / (B_08 + B_11) $
-$ "NBR" = (B_08 - B_12) / (B_08 + B_12) $
-$ "BSI" = ((B_11 + B_04) - (B_08 + B_02)) / ((B_11 + B_04) + (B_08 + B_02)) $
-$ "EVI2" = 2.5 dot (B_08 - B_04) / (B_08 + 2.4 dot B_04 + 1) $
-$ "NDRE1" = (B_08 - B_05) / (B_08 + B_05) $
-$ "NDRE2" = (B_08 - B_06) / (B_08 + B_06) $
-
+- 9 *spectral indices*: NDVI, NDWI, NDBI, NDMI, NBR, BSI, EVI2, NDRE1, NDRE2 (54 features total)
 - 3 *Sentinel-1 SAR* features: VV backscatter, VH backscatter, and the VV/VH ratio (18 features total)
 
-On top of the per-slot features, we compute temporal difference features. For any index $I$ and seasons $s_1, s_2$ in year $y$:
+On top of the per-slot features, we compute intra-annual differences (spring→summer, summer→autumn) for all 9 indices in both years (36 features), inter-annual differences (same season, 2021 − 2020) for all 9 indices and 3 seasons (27 features), growing-season range (autumn − spring) for NDVI, NDWI, EVI2, BSI per year (8 features), and SAR temporal diffs for VV and VH (14 features).
 
-$ Delta I^"intra"_(s_1 arrow s_2, y) = I_(s_2, y) - I_(s_1, y) $
-
-computed for (spring→summer) and (summer→autumn), for all 9 indices and both years (36 features).
-
-Inter-annual diffs compare the same season across years:
-
-$ Delta I^"inter"_(s) = I_(s, 2021) - I_(s, 2020) $
-
-for all 9 indices and 3 seasons (27 features).
-
-Growing season range captures the full amplitude:
-
-$ R_(I, y) = I_("autumn", y) - I_("spring", y) $
-
-for NDVI, NDWI, EVI2, and BSI per year (8 features).
-
-SAR temporal diffs follow the same pattern for VV and VH backscatter (14 features).
-
-=== Feature justification
-
-Each spectral index was chosen because it targets a specific land-cover signal.
-NDVI and EVI2 respond to vegetation vigor, making them effective at separating tree cover, grassland, and cropland.
-NDWI is sensitive to open water surfaces.
-NDBI highlights built-up and impervious areas.
-NDMI and NBR capture vegetation moisture content and respond to burn scars.
-BSI (Bare Soil Index) helps distinguish bare or sparsely vegetated ground from other classes.
-NDRE1 and NDRE2 use the red-edge bands (B05, B06) and are more sensitive to subtle differences in vegetation health than NDVI alone, which helps separate shrubland from grassland.
-
-The Sentinel-1 SAR features were included because SAR provides information that is orthogonal to optical reflectance.
-C-band backscatter responds to surface roughness and structure rather than colour, giving the model a form of indirect texture information.
-In our experiments we found that tree-based models cannot effectively utilize computed texture descriptors like Gabor wavelets or LBP. These features simply decreased the accuracy accuracy because of the overfitting on specific landscapes.
-SAR backscatter, however, does capture some of the same structural information while being natively compatible with tree splits.
-As a secondary benefit, SAR is weather-independent and complements the optical composites during seasons with heavy cloud cover.
-
-The temporal difference features capture phenological cycles.
-Cropland has a strong seasonal NDVI signal (bare in winter, green in summer, harvested in autumn), whereas forest stays relatively stable year-round.
-These seasonal amplitude and difference features allow the model to separate classes that look similar in a single snapshot but behave differently over time.
-
-The final feature set was selected through extensive experimentation: we trained thousands of CatBoost, scikit-learn HGBR and LightGBM trees configurations across multiple feature subsets to converge on the combination that yielded the best validation accuracy.
+The final feature set was selected through extensive experimentation: we trained thousands of CatBoost, scikit-learn HGBR and LightGBM configurations across multiple feature subsets to converge on the combination that yielded the best validation accuracy.
+Tree-based models cannot effectively utilize computed texture descriptors like Gabor wavelets or LBP — these features decreased accuracy due to overfitting on specific landscapes (see @feature-engineering).
+SAR backscatter, however, captures structural information while being natively compatible with tree splits, and is weather-independent.
 
 === Spatial and temporal resolution
 
@@ -219,13 +390,13 @@ All training and experimentation for this model was done on a single laptop: an 
 - *GPU*: NVIDIA GeForce RTX 4070 Laptop, 8 GB GDDR6
 - *Storage*: 1 TB NVMe SSD
 
-The minimum practical requirements for reproducing the training pipeline are approximately 150 GB of free storage (for raw Sentinel-1/2 imagery, WorldCover tiles, and cached feature matrices across 50+ cities), at least 32 GB of system RAM (feature construction for a single city can peak at ~3 GB, and the concatenated training matrix is several GB), and a GPU with at least 8 GB of VRAM and TensorFloat-32 (TF32) support for CatBoost's GPU training mode.
+The minimum practical requirements for reproducing the training pipeline are approximately 300 GB of free storage (for raw Sentinel-1/2 imagery, WorldCover tiles, and cached feature matrices across 100+ cities), at least 32 GB of system RAM (feature construction for a single city can peak at ~3 GB, and the concatenated training matrix is several GB), and a GPU with at least 8 GB of VRAM and TensorFloat-32 (TF32) support for CatBoost's GPU training mode.
 
 Training a single CatBoost configuration (3000--4000 trees, depth 8) takes roughly one hour on the RTX 4070.
 Given that we swept multiple hyperparameter configurations, feature subsets, and framework comparisons (CatBoost vs.~LightGBM vs.~scikit-learn HistGradientBoosting), the practical experimentation phase for this model took several weeks of real time.
 
 
-== Model 2: Global deployment MLP (Ivan Iachnyk)
+== Model 2: Global deployment MLP (softlabel) (Ivan Iachnyk)
 
 While Model 1 operates at pixel level for Nuremberg only, the global deployment model provides land-cover predictions for _any_ location worldwide at 100m×100m (10×10 pixel) cell resolution.
 This model powers the "Global" tab of the dashboard.
@@ -254,80 +425,19 @@ The training procedure uses:
 === Feature vector
 
 The feature vector is extracted by the Rust _terrapulse_ binary, which processes 100m cells (10×10 Sentinel-2 pixels) into fixed-length feature vectors.
-The deployed model uses *1,764 features per cell* in total.
-Per cell per season, the Rust extractor produces 224 raw features organized into five groups described below.
-With 2 years × 3 seasons = 6 temporal slots, plus cross-season SAR and phenological features, this yields the final 1,764-dimensional input.
+The deployed model uses *1,764 features per cell* in total (see @feature-engineering for all formulas and definitions).
+Per cell per season, the Rust extractor produces 224 raw features organized into five groups:
 
-==== Band statistics (80 features/season)
+- *Band statistics* (80/season): 10 bands × 8 statistics (mean, std, min, max, Q25, median, Q75, finite fraction) with 20m bands block-reduced before computing
+- *Spectral indices* (75/season): all 15 indices (the 9 from Model 1 plus SAVI, MNDWI, GNDVI, NDTI, IRECI, CRI1), each summarized by 5 statistics (mean, std, Q25, median, Q75)
+- *Tasseled Cap* (6/season): Brightness, Greenness, Wetness — mean and std each
+- *Spatial statistics* (8/season): Sobel edges, Laplacian, Moran's I on NIR, NDVI range/IQR
+- *Multi-band LBP* (55/season): rotation-invariant uniform LBP histograms on NIR, NDVI, EVI2, SWIR1, NDTI
 
-For each of the 10 Sentinel-2 bands (B02–B12), 8 statistics are computed across the 100 pixels in the cell: mean, standard deviation, min, max, Q25, median, Q75, and finite fraction.
-20m bands (B05, B06, B07, B8A, B11, B12) are first block-reduced to 5×5 via 2×2 mean pooling before computing statistics.
+With 2 years × 3 seasons = 6 temporal slots, plus cross-season SAR features (VV, VH, CR, RVI and derived ratios/statistics) and phenological descriptors (amplitude, peak season, slope, curvature), this yields the final 1,764-dimensional input.
 
-==== Spectral indices (75 features/season)
-
-15 normalized vegetation/surface indices are computed, each summarized by 5 statistics (mean, std, Q25, median, Q75) across the cell.
-The 9 indices shared with Model 1 are:
-$ "NDVI" = (B_08 - B_04) / (B_08 + B_04) , quad "NDWI" = (B_03 - B_08) / (B_03 + B_08) $
-$ "NDBI" = (B_11 - B_08) / (B_11 + B_08) , quad "NDMI" = (B_08 - B_11) / (B_08 + B_11) $
-$ "NBR" = (B_08 - B_12) / (B_08 + B_12) , quad "NDRE1" = (B_08 - B_05) / (B_08 + B_05) $
-$ "NDRE2" = (B_08 - B_06) / (B_08 + B_06) $
-$ "BSI" = ((B_11 + B_04) - (B_08 + B_02)) / ((B_11 + B_04) + (B_08 + B_02)) $
-$ "EVI2" = 2.5 dot (B_08 - B_04) / (B_08 + 2.4 dot B_04 + 1) $
-
-The 6 additional indices used only in Model 2 are:
-$ "SAVI" = 1.5 dot (B_08 - B_04) / (B_08 + B_04 + 0.5) $
-$ "MNDWI" = (B_03 - B_11) / (B_03 + B_11) , quad "GNDVI" = (B_08 - B_03) / (B_08 + B_03) $
-$ "NDTI" = (B_11 - B_12) / (B_11 + B_12) $
-$ "IRECI" = (B_07 - B_04) / (B_05 / (B_06 + epsilon)) $
-$ "CRI1" = 1 / B_03 - 1 / B_05 $
-
-==== Tasseled Cap (6 features/season)
-
-The Tasseled Cap transformation projects the 10-band reflectance into three interpretable axes using the Nedkov (2017) coefficients:
-$ T_k = sum_(i=1)^(10) c_(k,i) dot B_i , quad k in {"Brightness", "Greenness", "Wetness"} $
-
-For each component, mean and standard deviation across the cell are stored (6 features).
-
-==== Spatial statistics (8 features/season)
-
-- *Sobel edge magnitude*: 3×3 Sobel filter on the NaN-filled NIR band, summarized by mean, std, max over the cell (3 features)
-- *Laplacian*: 3×3 Laplacian filter on the NIR band, summarized by mean absolute value and std (2 features)
-- *Moran's I* on NIR: spatial autocorrelation with 4-neighbor weights (right + down), computed as:
-$ I = N / W dot (sum_(i tilde j) z_i z_j) / (sum_i z_i^2) , quad z_i = x_i - overline(x) $
-  where $N$ is the count of valid pixels, $W$ is the count of valid neighbor pairs, and $i tilde j$ denotes horizontal or vertical adjacency (1 feature)
-- *NDVI intra-cell range* and *IQR* (2 features)
-
-==== Multi-band LBP (55 features/season)
-
-Local Binary Patterns (LBP) are computed as 8-neighbor rotation-invariant uniform patterns on five images: NIR, NDVI, EVI2, SWIR1, and NDTI.
-Each pixel receives a code:
-$ "LBP"(x_c) = sum_(p=0)^(7) s(g_p - g_c) dot 2^p , quad s(x) = cases(1 "if" x >= 0, 0 "otherwise") $
-
-where $g_c$ is the center pixel intensity and $g_p$ are the 8 bilinearly interpolated neighbors at radius 1.
-Patterns with ≤ 2 bit transitions are _uniform_ and mapped to bins 0–8 (by popcount); all others go to a single non-uniform bin (bin 9).
-Per band per cell, this yields a 10-bin normalized histogram plus Shannon entropy:
-$ H = -sum_(b=0)^(9) p_b ln p_b $
-giving 11 features × 5 bands = 55 features per season.
-
-==== SAR features (per year)
-
-Sentinel-1 SAR features include per-season VV and VH backscatter, the cross-polarization ratio $"CR" = "VV" / "VH"$, and the Radar Vegetation Index:
-$ "RVI" = (4 dot "VH") / ("VV" + "VH") $
-
-Cross-season SAR features are also computed: summer/winter ratios (VV, VH, CR), temporal standard deviation (VV, VH, CR), and temporal coefficient of variation (VV, VH).
-
-==== Phenological features (per year)
-
-For each spectral index and SAR channel, phenological descriptors are derived from the seasonal trajectory (spring → summer → autumn):
-- *Amplitude*: max - min of the seasonal values
-- *Peak season*: argmax of the seasonal values (encoded as 0/1/2)
-- *Slope*: linear trend across seasons
-- *Curvature*: second-order difference (concavity of the seasonal arc)
-
-These capture crop phenology, deciduous forest leaf-on/off cycles, and seasonal flooding patterns that cannot be expressed by per-season features alone.
-
-These spatial, texture, and phenological features are viable for the MLP because, unlike CatBoost's balanced trees, neural networks can learn arbitrary non-linear combinations of such descriptors.
-In our experiments, LBP and spatial features hurt tree-based models (overfitting to specific landscape patterns) but improved MLP accuracy.
+Spatial, texture, and phenological features are viable for the MLP because neural networks can learn arbitrary non-linear combinations of such descriptors.
+In our experiments, LBP and spatial features hurt tree-based models (overfitting to specific landscape patterns) but improved MLP accuracy (see @feature-engineering).
 
 Features are standardized using a global StandardScaler (fitted on training data) prior to training and inference.
 
@@ -381,7 +491,7 @@ Three metrics are reported:
   table(
     columns: 8,
     [*Model*], [*Nuremberg*], [*Ankara*], [*Sofia*], [*Riga*], [*Edinburgh*], [*Palermo*], [*Mean*],
-    [Deployed (\#7)], [0.944], [0.842], [0.867], [0.928], [0.936], [0.893], [*0.902*],
+    [Deploy (\#7)], [0.944], [0.842], [0.867], [0.928], [0.936], [0.893], [*0.902*],
     [\#8], [0.944], [0.831], [0.873], [0.934], [0.937], [0.892], [0.902],
     [\#5], [0.942], [0.837], [0.868], [0.928], [0.937], [0.892], [0.901],
     [\#3], [0.943], [0.840], [0.864], [0.929], [0.934], [0.893], [0.901],
@@ -390,28 +500,75 @@ Three metrics are reported:
   caption: [Top-1 accuracy per test city. The deployed model achieves 90.2% mean accuracy, a 2.4 percentage point improvement over the V8 baseline. Models: \#8 = 2048/1024/512 GELU (6.2M params), \#5 = 512/256/128/64 GELU (1.1M), \#3 = 512/256/128/64 SiLU (1.1M).],
 ) <mlp-top1-results>
 
+
 At the 5% evaluation threshold, the deployed model achieves a combined score of 0.789 (Top-1: 90.2%, R²: 0.676), ranking first among all 10 BOHB candidates and outperforming the V8 baseline by 6.6 percentage points on the combined metric.
 
 A per-class R² analysis on Riga (the city with the most diverse class distribution among the test set) reveals that the model achieves strong R² values for tree cover (0.93), water (0.97), built-up (0.91), grassland (0.83), and cropland (0.75), but struggles with shrubland — which has only 75 cells above 1% fraction, making reliable regression effectively impossible.
 This mirrors the rare-class difficulty described in @rare-labels.
 
+=== Stress testing <stress-testing>
+
+To assess robustness, three perturbation experiments were conducted on the deployed model across all 6 held-out test cities (221,351 cells).
+Perturbations are applied in z-score space (post-StandardScaler); zeroing a feature is equivalent to mean imputation.
+Statistical significance is assessed via paired two-sided $t$-tests across the 6 cities.
+
+==== Gaussian noise injection
+
+Additive Gaussian noise $cal(N)(0, sigma^2)$ is injected into the standardized feature vector, with each $sigma$ level averaged over 10 random seeds.
+The model degrades gracefully up to $sigma = 0.2$ (R² from 0.676 to 0.653, $p = 0.001$), then rapidly: at $sigma = 1.0$ R² falls to 0.280 and at $sigma = 2.0$ all metrics collapse (R² $= -0.24$, Top-1 $= 65%$, Top-3 $= 27%$).
+Full results with 95% confidence intervals are listed in @stress-noise-table.
+
+==== Season dropout
+
+Zeroing all features from a single year$times$season slot (266 columns each) reveals a clear asymmetry: dropping any 2020 season is not statistically significant ($p > 0.05$), while all three 2021 seasons produce significant degradation (e.g.\ 2021 summer: R² $= 0.569$, $p = 0.001$).
+This asymmetry is expected: the ground-truth labels are derived from 2021 WorldCover, so the model's internal representations weight 2021 observations more heavily.
+
+Dropping an entire year is catastrophic: removing all of 2021 yields R² $= -0.42$ ($p = 0.022$), while removing all of 2020 still halves $R^2$ to 0.31 ($p = 0.025$).
+Cross-year same-season dropout lowers R² to $approx 0.43$, confirming that no single season suffices.
+Full results are listed in @stress-season-table.
+
+==== Feature-group ablation
+
+Zeroing entire feature categories reveals a clear importance hierarchy (@stress-ablation-inline).
+Spectral indices are the most critical: removing all 450 index columns collapses R² to $-0.96$ ($p = 0.044$) and Top-3 from 74.0% to 18.3%.
+Phenological features show a disproportionate effect on multi-class ranking: Top-3 drops to 51.5% ($p = 0.002$) despite only a modest Top-1 decline.
+LBP features (330 columns, 19% of the feature vector) are not statistically significant ($p = 0.185$); spatial features (12 columns) are likewise insignificant ($p = 0.088$).
+
+#figure(
+  table(
+    columns: 7,
+    align: (left, right, right, right, right, right, right),
+    [*Group*], [*Cols*], [*R²*], [*Top-1*], [*Top-3*], [*MAE*], [*$p$*],
+    [baseline], [--], [0.676], [0.902], [0.740], [0.033], [--],
+    [Indices], [450], [$-$0.96], [0.639], [0.183], [0.104], [0.044],
+    [Bands], [480], [0.081], [0.813], [0.488], [0.077], [0.0004],
+    [Phenological], [120], [0.584], [0.874], [0.515], [0.049], [0.002],
+    [SAR], [336], [0.634], [0.897], [0.713], [0.040], [0.010],
+    [Tasseled Cap], [36], [0.659], [0.894], [0.727], [0.036], [0.131],
+    [LBP], [330], [0.671], [0.900], [0.730], [0.035], [0.185],
+    [Spatial], [12], [0.672], [0.900], [0.738], [0.034], [0.088],
+  ),
+  caption: [Feature-group ablation summary, ordered by impact. Groups with $p > 0.05$ (LBP, Spatial, Tasseled Cap) show no statistically significant degradation. Extended tables including multi-group ablations and per-city breakdowns are provided in @stress-test-appendix.],
+) <stress-ablation-inline>
+
+==== Per-city geographic analysis
+
+Because the model was trained exclusively on European cities, Ankara (Turkey) serves as a natural out-of-distribution test.
+At baseline, Ankara already shows the lowest R² among test cities (0.603 vs.\ 0.756--0.813 for the five EU cities) and lowest Top-1 (84.1% vs.\ 87--94%).
+Under perturbation, the gap persists but does not widen disproportionately: removing SAR features, for instance, degrades Ankara R² by 0.005 (negligible) while Riga drops by 0.068, suggesting the model relies on SAR more in northern European landscapes.
+Removing phenological features degrades all cities substantially, but Ankara's Top-2 accuracy falls furthest (65.3% to 42.3%), consistent with the importance of temporal vegetation signatures in semi-arid landscapes where spectral contrast between seasons is large.
+
+==== Limitations
+
+Stress testing measures robustness to feature removal, not optimality of the feature set.
+Although LBP and spatial features individually show no statistically significant contribution when ablated, this does not imply they are unnecessary: all feature groups jointly contribute to the deployed model's peak composite performance (R² $= 0.676$, Top-1 $= 90.2%$), and their marginal gains may be masked by correlations with other groups.
+Removing them would reduce the feature vector by 19% but risks degradation under distribution shift not captured by the current test cities.
+
 == Model 3: label change prediction
-TODO Clemens:
-How does the tabular or fixed-length feature vector of the model look like?
-What features did you engineer / aggregate from imagery?
-What is the model type?
-How do you justify your feature choices?
-How do you justify your model choices?
-How do you justify your spatial and temporal resolution?
-What spatial or temporal hold-out strategy did you use?
-What change-specific metric (e.g. false change rate, stability) can you provide as evaluation beyond accuracy?
-What stress test (e.g. feature noise, missing data) can we provide?
-Where and why is the model is likely wrong?
-
-
 A two-step prediction model was developed for predicting the labels of future years.
 The first step involves a model that predicts how likely a particular cell is to change within the next year. The second model then predicts the new label of cells with a high likelihood of change.
-This model is a binary random forest with a maximum depth of 15, which predicts the likelihood of change in a given cell.
+This model is a binary random forest with a depth of 35 and 50 estimators, which predicts the likelihood of change in a given cell.
+
 The model is trained using only 17 features per pixel.
 First, the raw reflectance from Sentinel-2 is used.
 Bands 2–8, 8A, 11 and 12 are used as features, the most important of which are:
@@ -422,45 +579,31 @@ Band 08: 842 nm (near infrared), useful for biomass detection, e.g. forest.
 
 In addition, we calculate the Normalized Difference Vegetation Index (NDVI). This also helps to distinguish vegetation from other things.
 
-$"NIR - Red"/"NIR + Red"$
-
 We also calculate the standard deviation for the NDVI. This provides information about how much vegetation changes, which can indicate vegetation being turned into buildings or forest being turned into cropland.
 
 In addition to the satellite data, we also include the current land use classification and a few more contextual and socioeconomic features, such as population density, the number of residential units, commercial usable space, and the number of cars per 1,000 inhabitants, to distinguish residential from industrial areas.
 
 A random forest was chosen for training because it allows for balanced training, which is critical for change detection. It is also a lightweight model that performs well on binary tasks.
-A resolution of 10 m is necessary to detect small changes in the environment. As this is trained on a relatively small area, it is possible to compute it pixelwise.
-As we only have labels for two years, it is difficult to evaluate the model effectively. Therefore, we use 4-fold partial cross-validation to split Nuremberg into four horizontal strips. We then train on three of these strips and test on the remaining strip, which allows the model to train and predict on whole neighbourhoods and prevents data leakage.
+A resolution of 10 m is necessary to detect small changes in the environment. As this is trained on a relatively small area, it is possible to compute it pixel-wise. The hyper parameter of this model were determined with HPO.
+As we only have labels for two years, it is difficult to evaluate the model effectively. Therefore, we use 4-fold partial cross-validation to split Nuremberg into four horizontal strips. We then train on three of these strips and test on the remaining strip, which allows the model to train and predict on whole neighborhoods and prevents data leakage.
 
-#code(
-  ```python
-  # Code example in Typst
-  print(f"Hello world!")
-  ```,
-)
+Because of the fact that only very few pixel change from 2020 to 2021 we did not evaluate the model on it accuracy. In this case predicting no changes at all would achieve a accuracy of nearly 95 %. That is why for evaluating the model we used a test set that contained equally amounts of changing and non changing pixels. On this we calculated how many Pixels got classified false what was a little bit over 20 %.
 
-== Model 3: label next year prediction
-TODO Clemens:
-How does the tabular or fixed-length feature vector of the model look like?
-What features did you engineer / aggregate from imagery?
-What is the model type?
-How do you justify your feature choices?
-How do you justify your model choices?
-How do you justify your spatial and temporal resolution?
-What spatial or temporal hold-out strategy did you use?
-What change-specific metric (e.g. false change rate, stability) can you provide as evaluation beyond accuracy?
-What stress test (e.g. feature noise, missing data) can we provide?
-Where and why is the model is likely wrong?
 
-#code(
-  ```python
-  # Code example in Typst
-  print(f"Hello world!")
-  ```,
-)
+== Model 4: label next year prediction
+
+This model is the second step of the two-step model, that predicts the labels of the following year. In the first step the likelihood of a change is predicted and in this second step the new label for this cell is predicted. For this the same features as in the last models are used, but the prediction is only applied to the cells with a change likelihood of more then 0.95. This Threshold was obtained by HPO.
+
+Just as the first model this second step is also a random Forest with an depth of 26 and 50 estimators. Those Hyperparameters again were obtained via HPO. The train and test set of this model only contains cells over the change-threshold of 0.95 with the same holdout strategy as in the first model.
+
+For this model we get an accuracy of almost 90 % and a F1 Score of almost 70 %.
+
+The two stage model overall struggles the most with Bare/Sparse due to very little representation of this class in Nuremberg. Also most of the cells classified as such in 2020 got a different label in
+2021 what also could be due to the change in algorithm use for classification by ESA. Also the runway of the airport gets a high probability of change by the model. Most likely because the dark runway has spectral similarities to dug-up ground at a construction site.
+
 
 = Explainability & Trust
-TODO: Claudius Robin
+TODO: Claudius
 Your system must explain to a non-expert:
 - What changed
 - Where it changed
@@ -539,32 +682,13 @@ For each year, we construct three separate cloud-free composites — spring (Apr
 Cloud masking is done using the L2A Scene Classification Layer (SCL), which flags saturated, cloud shadow, cloud, and thin cirrus pixels.
 The composite itself uses a first-quartile (Q1) approach rather than a simple median: per-pixel, we sort all valid (cloud-free) observations by reflectance and take the 25th percentile value, which tends to suppress residual haze and brightness inconsistencies across scenes.
 
-The key to distinguishing cropland from bare land lies in the seasonal trajectory of vegetation-sensitive indices.
-In both models, the following indices are most relevant for this task:
-
-$ "NDVI" = (B_08 - B_04) / (B_08 + B_04) $
-$ "EVI2" = 2.5 dot (B_08 - B_04) / (B_08 + 2.4 dot B_04 + 1) $
-$ "BSI" = ((B_11 + B_04) - (B_08 + B_02)) / ((B_11 + B_04) + (B_08 + B_02)) $
-
+The key to distinguishing cropland from bare land lies in the seasonal trajectory of vegetation-sensitive indices (see @feature-engineering for all formulas).
+In both models, NDVI, EVI2, and BSI are the most relevant indices for this task.
 Cropland exhibits a strong seasonal NDVI/EVI2 signal — low in spring (bare soil), high in summer (peak biomass), dropping again in autumn (harvest).
 Conversely, BSI behaves inversely: high when soil is exposed (spring/post-harvest), low when vegetation covers the field.
-The temporal difference features capture this arc directly:
+The intra-annual difference features capture this arc directly: for cropland, the spring→summer NDVI difference is large and positive, while for genuinely bare land or built-up areas it stays near zero.
 
-$ Delta "NDVI"^"intra"_("spring" arrow "summer", y) = "NDVI"_("summer", y) - "NDVI"_("spring", y) $
-
-For cropland, this value is large and positive, while for genuinely bare land or built-up areas, it stays near zero.
-The growing season range further quantifies this:
-
-$ R_("NDVI", y) = "NDVI"_("autumn", y) - "NDVI"_("spring", y) $
-
-The gloabl MLP model additionally uses indices that further aid this separation:
-
-$ "SAVI" = 1.5 dot (B_08 - B_04) / (B_08 + B_04 + 0.5) $
-$ "NDTI" = (B_11 - B_12) / (B_11 + B_12) $
-
-SAVI is a soil-adjusted vegetation index that reduces the influence of bare soil background on the vegetation signal, making it more stable in mixed crop–soil pixels early in the growing season.
-NDTI (Normalized Difference Tillage Index) uses both SWIR bands (B11, B12) and is sensitive to crop residue and tillage practices — it helps separate recently harvested fields from naturally bare ground.
-Additionally, the MLP's Tasseled Cap Greenness component provides another angle on the same phenological signal.
+The global MLP model additionally uses SAVI (soil-adjusted, more stable in mixed crop–soil pixels) and NDTI (sensitive to crop residue and tillage) to further aid this separation, along with the Tasseled Cap Greenness component.
 
 Without these multi-season features, any model trained on a single-date composite would systematically confuse spring cropland with bareland, which is exactly the failure mode we observed in our early experiments.
 
@@ -592,6 +716,15 @@ As illustrated in #ref(<cloud_cover_diagram>), WeatherSpark @nuremberg-cloud-sta
 
 TODO Robin:
 - #text(weight: "bold")[Which decisions must not be made based on your results?]
+
+To summarize the above...
+In the real world, the decision-making capabilities of our product are limited.
+In general, the outputs should not be taken as ground truth
+Also: Model restrictions
+
+
+Farmers get money for specific types of land use -> ....
+"Law enforcement for regulating farmers if they let an "
 
 = Generative AI Reflection
 #strike[TODO Robin: On what kind of decision do you disagree and explain why? ]
@@ -670,6 +803,7 @@ Rostock, Paris South, Berlin, Helsinki, Madrid, Alentejo (Portugal), Peloponnese
 
 Nuremberg (Germany), Ankara (Turkey), Sofia (Bulgaria), Riga (Latvia), Edinburgh (Scotland), Palermo (Sicily).
 
+#pagebreak()
 == ChatGPT Chat Logs <chatgpt-chat-logs>
 
 === Case 1 <chatgpt-chat-log1>
@@ -699,4 +833,72 @@ Nuremberg (Germany), Ankara (Turkey), Sofia (Bulgaria), Riga (Latvia), Edinburgh
     Screenshot of ChatGPT recommending to upsample our predictions for finer resolutions Pt.2
   ],
 )
+
+= Appendix
+
+== Stress test tables <stress-test-appendix>
+
+All experiments evaluate the deployed MLP (trial 77, 2.5M parameters) on 6 held-out test cities (221,351 cells).
+Perturbations are applied in z-score space; zeroing corresponds to mean imputation.
+$R^2$ is computed per-class with a 5% threshold, then averaged across classes and cities.
+Top-$k$ set-match accuracy uses the deployed label threshold of 2.1%.
+$p$-values are from paired two-sided $t$-tests across the 6 test cities.
+
+#figure(
+  table(
+    columns: 7,
+    align: (left, right, right, right, right, right, right),
+    [$sigma$], [R²], [$plus.minus$ 95% CI], [Top-1], [Top-2], [Top-3], [MAE],
+    [0.00], [0.676], [--], [0.902], [0.774], [0.740], [0.033],
+    [0.05], [0.675], [0.0003], [0.901], [0.773], [0.739], [0.034],
+    [0.10], [0.670], [0.0006], [0.900], [0.770], [0.734], [0.034],
+    [0.20], [0.653], [0.0012], [0.895], [0.755], [0.717], [0.036],
+    [0.50], [0.545], [0.0025], [0.861], [0.666], [0.603], [0.047],
+    [1.00], [0.280], [0.0027], [0.783], [0.512], [0.426], [0.069],
+    [1.50], [0.012], [0.0027], [0.710], [0.417], [0.328], [0.087],
+    [2.00], [$-$0.239], [0.0035], [0.650], [0.356], [0.269], [0.101],
+  ),
+  caption: [Gaussian noise injection ($sigma$ in z-score units, 10 seeds per level). The model is robust up to $sigma = 0.2$; all levels $sigma >= 0.05$ are statistically significant ($p < 0.05$).],
+) <stress-noise-table>
+
+#figure(
+  table(
+    columns: 8,
+    align: (left, right, right, right, right, right, right, right),
+    [Dropped], [Cols], [R²], [Top-1], [Top-2], [Top-3], [MAE], [$p$],
+    [baseline], [--], [0.676], [0.902], [0.774], [0.740], [0.033], [--],
+    [2020 spring], [266], [0.656], [0.898], [0.758], [0.723], [0.039], [0.150],
+    [2020 summer], [266], [0.644], [0.894], [0.760], [0.727], [0.042], [0.062],
+    [2020 autumn], [266], [0.634], [0.895], [0.753], [0.709], [0.040], [0.061],
+    [2021 spring], [266], [0.596], [0.897], [0.747], [0.716], [0.041], [0.003],
+    [2021 summer], [266], [0.569], [0.892], [0.747], [0.690], [0.043], [0.001],
+    [2021 autumn], [266], [0.612], [0.897], [0.750], [0.711], [0.041], [0.019],
+    [All 2020], [798], [0.307], [0.836], [0.691], [0.654], [0.075], [0.025],
+    [All 2021], [798], [$-$0.424], [0.830], [0.619], [0.607], [0.088], [0.022],
+    [Both springs], [532], [0.446], [0.882], [0.707], [0.683], [0.052], [0.030],
+    [Both summers], [532], [0.439], [0.876], [0.719], [0.661], [0.055], [0.014],
+    [Both autumns], [532], [0.425], [0.877], [0.701], [0.649], [0.055], [0.043],
+  ),
+  caption: [Season dropout: zeroing all features from one or more temporal slots. Individual 2020 seasons are not statistically significant; 2021 seasons are ($p < 0.02$). Removing an entire year is catastrophic.],
+) <stress-season-table>
+
+#figure(
+  table(
+    columns: 8,
+    align: (left, right, right, right, right, right, right, right),
+    [Removed], [Cols], [R²], [Top-1], [Top-2], [Top-3], [MAE], [$p$],
+    [baseline], [--], [0.676], [0.902], [0.774], [0.740], [0.033], [--],
+    [Bands], [480], [0.081], [0.813], [0.506], [0.488], [0.077], [0.0004],
+    [Indices], [450], [$-$0.963], [0.639], [0.524], [0.183], [0.104], [0.044],
+    [LBP], [330], [0.671], [0.900], [0.767], [0.730], [0.035], [0.185],
+    [Phenological], [120], [0.584], [0.874], [0.659], [0.515], [0.049], [0.002],
+    [SAR], [336], [0.634], [0.897], [0.748], [0.713], [0.040], [0.010],
+    [Spatial], [12], [0.672], [0.900], [0.773], [0.738], [0.034], [0.088],
+    [Tasseled Cap], [36], [0.659], [0.894], [0.751], [0.727], [0.036], [0.131],
+    [Bands+Indices], [930], [$-$2.584], [0.482], [0.522], [0.382], [0.139], [0.050],
+    [SAR+LBP], [666], [0.625], [0.893], [0.731], [0.680], [0.042], [0.003],
+    [Spatial+Pheno+TC], [168], [0.508], [0.843], [0.641], [0.541], [0.056], [0.002],
+  ),
+  caption: [Feature-group ablation: zeroing all features in a category. Spectral indices are the most critical; LBP ($p = 0.185$) and spatial features ($p = 0.088$) are not statistically significant.],
+) <stress-ablation-table>
 
