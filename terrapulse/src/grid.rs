@@ -74,8 +74,6 @@ pub fn generate_grid_geojson(anchor: &AnchorRef, out_path: &Path) -> Result<()> 
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    
     #[test]
     fn test_utm_conversion() {
         let (lat, lon) = utm::wsg84_utm_to_lat_lon(500000.0, 4600000.0, 32, 'N').unwrap();

@@ -9,6 +9,7 @@ use crate::config::N_CLASSES;
 pub struct ModelConfig {
     pub label_threshold: f32,
     #[serde(default = "default_n_classes")]
+    #[allow(dead_code)]
     pub n_classes: usize,
 }
 

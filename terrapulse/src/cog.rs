@@ -783,8 +783,8 @@ mod tests {
 
     #[test]
     fn test_unpack_15bit_tight() {
-        let v1 = 0x5555u32;
-        let v2 = 0x2AAAu32; // This doesn't matter for the new test, let's write exact bytes
+        let _v1 = 0x5555u32;
+        let _v2 = 0x2AAAu32; // This doesn't matter for the new test, let's write exact bytes
 
         // Stream: [ 10101010 ] [ 10101010 ] [ 10101010 ] ...
         // First 15 bits: 101010101010101 -> 0x5555

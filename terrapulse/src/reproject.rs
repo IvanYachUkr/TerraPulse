@@ -220,7 +220,7 @@ fn zone_central_meridian(zone: u32) -> f64 {
 pub fn utm_to_geographic(easting: f64, northing: f64, zone: u32, is_north: bool) -> (f64, f64) {
     let e = WGS84_F * (2.0 - WGS84_F); // first eccentricity squared
     let e1sq = e / (1.0 - e);
-    let n_val = WGS84_A / (1.0 - e).sqrt();
+    let _n_val = WGS84_A / (1.0 - e).sqrt();
 
     let fn_val = if is_north { 0.0 } else { 10_000_000.0 };
     let cm = zone_central_meridian(zone).to_radians();
