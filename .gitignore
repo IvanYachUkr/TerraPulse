@@ -32,6 +32,7 @@ src/dashboard/data/nuremberg/
 !src/dashboard/data/nuremberg_dashboard/nuremberg_dashboard_meta.json
 !src/dashboard/data/nuremberg_dashboard/district_stats.json
 !src/dashboard/data/nuremberg_dashboard/experimental_metrics.json
+!src/dashboard/data/nuremberg_dashboard/*.bin
 reports/figures/
 reports/phase6/
 reports/phase7/
