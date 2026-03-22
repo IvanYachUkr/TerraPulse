@@ -1,18 +1,14 @@
 #import "ieee_layout.typ": ieee
+#import "@preview/note-me:0.6.0": *
 
 #show link: underline
 
 #show: ieee.with(
   title: [🌍 TerraPulse - Final Project Report WS25/26],
   abstract: [
-    We be trollin', they hatin'.
+        We´re excited to present TerraPulse, our machine learning-based application for predicting land-cover composition and land cover change based on the data from ESA WorldCover 2020 and 2021. This project focuses on the city of Nuremberg as its primary case study, while also showcasing its performance around the globe.
 
-    We’re excited to present **TerraPulse** — our machine learning–based application for predicting land-cover composition and land-cover change.
-
-    Our project focuses on the city of Nuremberg, while also demonstrating how our approach can generalize to locations across the globe.
-
-    TerraPulse is built on the ESA WorldCover datasets from 2020 and 2021, which provide global land-cover information at an 10-meter resolution. Using this data, we analyze current land-cover patterns and generate predictive insights through machine learning.
-    Add link to azure?
+    Explore the world, tile by tile, with our publicly available _TerraPulse_ app now: @containerapp
 
   ],
   authors: (
@@ -56,38 +52,19 @@
   ]
 ]
 = TODO LIST:
+- General:
+  - Look through Repo. Index EVERY SINGLE ONE of your written files/scripts/yamls and add which Model (1,2,3,4) it works for 
 
+  
 - Ivan:
-  - Finish Dashboard + Sections in the report
-  - Rerun script from Clemens + upload precomputed maps to docker to make experimental tab work
-  - Stress Testing (Satellite pixel dropout randomly)
-  - Section with features we tried
-  - Model section cleanup (formulas in appendix)
-  - Training, Testing, Evaluation area shown in global tab
+  - Class distribution diagram Train, Eval, Test. Mention / put in Model 2 chapter
+
 - Clemens:
-  - Model section cleanup (formulas in appendix)
   - Diagramms to visualize and make it easier to grasp
   - What kind of hyperparameter tuning did you use?
-  - Fix heatmap coloring for predicted likelihood
-- Claudius:
-  - Record Video of video and share result
-  - Add citations for the social data
-  - Add Abstract (2-3 sentences)
-  - Use airport as misleading interpretation (missleadingly interpretated as construction area)
-  - Cube One area is predicted to have a lot of change (actual construction area)
-  - Search for picutres of sentinile
-  - Use this "word by word": Your system must explain to a non-expert:
-    ● What changed
-    ● Where it changed
-    ● How confident the system is
-  - Write secion on explainability & trust as beeing a non-expert
 
 - Robin:
-  - Do decision making chapter
-  - add Citation for Nuremberg Geo-Mosaics
-
-
-TODO Ivan, Clemens, Robin, Claudius: Code / Repo cleanup?!
+  - Make one short table summarizing what each model does and where it is used on the dashboard and put it between the models-chapter header and the "Model 1" part.
 
 
 = Introduction
@@ -99,20 +76,22 @@ The ESA WorldCover datasets of the years 2020 @worldcover2020 and 2021 @worldcov
 + change likelihoods
 + new land-cover classification labels
 
-As a result, we´re able to derive the land-cover composition of a satellite image and provide the land-cover change when comparing label classification from multiple satellite images of different years. We even experimented with predicting future label changes within Nuremberg.
+As a result, we're able to derive the land-cover composition of a satellite image and provide the land-cover change when comparing label classification from multiple satellite images of different years. We even experimented with predicting future label changes within Nuremberg.
 
-In general, sectors like urban planning, environmental monitoring, climate policy as well as business decisions rely on land-cover data. As we've been instructed to focus on Nuremberg, the dashboard shows in the first tab the map of Nuremberg with its districts to provide easy access via the city´s structure level. _TerraPulse_ is also valuable for users outside of Nuremberg as the second tab "Global" allows to select a desired region worldwide, run the classification pipeline for multiple years and evaluate the land-cover classification labels as well.
+In general, sectors like urban planning, environmental monitoring, climate policy as well as business decisions rely on land-cover data.
+As we've been instructed to focus on Nuremberg, the first tab of the dashboard shows the map of Nuremberg with its districts to provide easy access via the city´s structure level.
+_TerraPulse_ is also useful for users outside Nuremberg, as the second tab, "Global," lets them select any region worldwide, run the classification pipeline across multiple years, and evaluate the resulting land-cover labels.
 
 
 = Technical Stack
 
 == Machine learning
 
-All training and experimentation is done in *Python*.
+All training and experimentation was done in *Python*.
 The pixel-wise classification model (Model 1) uses *CatBoost* with GPU training (CUDA).
 The global MLP (Model 2) is built in *PyTorch* (mixed-precision FP16, CUDA) and exported to *ONNX* for deployment.
 Hyperparameter optimization uses *Optuna* (Model 1) and a custom *BOHB* sweep (Model 2).
-Feature importance and model interpretability are handled with *SHAP*.
+#todo[Does Clemens need to add his HPO here as well?]
 Geospatial data access relies on *pystac-client* and *stackstac* (Microsoft Planetary Computer STAC API), with *rasterio*, *geopandas*, and *xarray* for raster I/O and coordinate transforms.
 
 At inference time, a standalone *Rust* binary (_terrapulse_) replaces the entire Python pipeline.
@@ -138,28 +117,32 @@ Precomputed Nuremberg data is served directly from Parquet/JSON files.
 
 All data used in this project is publicly available and does not require any pre-authorized accounts or OAuth credentials, which was a deliberate choice so the inference pipeline can run fully autonomously on any machine.
 
-TODO Clemens: Update "== Data Sources" below (with public link for proper citation)
-
 == Data Sources
 
 *Sentinel-2 Level-2A* surface reflectance imagery is the primary input for both the classification and change-prediction models.
 We query it through the Microsoft Planetary Computer STAC API @planetary-computer, which provides free, anonymous access to the full Copernicus Sentinel archive.
-Per scene we download bands B02--B08, B8A, B11, B12 (10--20 m resolution) and the L2A Scene Classification Layer (SCL) used by our declouding pipeline.
+Per scene, we download bands B02--B08, B8A, B11, B12 (10--20 m resolution) and the L2A Scene Classification Layer (SCL) used by our declouding pipeline (described here: @declouding-description.
 Scenes are searched per season (spring, summer, autumn) with a cloud-cover ramp (40%→50%→60%) and a ±14-day date expansion fallback when a season has too few usable acquisitions.
 
 *Sentinel-1 GRD (IW mode)* C-band SAR backscatter complements the optical data, particularly for situations where persistent cloud cover makes optical composites unreliable.
 Like Sentinel-2, it is accessed via the Planetary Computer STAC API @planetary-computer with no additional credentials.
+
 We prefer ascending orbit scenes for consistency, falling back to any orbit when fewer than three ascending scenes are available within the seasonal window.
+This fallback can trigger for small or edge-of-swath bounding boxes, non-European regions with sparser coverage, or any query after December 2021 when the failure of Sentinel-1B halved the constellation's revisit frequency.
+
 
 *ESA WorldCover 10 m* land-cover maps for 2020 (v100) @worldcover2020 and 2021 (v200) @worldcover2021 serve as our ground-truth labels.
-The GeoTIFF tiles are downloaded directly from the public ESA S3 bucket (#link("https://esa-worldcover.s3.eu-central-1.amazonaws.com")[esa-worldcover.s3.eu-central-1.amazonaws.com]).
-We map the original 11 ESA classes to a reduced set of 7: tree cover, shrubland, grassland (merging with herbaceous wetland), cropland, built-up, bare/sparse vegetation, and water.
+The GeoTIFF tiles are downloaded directly from the public ESA WorldCover S3 bucket @esa-worldcover-s3.
+We map the original 11 ESA classes to a reduced set of 7: tree cover, shrubland, grassland (merging with herbaceous wetland, which is spectrally near-identical and too rare in our training regions to learn as a separate class), cropland, built-up, bare/sparse vegetation, and water.
+
 
 *LUCAS 2022 Survey* @lucas-2022 point observations were used for manual cross-checking of ESA WorldCover labels in ambiguous cases (see @rare-labels below).
 
-*Nuremberg District Statistics* by the City of Nuremberg, accessed 04.03.2026: #link("https://online-service2.nuernberg.de/geoinf/ia_bezirksatlas/atlas.html")
+*Nuremberg District Statistics* @nuremberg_district_statistics by the City of Nuremberg.
 
-We did not limit ourselves to specific land-cover classes and kept the 10 m pixel grid as spatial unit, aggregating 10×10 pixel patches into cells for the classification model.
+*Nuremberg District Shapefiles* @nuremberg_district_shapefiles by the City of Nuremberg. Used for the mouse hover feature on the Nuremberg Tab.
+
+We did not limit the product to specific land-cover classes and kept the 10 m pixel grid as spatial unit, aggregating to higher resolutions with a zoom-slider (exception: Model 2 where we natively predict 10x10 pixel-supercells)
 
 
 = Feature Engineering <feature-engineering>
@@ -167,7 +150,7 @@ We did not limit ourselves to specific land-cover classes and kept the 10 m pixe
 All models share a common feature engineering pipeline built on Sentinel-2 L2A surface reflectance.
 The base input is 10 spectral bands: B02 (blue), B03 (green), B04 (red), B05–B07 (red-edge 1–3), B08 (NIR), B8A (narrow NIR), B11 (SWIR1), B12 (SWIR2).
 20m bands (B05, B06, B07, B8A, B11, B12) are upsampled to 10m to match the native pixel grid.
-For the cell-level models, 20m bands are block-reduced to 5×5 via 2×2 mean pooling before computing statistics.
+For the cell-level models, 20m bands within each 10×10 pixel cell are block-reduced to a 5×5 grid of super-pixels (each covering 20m×20m, matching the native sensor resolution) via 2×2 mean pooling before computing statistics.
 
 == Spectral indices (deployed)
 
@@ -214,8 +197,8 @@ NDTI distinguishes crop residue and tillage from naturally bare ground.
 
 == Tasseled Cap transformation (deployed)
 
-The Nedkov (2017) coefficients project the 10-band reflectance into three axes:
-$ T_k = sum_(i=1)^(10) c_(k,i) dot B_i , quad k in {"Brightness", "Greenness", "Wetness"} $
+The Nedkov @nedkov2017 coefficients project the 10-band reflectance into three axes:
+$ T_k = sum_(i=1)^(10) c_(k,i) dot B_i , \ quad k in {"Brightness", "Greenness", "Wetness"} $
 Per cell, mean and standard deviation of each component are stored (6 features).
 
 == Spatial statistics (deployed, Model 2 only)
@@ -286,6 +269,7 @@ _Rejected_: no accuracy improvement for either tree or MLP models, and the 32-le
 === Gabor wavelets
 
 Bank of 12 Gabor filters (3 scales $sigma in {1, 2, 4}$ × 4 orientations $theta in {0°, 45°, 90°, 135°}$, frequency 0.3) applied to normalized NIR.
+The frequency parameter (0.3 cycles per pixel) follows scikit-image's convention.
 We tried both the real-part response and the full complex-valued response (magnitude and phase), extracting mean and std of each per cell → up to 48 features per season.
 _Rejected_: no improvement with either variant; on a 10×10 patch the receptive field exceeds the cell, making filter responses dominated by edge effects.
 
@@ -316,6 +300,8 @@ _Rejected_: they violate the design goal of a self-contained, globally deployabl
 
 = Models
 
+#todo[THIS IS WHERE THE TABLE ABOUT MODELS GOES]
+
 == Model 1: Pixel-wise label classification global model (Ivan Iachnyk)
 
 This model predicts the ESA WorldCover land-cover class for each individual 10 m pixel, which is then used to render the Nuremberg map at arbitrary resolutions: the dashboard simply aggregates pixel-level predictions into whatever grid the user selects.
@@ -326,7 +312,7 @@ We use a CatBoost gradient-boosted decision tree (GBDT) trained with the `MultiC
 We initially experimented with both LightGBM and a small MLP, but settled on CatBoost for three reasons.
 First, trees offer substantially better explainability than neural networks.
 Second, CatBoost is currently one of the state-of-the-art GBDT frameworks with clean, well-maintained CUDA support, allowing us to train on GPU without workarounds.
-Third, CatBoost builds symmetric (balanced) decision trees, which makes inference significantly faster than the asymmetric trees used by LightGBM or XGBoost. It was an important property for us because inference pipeline runs predictions over millions of pixels.
+Third, CatBoost builds symmetric (balanced) decision trees, which makes inference significantly faster than the asymmetric trees used by LightGBM or XGBoost. It was an important property for us because the inference pipeline runs predictions over millions of pixels.
 
 The final model uses depth-8 trees, a learning rate of 0.03, L2 regularization of 3.0, and early stopping with a patience of 80 rounds.
 Inverse-frequency class weights are used to compensate for label imbalance in the training data.
@@ -358,7 +344,7 @@ The temporal design covers three seasons per year to capture the full growing cy
 === Hold-out strategy
 
 The model is trained on data from 100 European cities spanning a wide range of climates and biomes, from Scandinavian tundra and boreal forest to Mediterranean shrubland and Atlantic bogs.
-Up to 150,000 pixels are randomly sampled per city, giving a maximum training set of 15,000,000 samples × 217 features (~13 GB in float32).
+Up to 150,000 pixels are randomly sampled per city, giving a theoretical maximum of 15,000,000 samples × 217 features (~13 GB in float32); the actual count is lower because some cities contain fewer than 150,000 valid pixels.
 Nuremberg itself is excluded from both the training and validation sets so that all predictions shown on the dashboard are genuinely out-of-sample.
 15 cities are held out as a dedicated validation set (up to 2,250,000 pixels, ~2 GB), selected to cover the full diversity of landscapes (e.g.\ Munich, Stockholm, Seville, Crete, Iceland Highlands, Camargue wetland, Vojvodina cropland).
 This geographic split ensures the model is evaluated on regions it has never seen during training.
@@ -366,21 +352,14 @@ This geographic split ensures the model is evaluated on regions it has never see
 === Evaluation beyond accuracy
 
 In addition to top-1 accuracy, we report per-class precision, recall, and F1-score via scikit-learn's `classification_report`, as well as a full confusion matrix.
-These per-class metrics were especially important because the class distribution is heavily imbalanced: tree cover and cropland dominate, while shrubland and bare/sparse vegetation are rare, so some tree configs were better on general metrics by overpredicting rare classes.
+These per-class metrics were especially important because the class distribution is heavily imbalanced: tree cover and cropland dominate, while shrubland and bare/sparse vegetation are rare, so some tree configs achieved higher overall accuracy by overpredicting dominant classes at the expense of minority ones.
 Reporting only overall accuracy would mask poor performance on minority classes.
 
-=== Stress testing
 
-The geographic hold-out itself acts as a form of stress test: the validation cities include biomes and landscapes not well represented in the training set (e.g.\ Icelandic highlands, Hungarian steppe, Mediterranean maquis).
+The geographic hold-out itself also acts as a form of stress test: the validation cities include biomes and landscapes not well represented in the training set (e.g.\ Icelandic highlands, Hungarian steppe, Mediterranean maquis).
 Predicting correctly in these climatically and ecologically distinct regions tests whether the model has learned generalizable spectral–temporal patterns or merely overfitted to Central European landscapes.
 
-=== Where and why the model is likely wrong
-
-The model struggles most with rare land-cover classes: particularly bare/sparse vegetation and shrubland.
-These classes are inherently hard to separate from grassland and cropland because their spectral signatures overlap heavily, and even human experts find the distinction ambiguous when looking at satellite imagery alone.
-The problem is complicated further by the fact that our ground-truth labels come from ESA WorldCover, which itself reports lower accuracy for these classes.
-We cross-checked WorldCover labels against LUCAS 2022 @lucas-2022 in-situ point observations and found that even manual inspection of individual bareland predictions was inconclusive. LUCAS labels disagreed with ESA labels more than 50% of the time.
-In other words, the model inherits and reproduces the systematic errors of the ESA product, especially where the ESA model was itself uncertain.
+Known failure modes — particularly regarding rare land-cover classes and inherited label noise — are discussed in the Limitations section (see @rare-labels).
 
 === Technical setup
 
@@ -398,7 +377,7 @@ Given that we swept multiple hyperparameter configurations, feature subsets, and
 
 == Model 2: Global deployment MLP (softlabel) (Ivan Iachnyk)
 
-While Model 1 operates at pixel level for Nuremberg only, the global deployment model provides land-cover predictions for _any_ location worldwide at 100m×100m (10×10 pixel) cell resolution.
+While Model 1 operates at pixel level for Nuremberg only, the global deployment model provides land-cover predictions for *_any_* location worldwide at 100m×100m (10×10 pixel) cell resolution.
 This model powers the "Global" tab of the dashboard.
 It predicts a full class-probability distribution rather than a single label, since each 100m cell typically contains a mix of land-cover types.
 
@@ -406,7 +385,7 @@ It predicts a full class-probability distribution rather than a single label, si
 
 We use a fully connected Multi-Layer Perceptron (MLP) trained with a soft cross-entropy loss on class-fraction labels.
 The deployed architecture is a _TaperedMLP_ with four hidden layers of widths 1024→512→256→64 and GELU activations, totalling approximately 2.5 million parameters.
-Each hidden layer consists of a linear projection, batch normalization, GELU activation, and dropout — referred to as a _PlainBlock_.
+Each hidden layer consists of a linear projection, batch normalization, GELU activation, and dropout - referred to as a _PlainBlock_.
 A small input dropout of 0.3% is applied before the first layer.
 The output head is a linear layer followed by log-softmax, producing log-probabilities over 7 land-cover classes.
 
@@ -501,7 +480,7 @@ Three metrics are reported:
 ) <mlp-top1-results>
 
 
-At the 5% evaluation threshold, the deployed model achieves a combined score of 0.789 (Top-1: 90.2%, R²: 0.676), ranking first among all 10 BOHB candidates and outperforming the V8 baseline by 6.6 percentage points on the combined metric.
+At the 5% evaluation threshold, the deployed model achieves a combined score of 0.789 (Top-1: 90.2%, R²: 0.676), ranking first among all 10 BOHB candidates and outperforming the V8 baseline (a prior model before BOHB tuning) by 6.6 percentage points on the combined metric.
 
 A per-class R² analysis on Riga (the city with the most diverse class distribution among the test set) reveals that the model achieves strong R² values for tree cover (0.93), water (0.97), built-up (0.91), grassland (0.83), and cropland (0.75), but struggles with shrubland — which has only 75 cells above 1% fraction, making reliable regression effectively impossible.
 This mirrors the rare-class difficulty described in @rare-labels.
@@ -520,7 +499,7 @@ Full results with 95% confidence intervals are listed in @stress-noise-table.
 
 ==== Season dropout
 
-Zeroing all features from a single year$times$season slot (266 columns each) reveals a clear asymmetry: dropping any 2020 season is not statistically significant ($p > 0.05$), while all three 2021 seasons produce significant degradation (e.g.\ 2021 summer: R² $= 0.569$, $p = 0.001$).
+Zeroing all features from a single year$times$season slot (266 columns each) reveals a clear asymmetry: dropping any 2020 season is not statistically significant ($p > 0.05$), while all three 2021 seasons produce significant degradation (e.g. 2021 summer: R² $= 0.569$, $p = 0.001$).
 This asymmetry is expected: the ground-truth labels are derived from 2021 WorldCover, so the model's internal representations weight 2021 observations more heavily.
 
 Dropping an entire year is catastrophic: removing all of 2021 yields R² $= -0.42$ ($p = 0.022$), while removing all of 2020 still halves $R^2$ to 0.31 ($p = 0.025$).
@@ -565,61 +544,89 @@ Although LBP and spatial features individually show no statistically significant
 Removing them would reduce the feature vector by 19% but risks degradation under distribution shift not captured by the current test cities.
 
 == Model 3: label change prediction
-A two-step prediction model was developed for predicting the labels of future years.
-The first step involves a model that predicts how likely a particular cell is to change within the next year. The second model then predicts the new label of cells with a high likelihood of change.
-This model is a binary random forest with a depth of 35 and 50 estimators, which predicts the likelihood of change in a given cell.
 
-The model is trained using only 17 features per pixel.
+
+Model 3 is the first of TWO models used in a two-step prediction process for predicting the labels of future years.
+
+The first step involves a model that predicts how likely a particular cell is to change within the next year (Model 3)
+The second model then predicts the new label of cells with a high likelihood of change (Model 4)
+Model 3 is a binary random forest with a depth of 35 and 50 estimators, which predicts the likelihood of change in a given cell.
+
+The model trained is being kept simple on purpose, using only 17 features per pixel.
+#todo[add why it is being kept simple on purpose (small sentence)]
 First, the raw reflectance from Sentinel-2 is used.
 Bands 2–8, 8A, 11 and 12 are used as features, the most important of which are:
+
 Band 02: 490 nm (blue), useful for detecting water
+
 Band 03: 560 nm (green), useful for detecting vegetation
+
 Band 04: 665 nm (red), useful for detecting chlorophyll (chlorophyll absorbs red light, so the combination of reflected green light and absorbed red light verifies the detection of plants)
+
 Band 08: 842 nm (near infrared), useful for biomass detection, e.g. forest.
 
 In addition, we calculate the Normalized Difference Vegetation Index (NDVI). This also helps to distinguish vegetation from other things.
+#todo[The indices were explained earlier, we can probably just list them here without further explanation]
 
 We also calculate the standard deviation for the NDVI. This provides information about how much vegetation changes, which can indicate vegetation being turned into buildings or forest being turned into cropland.
 
-In addition to the satellite data, we also include the current land use classification and a few more contextual and socioeconomic features, such as population density, the number of residential units, commercial usable space, and the number of cars per 1,000 inhabitants, to distinguish residential from industrial areas.
+In addition to the satellite data, we also include the current land use classification and a few more contextual and socioeconomic features, such as population density, the number of residential units, commercial usable space, and the number of cars per 1,000 inhabitants (from @nuremberg_district_statistics), to distinguish residential from industrial areas.
+
 
 A random forest was chosen for training because it allows for balanced training, which is critical for change detection. It is also a lightweight model that performs well on binary tasks.
-A resolution of 10 m is necessary to detect small changes in the environment. As this is trained on a relatively small area, it is possible to compute it pixel-wise. The hyper parameter of this model were determined with HPO.
-As we only have labels for two years, it is difficult to evaluate the model effectively. Therefore, we use 4-fold partial cross-validation to split Nuremberg into four horizontal strips. We then train on three of these strips and test on the remaining strip, which allows the model to train and predict on whole neighborhoods and prevents data leakage.
+#todo[what does "balanced training" mean?]
+A resolution of 10 m is necessary to detect small changes in the environment.
+As the model is trained on a relatively small area, it is possible to compute it pixel-wise.
+The hyperparameters of this model were determined using HPO.
+#todo[Which Hyperparameter-optimization technique was used?]
+#todo[Maybe just add reference to section at the start where you explain the HPO (which approach, which features and which options for these features)]
+As we only have labels for two years, it is difficult to evaluate the model effectively without accidentally leaked information.
+Therefore, we decided on a spatial validation strategy.
+We use 4-fold partial cross-validation to split Nuremberg into four horizontal strips.
+#todo[add more context: "Only for Nuremberg" because we also use socioeconomic data which is only available there]
+We then train on three of these strips and test on the remaining strip, which allows the model to train and predict on whole neighborhoods and prevents data leakage.
 
-Because of the fact that only very few pixel change from 2020 to 2021 we did not evaluate the model on it accuracy. In this case predicting no changes at all would achieve a accuracy of nearly 95 %. That is why for evaluating the model we used a test set that contained equally amounts of changing and non changing pixels. On this we calculated how many Pixels got classified false what was a little bit over 20 %.
+Because of the fact that only very few pixel change from 2020 to 2021 we did not evaluate the model on it accuracy across the whole test-set. as in this case, simply predicting no change would achieve an accuracy of nearly 95 %.
+That is why for evaluating the model we used a test set that contained equally amounts of changing and non changing pixels.
+Using this strategy, we achieved an accuracy of 
+#todo[add exact accuracy here]
+#strike[On this we calculated how many Pixels got classified false what was a little bit over 20 %.]
 
 
 == Model 4: label next year prediction
 
-This model is the second step of the two-step model, that predicts the labels of the following year. In the first step the likelihood of a change is predicted and in this second step the new label for this cell is predicted. For this the same features as in the last models are used, but the prediction is only applied to the cells with a change likelihood of more then 0.95. This Threshold was obtained by HPO.
+This model is the second step of the two-step process, that predicts the labels of the following year.
+In the first step the likelihood of a change is predicted and in this second step the new label for this cell is predicted.
+For this the same features as in the last models are used, but the prediction is only applied to the cells with a change likelihood of more then 0.95.
+This Threshold was obtained by HPO.
+#todo[What HPO did we use? how was it used]
+
 
 Just as the first model this second step is also a random Forest with an depth of 26 and 50 estimators. Those Hyperparameters again were obtained via HPO. The train and test set of this model only contains cells over the change-threshold of 0.95 with the same holdout strategy as in the first model.
+#todo[Wait, are both models random forests or gradient boosted decision tree? (which consists of many decision trees itself)]
 
 For this model we get an accuracy of almost 90 % and a F1 Score of almost 70 %.
+#todo[Add on which data we get these metrics (probably the spatial holdout cross validation)]
 
 The two stage model overall struggles the most with Bare/Sparse due to very little representation of this class in Nuremberg. Also most of the cells classified as such in 2020 got a different label in
 2021 what also could be due to the change in algorithm use for classification by ESA. Also the runway of the airport gets a high probability of change by the model. Most likely because the dark runway has spectral similarities to dug-up ground at a construction site.
 
 
 = Explainability & Trust
-TODO: Claudius
-Your system must explain to a non-expert:
-- What changed
-- Where it changed
-- How confident the system is
-You must show:
-- One explanation that is helpful
-- One explanation that could be misleading, and why
-  -
+The user can see the land cover change between two years by using the predictions tab of the Nuremberg view. The remaining colored pixels after the years selection contain the classification of the comparison year.
+The following paragraphs of this chapter outline why it is important to interpret the predictions carefully and ideally combine them with domain knowledge.
 
+In the predictions tab, the model classifies parts of the airport runway as water in 2021. This is not real water, but more like a visual artifact caused by aircraft activity.
+When comparing 2020 and 2021, you may also notice changes in the surrounding grass area of the runway. Despite a visible change in the appearance on the satellite imagery, this doesn't represent actual land cover change and can be misleading if interpreted as such.
+At the same time, the model captures changes near the area of Cube One (building of UTN) from 2020 to 2021, which aligns with real construction activity (Hmm, we wonder what is being built there...).
+We also find correct explanations/predictions of building activity for other construction projects such as a new development area in the north of "Kornburg" (Street: "Rieterbogen")
 
+A similar pattern appears in the experimental tab. The areas near the runway show a high change probability despite no real change is expected within that area and the area around Cube One shows a high change probability as well which matches the ongoing development.
+
+#todo[Add, which models we are talking about here (model 1, 2, 3, 4, etc.)]
 
 
 = Limitations and Data Issues
-TODO Ivan, Clemens, Robin, #strike[Claudius]: Our "working interactive system" must have minimum feature "Uncertainty and limitation explanations". I think Uncertainty is already represented on the dashboard. Do we already provide limitation explanations on the dashboard?
-
-
 
 == General Limitations
 
@@ -633,7 +640,7 @@ We basically train our model to do the same mistakes as the model by Zanaga et a
 
 == Change Prediction
 
-A quite big limitation arises from the fact that there were different models involved for predicting the labels in 2020 as well as 2021.
+A quite big limitation arises from the fact that there were different models involved for predicting the WorldCover labels in 2020 as well as 2021.
 Especially for the task of change-prediction, our model risks to learn the difference in prediction model rather than the real changes in ground usage.
 
 The reference timeframe is also a limiting factor.
@@ -642,15 +649,6 @@ As a result, we have a high possibility of overfitting to the 2020 $arrow$ 2021 
 A problem which is possibly exacerbated by the fact that construction progress in these years has been heavily influenced by the COVID-19 pandemic.
 
 == Data Issues
-TODO Robin: Add
-#strike["Identify at least three non-trivial data issues, such as:
-  - Seasonal effects
-  - Cloud cover and missing data
-  - Label noise in land-cover maps
-  - Spatial resolution mismatch
-  - Spatial autocorrelation
-  Explicitly choose one issue you do not fix, and justify why."]
-
 
 === Label noise due to ambiguous base problem
 
@@ -678,13 +676,13 @@ At the start of the year, harvested or freshly plowed fields look like bare grou
 Farmers may also leave fields unplanted for soil recovery in some years (German: "Brache", English: "fallow"), making them indistinguishable from bare land on a single-date image.
 
 We addressed this by designing the entire feature pipeline around multi-season composites.
-For each year, we construct three separate cloud-free composites — spring (April–May), summer (June–August), and autumn (September–October) — by downloading all available Sentinel-2 scenes within each window and compositing them per pixel.
-Cloud masking is done using the L2A Scene Classification Layer (SCL), which flags saturated, cloud shadow, cloud, and thin cirrus pixels.
-The composite itself uses a first-quartile (Q1) approach rather than a simple median: per-pixel, we sort all valid (cloud-free) observations by reflectance and take the 25th percentile value, which tends to suppress residual haze and brightness inconsistencies across scenes.
+For each year, we construct three separate cloud-free composites (described here @declouding-description) - spring (April–May), summer (June–August), and autumn (September–October) - by downloading all available Sentinel-2 scenes within each window and compositing them per pixel.
+
+#todo[Maybe we can find a single spot to explain the declouding algorithm where we also include the citation @declouding-algorithm]
 
 The key to distinguishing cropland from bare land lies in the seasonal trajectory of vegetation-sensitive indices (see @feature-engineering for all formulas).
 In both models, NDVI, EVI2, and BSI are the most relevant indices for this task.
-Cropland exhibits a strong seasonal NDVI/EVI2 signal — low in spring (bare soil), high in summer (peak biomass), dropping again in autumn (harvest).
+Cropland exhibits a strong seasonal NDVI/EVI2 signal - low in spring (bare soil), high in summer (peak biomass), dropping again in autumn (harvest).
 Conversely, BSI behaves inversely: high when soil is exposed (spring/post-harvest), low when vegetation covers the field.
 The intra-annual difference features capture this arc directly: for cropland, the spring→summer NDVI difference is large and positive, while for genuinely bare land or built-up areas it stays near zero.
 
@@ -693,12 +691,14 @@ The global MLP model additionally uses SAVI (soil-adjusted, more stable in mixed
 Without these multi-season features, any model trained on a single-date composite would systematically confuse spring cropland with bareland, which is exactly the failure mode we observed in our early experiments.
 
 === Cloud Cover
+<declouding-description>
 
 While our solution does not use the cloudless quarterly mosaics provided on #link("https://dataspace.copernicus.eu")[dataspace.copernicus.eu] because we don't want to force our users to set up an account and oauth-access, we apply the same declouding algorithm (outlined in @declouding-algorithm).
 This approach is percentile-based and therefore dependent on the availability of sufficiently clear images.
-The algorithm is based on the Sentinel-2 L2A scene classification band and also tries to somewhat align overall image brightness by taking the first quartile of the stack of observations for each pixel (by reflectance).
+The algorithm is based on the Sentinel-2 L2A scene classification band which flags saturated, cloud shadow, cloud, and thin cirrus pixels) and also tries to somewhat align overall image brightness by taking the first quartile of the stack of observations for each pixel (by reflectance).
 However, if only heavily cloud-covered images are available, the method cannot compensate for the lack of usable data.
 This problem is especially relevant during the winter months, where cloud cover is frequent.
+
 
 #figure(
   image("images/cloud_cover_diagram.png", width: 100%),
@@ -707,27 +707,19 @@ This problem is especially relevant during the winter months, where cloud cover 
   ],
 ) <cloud_cover_diagram>
 
-#strike[TODO Replaced See Below: As illustrated in #ref(<cloud_cover_diagram>), in Nuremberg the probability of at least 80% cloud cover by area in December is approximately 70%.The probability of at least 60% cloud cover is nearly 85%.
-  Under these conditions, it is highly possible that even our declouded images might feature irregularities like cloud shadows or even completely unusable pixels.]
 
 As illustrated in #ref(<cloud_cover_diagram>), WeatherSpark @nuremberg-cloud-stats states that 5.9 months can be categorized as cloudier part of the year and that December is the cloudiest month during which on average the sky is overcast (80-100% cloud coverage) or mostly cloudy (60-80% cloud coverage) for 72% of the time at the Nuremberg Airport.
 
 == Decision making limitations
 
-TODO Robin:
-- #text(weight: "bold")[Which decisions must not be made based on your results?]
+The sections above show that as any current ML-based product, our models can *and will* fail sometimes. 
+This is why it can and should not be used for automatic (no-human-involved) decisions.
 
-To summarize the above...
-In the real world, the decision-making capabilities of our product are limited.
-In general, the outputs should not be taken as ground truth
-Also: Model restrictions
-
-
-Farmers get money for specific types of land use -> ....
-"Law enforcement for regulating farmers if they let an "
+One such decision is based around farmers being banned from converting permanent grassland to arable land (under certain conditions).
+While our models could predict this change and could be used by authorities to scan for possible violations, just the model outputs alone should never be used to issue fines or other legal action.
+Put plainly, the product could be helpful in identifying *possible* violations of the regulation but needs thorough human involvement, on-site inspections and final decision-making.
 
 = Generative AI Reflection
-#strike[TODO Robin: On what kind of decision do you disagree and explain why? ]
 
 Below you will find two concrete cases where we disagreed with modelling decisions by ChatGPT.
 The Screenshots in the #link(<chatgpt-chat-logs>)[Appendix] show the original prompts and responses.
@@ -738,9 +730,9 @@ The prompts were the first prompts of the respective conversations.
 
 Source: Screenshot #link(<chatgpt-chat-log1>)[Chat Log 1] in appendix.
 
-The chat comes from the early stages of the project when a team member asked about the prediction of the change-likelihood given the limited data we have.
+The chat comes from the early stages of the project when a team member asked about the prediction of the *change-likelihood* given the limited data we have (Model 3).
 
-ChatGPT answered that we should be using both 2020 and 2021 satellite image data in the feature vector to predict the change percentage, which we don't think is aligned to the actual goal of the described project.
+ChatGPT answered that we should be using both 2020 and 2021 satellite image data in the feature vector to predict the change percentage, which we don't think is aligned to the actual goal of what the pipeline around Model 3 is supposed to accomplish
 
 Our main reason for this was that this setup uses information from the target year itself.
 In other words: the model would already see the later satellite image when trying to predict whether change happened between 2020 and 2021.
@@ -750,6 +742,9 @@ For us, the important question was not only whether we can detect change afterwa
 If 2021 imagery is already part of the input, then the task becomes much closer to retrospective change detection than real prediction, something we think can be done better and more accurately by comparing maps of the relevant timestamps and / or using records of construction sites or by simply comparing the normal land cover predictions of two different years.
 
 This is why we think the proposal is problematic and chose a setup that only uses information which would realistically be available at prediction time.
+
+Note: We do use intra-year features for Model 1 which only does static label-prediction and thus can use "all past data" without the described consistency issues. 
+These issues only arise for the *change-likelihood prediction*.
 
 
 == Arguing against ChatGPT - Case 2
