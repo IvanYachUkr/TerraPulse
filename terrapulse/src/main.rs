@@ -629,7 +629,7 @@ async fn run_pipeline(
         .build()?;
         
     for &y in &sorted_years {
-        if y <= 2021 {
+        if y == 2020 || y == 2021 {
             let out_path = data_dir.join(format!("labels_{}.json", y));
             if out_path.exists() {
                 println!("  Labels {}: cached", y);

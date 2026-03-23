@@ -24,7 +24,7 @@ fn map_wc_class(code: u8) -> Option<usize> {
 }
 
 pub async fn download_labels(client: &Client, year: u32, anchor: &AnchorRef, out_path: &Path) -> Result<()> {
-    if year > 2021 {
+    if year != 2020 && year != 2021 {
         return Ok(());
     }
     let version = if year == 2020 { "v100" } else { "v200" };
