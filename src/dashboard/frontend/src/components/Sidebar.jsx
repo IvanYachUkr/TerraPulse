@@ -56,6 +56,7 @@ export default function Sidebar({
     hoveredDistrict,
     nurembergDataMode_forStats,
     predictionAccuracy,
+    changeMetrics,
 }) {
     if (appMode === 'analytical') {
         const labelYearsN = nurembergMeta?.label_years || [2020, 2021];
@@ -238,6 +239,111 @@ export default function Sidebar({
                         </div>
                     </div>
                 )}
+
+                {/* Change-Specific Metrics Card */}
+                {nurembergDataMode === 'predictions' && changeMetrics && (
+                    <div className="section" style={{ borderLeft: '3px solid #8b5cf6', paddingLeft: 12 }}>
+                        <div className="section-title">📈 Change Metrics (2018–2025)</div>
+                        <div style={{
+                            background: 'linear-gradient(135deg, rgba(139,92,246,0.1), rgba(59,130,246,0.08))',
+                            border: '1px solid rgba(139,92,246,0.25)',
+                            borderRadius: 10, padding: '12px 14px',
+                            fontSize: 12, color: '#e2e8f0',
+                        }}>
+                            {/* Pixel Stability */}
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
+                                <span style={{ fontWeight: 600 }}>Pixel Stability</span>
+                                <span style={{
+                                    fontSize: 20, fontWeight: 800,
+                                    color: changeMetrics.pixel_stability_pct >= 70 ? '#10b981' : '#f59e0b',
+                                    fontFamily: 'monospace',
+                                }}>
+                                    {changeMetrics.pixel_stability_pct}%
+                                </span>
+                            </div>
+                            <div style={{ fontSize: 10, opacity: 0.5, marginBottom: 10 }}>
+                                Pixels with same class across all {changeMetrics.years?.length || 8} years
+                            </div>
+
+                            {/* Annual Change Rates */}
+                            <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: 8, marginBottom: 8 }}>
+                                <div style={{ fontWeight: 600, fontSize: 11, marginBottom: 4 }}>Annual Change Rate</div>
+                                {changeMetrics.annual_changes && Object.entries(changeMetrics.annual_changes).map(([key, d]) => (
+                                    <div key={key} style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0', fontSize: 11 }}>
+                                        <span style={{ opacity: 0.7 }}>{d.from} → {d.to}</span>
+                                        <span style={{
+                                            fontFamily: 'monospace',
+                                            color: d.change_rate > 0.08 ? '#f59e0b' : d.change_rate === 0 ? '#64748b' : '#94a3b8',
+                                        }}>
+                                            {(d.change_rate * 100).toFixed(1)}%
+                                        </span>
+                                    </div>
+                                ))}
+                            </div>
+
+                            {/* False Change Validation */}
+                            {changeMetrics.false_change && (
+                                <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: 8, marginBottom: 8 }}>
+                                    <div style={{ fontWeight: 600, fontSize: 11, marginBottom: 4 }}>Change Validation (2020→2021 vs Labels)</div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0', fontSize: 11 }}>
+                                        <span style={{ opacity: 0.7 }}>False Change Rate</span>
+                                        <span style={{ fontFamily: 'monospace', color: changeMetrics.false_change.false_change_rate > 0.3 ? '#ef4444' : '#10b981' }}>
+                                            {(changeMetrics.false_change.false_change_rate * 100).toFixed(1)}%
+                                        </span>
+                                    </div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0', fontSize: 11 }}>
+                                        <span style={{ opacity: 0.7 }}>Precision / Recall</span>
+                                        <span style={{ fontFamily: 'monospace' }}>
+                                            {(changeMetrics.false_change.change_precision * 100).toFixed(1)}% / {(changeMetrics.false_change.change_recall * 100).toFixed(1)}%
+                                        </span>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Per-Class Stability */}
+                            {changeMetrics.per_class_stability && (
+                                <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: 8, marginBottom: 8 }}>
+                                    <div style={{ fontWeight: 600, fontSize: 11, marginBottom: 4 }}>Per-Class Stability</div>
+                                    {Object.entries(changeMetrics.per_class_stability)
+                                        .sort((a, b) => b[1].stable_pct - a[1].stable_pct)
+                                        .map(([cls, data]) => (
+                                        <div key={cls} style={{
+                                            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                            padding: '2px 0', fontSize: 11,
+                                        }}>
+                                            <span style={{ opacity: 0.8 }}>{cls.replace(/_/g, ' ')}</span>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                                <div style={{ width: 40, height: 5, borderRadius: 2, background: 'rgba(255,255,255,0.08)', overflow: 'hidden' }}>
+                                                    <div style={{
+                                                        width: `${data.stable_pct}%`, height: '100%', borderRadius: 2,
+                                                        background: data.stable_pct >= 80 ? '#10b981' : data.stable_pct >= 50 ? '#f59e0b' : '#ef4444',
+                                                    }} />
+                                                </div>
+                                                <span style={{ fontFamily: 'monospace', width: 38, textAlign: 'right' }}>{data.stable_pct}%</span>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+
+                            {/* Top Transitions */}
+                            {changeMetrics.top_transitions && changeMetrics.top_transitions.length > 0 && (
+                                <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: 8 }}>
+                                    <div style={{ fontWeight: 600, fontSize: 11, marginBottom: 4 }}>Top Transitions</div>
+                                    {changeMetrics.top_transitions.slice(0, 5).map((t, i) => (
+                                        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0', fontSize: 10 }}>
+                                            <span style={{ opacity: 0.7 }}>
+                                                {t.from.replace(/_/g, ' ')} → {t.to.replace(/_/g, ' ')}
+                                            </span>
+                                            <span style={{ fontFamily: 'monospace', opacity: 0.8 }}>{t.pct}%</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                )}
+
                 {/* Resolution Slider */}
                 <div className="section">
                     <div className="section-title">

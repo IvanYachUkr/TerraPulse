@@ -396,6 +396,24 @@ def nuremberg_district_stats():
     return stats
 
 
+@lru_cache(maxsize=None)
+def get_change_metrics():
+    path = os.path.join(NUREMBERG_DIR, "change_metrics.json")
+    if not os.path.exists(path):
+        return None
+    with open(path, "r") as f:
+        return json.load(f)
+
+
+@app.get("/api/nuremberg/change-metrics")
+def nuremberg_change_metrics():
+    """Precomputed change-specific metrics from prediction bins."""
+    metrics = get_change_metrics()
+    if metrics is None:
+        raise HTTPException(404, "Change metrics not found. Run precompute_change_metrics.py first.")
+    return metrics
+
+
 # ---------------------------------------------------------------------------
 # Experimental prediction endpoints
 # ---------------------------------------------------------------------------

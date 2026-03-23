@@ -166,6 +166,7 @@ export default function App() {
         nurembergDataMode === 'experimental' ? '/api/nuremberg/experimental/metrics' : null
     );
     const { data: districtStats } = useApi('/api/nuremberg/district-stats');
+    const { data: changeMetrics } = useApi('/api/nuremberg/change-metrics');
     const { data: predictionAccuracy } = useApi(
         nurembergDataMode === 'predictions' ? '/api/nuremberg/accuracy' : null
     );
@@ -313,6 +314,7 @@ export default function App() {
                             hoveredDistrict={hoveredDistrict}
                             nurembergDataMode_forStats={nurembergDataMode}
                             predictionAccuracy={predictionAccuracy}
+                            changeMetrics={changeMetrics}
                         />
                     )}
                     <NurembergMapView
