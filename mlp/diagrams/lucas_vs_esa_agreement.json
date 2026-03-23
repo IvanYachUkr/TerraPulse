@@ -1,0 +1,37 @@
+{
+  "total_points": 33,
+  "overall_agreement": 48.5,
+  "per_class": {
+    "tree_cover": {
+      "count": 5,
+      "agree": 2,
+      "rate": 40.0
+    },
+    "grassland": {
+      "count": 6,
+      "agree": 1,
+      "rate": 16.7
+    },
+    "cropland": {
+      "count": 6,
+      "agree": 3,
+      "rate": 50.0
+    },
+    "built_up": {
+      "count": 12,
+      "agree": 9,
+      "rate": 75.0
+    },
+    "bare_sparse": {
+      "count": 1,
+      "agree": 0,
+      "rate": 0.0
+    },
+    "water": {
+      "count": 3,
+      "agree": 1,
+      "rate": 33.3
+    }
+  },
+  "note": "Low n due to most LUCAS points falling outside the Nuremberg city mask (255)."
+}
