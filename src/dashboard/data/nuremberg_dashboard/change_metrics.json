@@ -10,7 +10,7 @@
     2025
   ],
   "total_valid_pixels": 1864760,
-  "pixel_stability_pct": 76.7,
+  "pixel_stability_pct": 76.0,
   "annual_changes": {
     "2018_2019": {
       "from": 2018,
@@ -22,16 +22,16 @@
     "2019_2020": {
       "from": 2019,
       "to": 2020,
-      "changed_pixels": 166786,
+      "changed_pixels": 127474,
       "total_pixels": 1864760,
-      "change_rate": 0.0894
+      "change_rate": 0.0684
     },
     "2020_2021": {
       "from": 2020,
       "to": 2021,
-      "changed_pixels": 0,
+      "changed_pixels": 130040,
       "total_pixels": 1864760,
-      "change_rate": 0.0
+      "change_rate": 0.0697
     },
     "2021_2022": {
       "from": 2021,
@@ -65,94 +65,94 @@
   "false_change": {
     "year_pair": "2020_2021",
     "total_pixels": 1864760,
-    "pred_changes": 0,
+    "pred_changes": 130040,
     "label_changes": 209225,
-    "true_positives": 0,
-    "false_positives": 0,
-    "false_negatives": 209225,
-    "true_negatives": 1655535,
-    "false_change_rate": 0.0,
-    "change_precision": 0.0,
-    "change_recall": 0.0
+    "true_positives": 47248,
+    "false_positives": 82792,
+    "false_negatives": 161977,
+    "true_negatives": 1572743,
+    "false_change_rate": 0.6367,
+    "change_precision": 0.3633,
+    "change_recall": 0.2258
   },
   "top_transitions": [
     {
       "from": "tree_cover",
       "to": "built_up",
-      "count": 172899,
-      "pct": 19.09
+      "count": 188487,
+      "pct": 18.91
     },
     {
       "from": "built_up",
       "to": "tree_cover",
-      "count": 134448,
-      "pct": 14.84
+      "count": 150613,
+      "pct": 15.11
     },
     {
       "from": "grassland",
       "to": "cropland",
-      "count": 110191,
-      "pct": 12.16
+      "count": 117348,
+      "pct": 11.78
     },
     {
       "from": "tree_cover",
       "to": "grassland",
-      "count": 93332,
-      "pct": 10.3
+      "count": 105704,
+      "pct": 10.61
     },
     {
       "from": "cropland",
       "to": "grassland",
-      "count": 89151,
-      "pct": 9.84
+      "count": 96850,
+      "pct": 9.72
     },
     {
       "from": "grassland",
       "to": "tree_cover",
-      "count": 76500,
-      "pct": 8.45
+      "count": 88462,
+      "pct": 8.88
     },
     {
       "from": "cropland",
       "to": "built_up",
-      "count": 50921,
-      "pct": 5.62
+      "count": 55729,
+      "pct": 5.59
     },
     {
       "from": "built_up",
       "to": "cropland",
-      "count": 46026,
-      "pct": 5.08
+      "count": 51619,
+      "pct": 5.18
     },
     {
       "from": "built_up",
       "to": "grassland",
-      "count": 36471,
-      "pct": 4.03
+      "count": 38247,
+      "pct": 3.84
     },
     {
       "from": "grassland",
       "to": "built_up",
-      "count": 30815,
-      "pct": 3.4
+      "count": 33170,
+      "pct": 3.33
     }
   ],
   "per_class_stability": {
     "tree_cover": {
       "count": 755793,
-      "stable_pct": 76.6
+      "stable_pct": 75.9
     },
     "grassland": {
       "count": 154657,
-      "stable_pct": 51.5
+      "stable_pct": 50.6
     },
     "cropland": {
       "count": 232838,
-      "stable_pct": 56.2
+      "stable_pct": 54.8
     },
     "built_up": {
       "count": 700346,
-      "stable_pct": 89.1
+      "stable_pct": 88.7
     },
     "bare_sparse": {
       "count": 887,
@@ -160,7 +160,7 @@
     },
     "water": {
       "count": 20239,
-      "stable_pct": 84.7
+      "stable_pct": 84.4
     }
   }
 }
