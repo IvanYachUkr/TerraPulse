@@ -1,5 +1,14 @@
 # Reproducing the MLP Model (V10 BOHB)
 
+> [!CAUTION]
+> **Minimum Hardware & Time Requirements**
+>
+> - **Data download**: ~48 hours of real time (120+ cities × 6 seasons × satellite composites from Planetary Computer + ESA WorldCover tiles)
+> - **RAM**: Bare minimum **32 GB**, with all background applications (browser, IDE, etc.) closed
+> - **GPU**: NVIDIA GPU with **≥6 GB VRAM** and TF32 (TensorFloat-32) support (Ampere architecture or newer). Tested on **GeForce RTX 4070 Laptop GPU**
+> - **BOHB sweep** (`03_train_bohb_sweep.py`): **>2 days** on a single GPU to complete 100 trials
+> - **Direct Model #7 training** (`04_train_model7.py`): ~2 hours on GPU
+
 End-to-end reproducibility for the deployed MLP land-cover model.
 
 ## Overview

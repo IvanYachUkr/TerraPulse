@@ -1,5 +1,13 @@
 # Reproducing the Pixel-Wise CatBoost Classifier (V5)
 
+> [!CAUTION]
+> **Minimum Hardware & Time Requirements**
+>
+> - **Data download**: ~48 hours of real time (120+ cities × 6 seasons × satellite composites from Planetary Computer + ESA WorldCover tiles)
+> - **RAM**: Bare minimum **32 GB**, with all background applications (browser, IDE, etc.) closed
+> - **GPU**: NVIDIA GPU with **≥6 GB VRAM** and TF32 (TensorFloat-32) support (Ampere architecture or newer). Tested on **GeForce RTX 4070 Laptop GPU**
+> - **CatBoost training**: ~1–2 hours on GPU (single config)
+
 End-to-end reproducibility for the per-pixel CatBoost land-cover model.
 
 ## Overview
