@@ -333,9 +333,11 @@ def submit_job(bbox: List[float], years: List[int]) -> str:
     years = sorted(set(years))
 
     # The pipeline needs consecutive year pairs (windows of 2).
-    # If only 1 year selected, auto-add the previous year.
-    if len(years) == 1:
-        years = [years[0] - 1, years[0]]
+    # Always include the year before the earliest selected year
+    # so that every selected year gets a prediction output.
+    prev_year = years[0] - 1
+    if prev_year not in years:
+        years = [prev_year] + years
 
     job = DeployJob(
         job_id=job_id,

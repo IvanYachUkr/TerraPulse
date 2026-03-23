@@ -23,7 +23,7 @@ const CLASS_COLORS_HEX = {
     water: '#0096c7',
 };
 
-const AVAILABLE_YEARS = [2020, 2021, 2022, 2023, 2024, 2025];
+const AVAILABLE_YEARS = [2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025];
 
 export default function DeployPanel({
     drawMode, onToggleDraw, bbox, onReset, onClearAll, onSubmit,
@@ -34,7 +34,7 @@ export default function DeployPanel({
     results, labels, viewData,
 }) {
     const [selectedYears, setSelectedYears] = useState(
-        new Set([2020, 2021, 2022, 2023, 2024, 2025])
+        new Set([2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025])
     );
 
     const toggleYear = (y) => {
@@ -148,7 +148,7 @@ export default function DeployPanel({
                             >
                                 {y}
                                 <span className="deploy-year-badge">
-                                    {y <= 2021 ? 'Label' : 'Pred'}
+                                    {(y === 2020 || y === 2021) ? 'Label' : 'Pred'}
                                 </span>
                             </button>
                         ))}
