@@ -61,7 +61,7 @@ def main():
     geo_p = PROJECT_DIR / "src" / "dashboard" / "data" / "nuremberg_boundary.geojson"
     from rasterio.features import rasterize
     gdf = gpd.read_file(geo_p).to_crs(ANCHOR_CRS)
-    mask = rasterize([(g, 1) for g in gdf.geometry], out_shape=(ANCHOR_H, ANCHOR_W), transform=ANCHOR_TRANSFORM) == 1
+    mask = rasterize([(g, 1) for g in gdf.geometry], out_shape=(ANCHOR_H, ANCHOR_W), transform=ANCHOR_TRANSFORM, all_touched=True) == 1
     
     # 2. Load Features (2020)
     print("Loading 2020 features...")
