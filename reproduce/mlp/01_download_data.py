@@ -173,11 +173,11 @@ CITIES = [
     CityConfig("seville",     [-6.05, 37.32, -5.85, 37.45], 32630, "N36W009", is_test=True),
     CityConfig("stockholm",   [17.95, 59.28, 18.20, 59.42], 32633, "N57E015", is_test=True),
     # Extra test cities (held out for V10 evaluation)
-    CityConfig("ankara_test",    [32.73, 39.87, 32.98, 40.01], 32636, "N39E030"),
-    CityConfig("sofia_test",     [23.25, 42.62, 23.50, 42.76], 32634, "N42E021"),
-    CityConfig("riga_test",      [24.00, 56.90, 24.25, 57.04], 32635, "N54E021"),
-    CityConfig("edinburgh_test", [-3.30, 55.90, -3.05, 56.04], 32630, "N54W006"),
-    CityConfig("palermo_test",   [13.30, 38.07, 13.55, 38.21], 32633, "N36E012"),
+    CityConfig("ankara_test",    [32.73, 39.87, 32.98, 40.01], 32636, "N39E030", is_test=True),
+    CityConfig("sofia_test",     [23.25, 42.62, 23.50, 42.76], 32634, "N42E021", is_test=True),
+    CityConfig("riga_test",      [24.00, 56.90, 24.25, 57.04], 32635, "N54E021", is_test=True),
+    CityConfig("edinburgh_test", [-3.30, 55.90, -3.05, 56.04], 32630, "N54W006", is_test=True),
+    CityConfig("palermo_test",   [13.30, 38.07, 13.55, 38.21], 32633, "N36E012", is_test=True),
 ]
 # fmt: on
 

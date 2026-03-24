@@ -11,7 +11,7 @@ Config: depth=8, trees=3000, lr=0.03, l2=3.0, no class weights.
 Split:
   - Train: ~100 cities (excluding nuremberg + 15 val cities)
   - Val:   15 geographically diverse cities
-  - Test:  6 held-out cities (nuremberg, ankara, sofia, riga, edinburgh, palermo)
+  - Test:  6 held-out cities (nuremberg, ankara_test, sofia_test, riga_test, edinburgh_test, palermo_test)
 
 Usage:
     python 02_train_catboost.py
@@ -67,7 +67,10 @@ CATBOOST_TREES = 3000
 CATBOOST_LR = 0.03
 CATBOOST_L2 = 3.0
 
-EXCLUDED = {"nuremberg"}
+EXCLUDED = {
+    "nuremberg",
+    "ankara_test", "sofia_test", "riga_test", "edinburgh_test", "palermo_test",
+}
 VAL_CITIES = {
     "finnish_lakeland", "danish_farmland", "tabernas_desert",
     "sardinia_maquis", "crete_phrygana", "iceland_highlands",

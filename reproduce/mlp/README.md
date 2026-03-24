@@ -18,19 +18,18 @@ End-to-end reproducibility for the deployed MLP land-cover model.
 | **Deployed model** | Trial #77 — `T_1024_512_256_64` GELU, ~2.5M params |
 | **Training data** | ~92 cities × 100m grid cells, features_v7 (Sentinel-2/S1 + texture) |
 | **Validation** | 23 cities (label-balanced split) |
-| **Test** | 6 held-out cities (nuremberg, ankara, sofia, riga, edinburgh, palermo) |
+| **Test** | 6 held-out cities (nuremberg, ankara_test, sofia_test, riga_test, edinburgh_test, palermo_test) |
 | **Expected test score** | Combined=0.789 (Top-1=90.2%, R²=0.676 at 5% threshold) |
 
 ## Prerequisites
 
 ```bash
-# Python packages
-pip install numpy pandas torch scikit-learn pyarrow rasterio catboost onnx onnxruntime
+# Python packages (install PyTorch with CUDA first)
+pip install torch --index-url https://download.pytorch.org/whl/cu124
+pip install -r reproduce/requirements.txt
 
-# For BOHB sweep only
-pip install hpbandster ConfigSpace serpent
-
-# Rust binary (must be built once)
+# Rust toolchain (latest stable version required)
+# Install from https://rustup.rs if not already installed
 cd terrapulse && cargo build --release
 ```
 
@@ -59,6 +58,7 @@ python reproduce/mlp/03_train_bohb_sweep.py --max-trials 3 --max-budget 10  # qu
 python reproduce/mlp/04_train_model7.py
 python reproduce/mlp/04_train_model7.py --max-epochs 50  # quick test
 ```
+> Steps 4 and 5 work with either path (3a or 3b). No sweep log needed.
 
 ### 4. Evaluate on test cities
 ```bash

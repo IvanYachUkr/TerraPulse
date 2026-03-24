@@ -23,9 +23,12 @@ End-to-end reproducibility for the per-pixel CatBoost land-cover model.
 ## Prerequisites
 
 ```bash
-pip install numpy pandas catboost rasterio pyarrow scikit-learn
+# Python packages (install PyTorch with CUDA first)
+pip install torch --index-url https://download.pytorch.org/whl/cu124
+pip install -r reproduce/requirements.txt
 
-# Rust binary (for data download)
+# Rust toolchain (latest stable version required)
+# Install from https://rustup.rs if not already installed
 cd terrapulse && cargo build --release
 ```
 

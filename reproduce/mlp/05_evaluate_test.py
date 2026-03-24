@@ -32,7 +32,6 @@ CLASS_NAMES = ["tree_cover", "shrubland", "grassland", "cropland",
 TEST_CITIES = ["nuremberg", "ankara_test", "sofia_test",
                "riga_test", "edinburgh_test", "palermo_test"]
 FIXED_THRESHOLDS = [0.0, 0.05, 0.10]
-DEPLOYED_MODEL_TRIAL = 77
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -105,44 +104,82 @@ def compute_topk_accuracy(preds, y, k, threshold=0.01):
     return np.mean([set(t) == set(p) for t, p in zip(true_topk, pred_topk)])
 
 
+
+# ===== MODEL #7 — hardcoded config (from BOHB trial 77) =====
+MODEL7_CONFIG = {
+    "trial": 77,
+    "arch": "T_1024_512_256_64",
+    "widths": [1024, 512, 256, 64],
+    "activation": "gelu",
+    "dropout": 0.3255,
+    "input_dropout": 0.0031,
+    "label_threshold": 0.021,
+}
+
+
 def load_models():
-    """Load top 10 BOHB models from trial log."""
-    log_path = os.path.join(V10_DIR, "trial_log.jsonl")
-    if not os.path.exists(log_path):
-        print(f"ERROR: {log_path} not found. Run 03_train_bohb_sweep.py first.")
+    """Load Model #7 (hardcoded). Optionally also loads extra BOHB models
+    from trial_log.jsonl if it exists."""
+    scaler_path = os.path.join(V10_DIR, "scaler.pkl")
+    cols_path = os.path.join(V10_DIR, "mlp_cols.json")
+    model7_path = os.path.join(V10_DIR,
+        f"trial_{MODEL7_CONFIG['trial']}_{MODEL7_CONFIG['arch']}.pt")
+
+    if not os.path.exists(model7_path):
+        print(f"ERROR: Model #7 not found: {model7_path}")
+        print("Run 04_train_model7.py (or 03_train_bohb_sweep.py) first.")
         sys.exit(1)
 
-    trials = [json.loads(l) for l in open(log_path) if l.strip()]
-    # Skip initial low-budget trials
-    if len(trials) > 20:
-        trials = trials[20:]
-    ranked = sorted(trials, key=lambda t: t["combined"], reverse=True)
-    seen, top10 = set(), []
-    for t in ranked:
-        k = json.dumps(t["config"], sort_keys=True)
-        if k not in seen:
-            seen.add(k)
-            top10.append(t)
-        if len(top10) >= 10:
-            break
+    # Always include Model #7
+    models = [{
+        "rank": 1,
+        "name": f"# 1 {MODEL7_CONFIG['arch']} {MODEL7_CONFIG['activation']} *",
+        "path": model7_path,
+        "widths": MODEL7_CONFIG["widths"],
+        "act": MODEL7_CONFIG["activation"],
+        "do": MODEL7_CONFIG["dropout"],
+        "ido": MODEL7_CONFIG["input_dropout"],
+        "thresh": max(MODEL7_CONFIG["label_threshold"], 0.01),
+        "scaler": scaler_path,
+        "cols": cols_path,
+        "val_combined": None,
+        "trial": MODEL7_CONFIG["trial"],
+    }]
 
-    models = []
-    for i, t in enumerate(top10, 1):
-        deployed = " *" if t["trial"] == DEPLOYED_MODEL_TRIAL else ""
-        models.append({
-            "rank": i,
-            "name": f"#{i:>2d} {t['arch']} {t['config']['activation']}{deployed}",
-            "path": os.path.join(V10_DIR, f"trial_{t['trial']}_{t['arch']}.pt"),
-            "widths": t["widths"],
-            "act": t["config"]["activation"],
-            "do": t["config"]["dropout"],
-            "ido": t["config"]["input_dropout"],
-            "thresh": max(t["config"]["label_threshold"], 0.01),
-            "scaler": os.path.join(V10_DIR, "scaler.pkl"),
-            "cols": os.path.join(V10_DIR, "mlp_cols.json"),
-            "val_combined": t["combined"],
-            "trial": t["trial"],
-        })
+    # Optionally load more models from sweep log
+    log_path = os.path.join(V10_DIR, "trial_log.jsonl")
+    if os.path.exists(log_path):
+        trials = [json.loads(l) for l in open(log_path) if l.strip()]
+        if len(trials) > 20:
+            trials = trials[20:]
+        ranked = sorted(trials, key=lambda t: t["combined"], reverse=True)
+        seen_trials = {MODEL7_CONFIG["trial"]}
+        for t in ranked:
+            if t["trial"] in seen_trials:
+                continue
+            seen_trials.add(t["trial"])
+            pt = os.path.join(V10_DIR, f"trial_{t['trial']}_{t['arch']}.pt")
+            if not os.path.exists(pt):
+                continue
+            rank = len(models) + 1
+            models.append({
+                "rank": rank,
+                "name": f"#{rank:>2d} {t['arch']} {t['config']['activation']}",
+                "path": pt,
+                "widths": t["widths"],
+                "act": t["config"]["activation"],
+                "do": t["config"]["dropout"],
+                "ido": t["config"]["input_dropout"],
+                "thresh": max(t["config"]["label_threshold"], 0.01),
+                "scaler": scaler_path,
+                "cols": cols_path,
+                "val_combined": t["combined"],
+                "trial": t["trial"],
+            })
+            if len(models) >= 10:
+                break
+        print(f"  (Also loaded {len(models)-1} extra models from sweep log)")
+
     return models
 
 
@@ -160,7 +197,7 @@ def main():
     models = load_models()
     print(f"\n  Models: {len(models)}")
     for m in models:
-        dep = " <-- DEPLOYED" if m["trial"] == DEPLOYED_MODEL_TRIAL else ""
+        dep = " <-- DEPLOYED" if m["trial"] == MODEL7_CONFIG["trial"] else ""
         print(f"    {m['name']:30s} trial={m['trial']}{dep}")
 
     # Precompute predictions

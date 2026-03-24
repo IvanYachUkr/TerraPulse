@@ -74,7 +74,10 @@ from importlib import import_module
 step1 = import_module("01_download_data")
 ALL_CITIES = step1.CITIES
 
-EXCLUDED_CITY_NAMES = {"nuremberg"}
+EXCLUDED_CITY_NAMES = {
+    "nuremberg",
+    "ankara_test", "sofia_test", "riga_test", "edinburgh_test", "palermo_test",
+}
 VAL_CITY_NAMES = {
     "alentejo_portugal", "andalusia_olives", "berlin", "bordeaux",
     "central_spain_plateau", "corsica_interior", "dresden", "dutch_polders",

@@ -1,0 +1,36 @@
+# ============================================================
+# TerraPulse — Reproduce Scripts Dependencies
+# ============================================================
+#
+# Setup:
+#   python -m venv .venv
+#   .venv\Scripts\activate                              # Windows
+#   pip install torch --index-url https://download.pytorch.org/whl/cu124
+#   pip install -r reproduce/requirements.txt
+#
+# PyTorch must be installed separately with CUDA support first.
+# ============================================================
+
+# ---- Core data ----
+numpy
+pandas
+pyarrow
+scikit-learn
+
+# ---- Geospatial (data download & labels) ----
+rasterio
+
+# ---- MLP model (steps 03–06) ----
+torch                   # install separately with CUDA (see header)
+
+# ---- Pixel model (CatBoost) ----
+catboost
+
+# ---- ONNX export & validation (step 06) ----
+onnx
+onnxruntime
+
+# ---- BOHB sweep only (step 03, optional) ----
+hpbandster
+ConfigSpace
+serpent
