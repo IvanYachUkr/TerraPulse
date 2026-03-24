@@ -87,7 +87,7 @@ export default function DeployPanel({
                 >
                     {showRegions ? '🗺️ Hide Training Regions' : '🗺️ Show Training Regions'}
                 </button>
-                /*
+                {/* showRegions legend disabled — REGION_COLORS import commented out
                 {showRegions && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 4 }}>
                         {Object.entries(REGION_COLORS).map(([role, cfg]) => (
@@ -103,7 +103,7 @@ export default function DeployPanel({
                         ))}
                     </div>
                 )}
-                */
+                */}
             </div>
 
             {/* Drawing controls */}
