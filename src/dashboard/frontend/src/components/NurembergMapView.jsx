@@ -1,4 +1,18 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+
+const SATELLITE_STYLE = {
+    version: 8,
+    sources: {
+        'esri-satellite': {
+            type: 'raster',
+            tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
+            tileSize: 256,
+            attribution: '© Esri',
+        },
+    },
+    layers: [{ id: 'esri-satellite-layer', type: 'raster', source: 'esri-satellite', minzoom: 0, maxzoom: 19 }],
+};
+const DARK_STYLE = 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json';
 import { Map } from 'react-map-gl/maplibre';
 import DeckGL from '@deck.gl/react';
 import { BitmapLayer, GeoJsonLayer } from '@deck.gl/layers';
@@ -53,6 +67,7 @@ export default function NurembergMapView({
 }) {
     const [labelData, setLabelData] = useState(null);
     const [canvasImage, setCanvasImage] = useState(null);
+    const [mapStyle, setMapStyle] = useState('dark');
     const deckRef = useRef(null);
 
     // Fetch binary label/prediction data when year, resolution, or dataMode changes
@@ -135,10 +150,17 @@ export default function NurembergMapView({
                     continue;
                 }
                 const [r, g, b] = colors[val];
-                imageData.data[px] = r;
-                imageData.data[px + 1] = g;
-                imageData.data[px + 2] = b;
-                imageData.data[px + 3] = 255;
+                if (showAll || val === selectedIdx) {
+                    imageData.data[px] = r;
+                    imageData.data[px + 1] = g;
+                    imageData.data[px + 2] = b;
+                    imageData.data[px + 3] = 255;
+                } else {
+                    imageData.data[px] = 40;
+                    imageData.data[px + 1] = 40;
+                    imageData.data[px + 2] = 50;
+                    imageData.data[px + 3] = 120;
+                }
                 continue;
             }
 
@@ -402,9 +424,22 @@ export default function NurembergMapView({
                 style={{ width: '100%', height: '100%' }}
             >
                 <Map
-                    mapStyle="https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json"
+                    mapStyle={mapStyle === 'satellite' ? SATELLITE_STYLE : DARK_STYLE}
                 />
             </DeckGL>
+            <button
+                onClick={() => setMapStyle(s => s === 'dark' ? 'satellite' : 'dark')}
+                style={{
+                    position: 'absolute', top: 70, right: 20, zIndex: 10,
+                    background: 'rgba(30,30,40,0.85)', color: '#fff',
+                    border: '1px solid rgba(255,255,255,0.2)', borderRadius: 8,
+                    padding: '8px 14px', cursor: 'pointer', fontSize: 13,
+                    backdropFilter: 'blur(8px)', transition: 'all 0.2s',
+                }}
+                title={mapStyle === 'dark' ? 'Switch to satellite view' : 'Switch to dark map'}
+            >
+                {mapStyle === 'dark' ? '🛰️ Satellite' : '🗺️ Dark Map'}
+            </button>
             {/* Future year placeholder */}
             {selectedYear >= 2026 && dataMode === 'predictions' && (
                 <div style={{
