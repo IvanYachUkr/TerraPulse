@@ -399,7 +399,7 @@ export default function Sidebar({
 
                 {/* Class Filter / Model Toggle */}
                 <div className="section">
-                    {nurembergExperimentalView === 'heatmap' ? (
+                    {nurembergDataMode === 'experimental' && nurembergExperimentalView === 'heatmap' ? (
                         <>
                             <div className="section-title">Experimental Model Selection</div>
                             <div className="toggle-group">

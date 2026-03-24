@@ -112,3 +112,6 @@ old_rust.rs
 terrapulse_full_codebase.md
 # Model backup files
 *.bak_v*
+
+# ignore data from clemens
+data from clemens/
