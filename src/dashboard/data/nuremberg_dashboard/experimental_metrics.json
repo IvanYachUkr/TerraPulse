@@ -121,12 +121,7 @@
   "n_folds": 4,
   "feature_year": 2020,
   "label_year": 2021,
-<<<<<<< HEAD
-  "model": "RandomForest (2-stage: detector + classifier)",
-  "description": "4-fold spatial CV on exact Nuremberg boundary pixels"
-=======
   "model": "RandomForest (2-stage forecasting: 2020 -> 2021)",
   "description": "True forecast: pixels strictly use 2020 spectral, district, and LC data to predict 2021.",
   "false_change_rate": 0.0018787390386614186
->>>>>>> 8d1ac27 (explainable model added to dashboard)
 }
