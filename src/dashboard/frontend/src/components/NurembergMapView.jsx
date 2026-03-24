@@ -430,7 +430,7 @@ export default function NurembergMapView({
             <button
                 onClick={() => setMapStyle(s => s === 'dark' ? 'satellite' : 'dark')}
                 style={{
-                    position: 'absolute', top: 70, right: 20, zIndex: 10,
+                    position: 'absolute', top: 14, right: 20, zIndex: 10,
                     background: 'rgba(30,30,40,0.85)', color: '#fff',
                     border: '1px solid rgba(255,255,255,0.2)', borderRadius: 8,
                     padding: '8px 14px', cursor: 'pointer', fontSize: 13,
