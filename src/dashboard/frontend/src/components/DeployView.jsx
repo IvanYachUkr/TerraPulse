@@ -3,7 +3,7 @@ import DeckGL from '@deck.gl/react';
 import { Map } from 'react-map-gl/maplibre';
 import { GeoJsonLayer } from '@deck.gl/layers';
 import DeployPanel from './DeployPanel.jsx';
-import { REGIONS_GEOJSON, REGION_COLORS } from '../data/trainingRegions.js';
+// import { REGIONS_GEOJSON, REGION_COLORS } from '../data/trainingRegions.js';
 
 const API = import.meta.env.VITE_API_URL || '';
 
@@ -327,6 +327,7 @@ export default function DeployView() {
 
     // Completed jobs — rendered as dimmed background layers
     // Training region overlay
+    /*
     if (showRegions) {
         layers.push(new GeoJsonLayer({
             id: 'training-regions-layer',
@@ -349,6 +350,7 @@ export default function DeployView() {
             },
         }));
     }
+    */
 
     completedJobs.forEach((job, idx) => {
         // Skip the active job if it's already in completedJobs
@@ -528,6 +530,7 @@ export default function DeployView() {
         if (!info.object) return null;
         const layerId = info.layer?.id || '';
 
+        /*
         // Training regions layer
         if (layerId === 'training-regions-layer') {
             const { name, role } = info.object.properties || {};
@@ -537,6 +540,7 @@ export default function DeployView() {
                 className: 'deck-tooltip',
             };
         }
+        */
 
         // Grid layers (active or completed)
         if (layerId === 'deploy-grid-layer' || layerId.startsWith('completed-grid-')) {

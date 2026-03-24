@@ -151,6 +151,7 @@ export default function App() {
     const [nurembergSecondaryYear, setNurembergSecondaryYear] = useState(null);
     const [nurembergDataMode, setNurembergDataMode] = useState('labels');
     const [nurembergExperimentalView, setNurembergExperimentalView] = useState('map'); // map | heatmap | changes
+    const [nurembergExperimentalModel, setNurembergExperimentalModel] = useState('rf'); // rf | linear
     const [hoveredDistrict, setHoveredDistrict] = useState(null);
 
     // Data fetching — labels (always loaded)
@@ -163,7 +164,7 @@ export default function App() {
     const { data: nurembergMeta } = useApi('/api/nuremberg/meta');
     const { data: nurembergBoundary } = useApi('/api/nuremberg/boundary');
     const { data: experimentalMetrics } = useApi(
-        nurembergDataMode === 'experimental' ? '/api/nuremberg/experimental/metrics' : null
+        nurembergDataMode === 'experimental' ? `/api/nuremberg/experimental/metrics?model=${nurembergExperimentalModel}` : null
     );
     const { data: districtStats } = useApi('/api/nuremberg/district-stats');
     const { data: changeMetrics } = useApi('/api/nuremberg/change-metrics');
@@ -310,6 +311,8 @@ export default function App() {
                             experimentalMetrics={experimentalMetrics}
                             nurembergExperimentalView={nurembergExperimentalView}
                             onNurembergExperimentalViewChange={setNurembergExperimentalView}
+                            nurembergExperimentalModel={nurembergExperimentalModel}
+                            onNurembergExperimentalModelChange={setNurembergExperimentalModel}
                             districtStats={districtStats}
                             hoveredDistrict={hoveredDistrict}
                             nurembergDataMode_forStats={nurembergDataMode}
@@ -333,6 +336,7 @@ export default function App() {
                         hoveredDistrict={hoveredDistrict}
                         onDistrictHover={setHoveredDistrict}
                         districtStats={districtStats}
+                        experimentalModel={nurembergExperimentalModel}
                     />
                 </div>
             )}

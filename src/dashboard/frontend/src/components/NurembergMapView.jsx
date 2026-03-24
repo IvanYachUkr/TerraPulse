@@ -49,6 +49,7 @@ export default function NurembergMapView({
     hoveredDistrict,
     onDistrictHover,
     districtStats,
+    experimentalModel = 'rf',
 }) {
     const [labelData, setLabelData] = useState(null);
     const [canvasImage, setCanvasImage] = useState(null);
@@ -60,7 +61,8 @@ export default function NurembergMapView({
         let url;
         if (dataMode === 'experimental') {
             const sub = experimentalView === 'map' ? '' : `/${experimentalView}`;
-            url = `${API}/api/nuremberg/experimental${sub}/${resolution}`;
+            const query = experimentalView === 'heatmap' ? `?model=${experimentalModel}` : '';
+            url = `${API}/api/nuremberg/experimental${sub}/${resolution}${query}`;
         } else if (dataMode === 'predictions' && secondaryYear !== null) {
             url = `${API}/api/nuremberg/predictions/diff/${selectedYear}/${secondaryYear}/${resolution}`;
         } else {
@@ -76,7 +78,7 @@ export default function NurembergMapView({
                 setLabelData(new Uint8Array(buf));
             })
             .catch(err => console.error(`Failed to load nuremberg data:`, err));
-    }, [selectedYear, secondaryYear, resolution, meta, dataMode, experimentalView]);
+    }, [selectedYear, secondaryYear, resolution, meta, dataMode, experimentalView, experimentalModel]);
 
     // Generate canvas image from label data
     useEffect(() => {

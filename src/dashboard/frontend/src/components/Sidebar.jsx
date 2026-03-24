@@ -52,6 +52,8 @@ export default function Sidebar({
     experimentalMetrics,
     nurembergExperimentalView,
     onNurembergExperimentalViewChange,
+    nurembergExperimentalModel,
+    onNurembergExperimentalModelChange,
     districtStats,
     hoveredDistrict,
     nurembergDataMode_forStats,
@@ -391,37 +393,65 @@ export default function Sidebar({
                                 🗺️ Full Prediction Map
                             </button>
                         </div>
+
                     </div>
                 )}
 
-                {/* Class Filter */}
+                {/* Class Filter / Model Toggle */}
                 <div className="section">
-                    <div className="section-title">Land-Cover Class</div>
-                    <div className="class-chips">
-                        <button
-                            className={`class-chip ${selectedClass === 'all' ? 'active' : ''}`}
-                            onClick={() => onClassChange('all')}
-                        >
-                            All
-                        </button>
-                        {classes.map((c) => {
-                            const [r, g, b] = classColors[c];
-                            return (
+                    {nurembergExperimentalView === 'heatmap' ? (
+                        <>
+                            <div className="section-title">Experimental Model Selection</div>
+                            <div className="toggle-group">
                                 <button
-                                    key={c}
-                                    className={`class-chip ${selectedClass === c ? 'active' : ''}`}
-                                    style={{ '--chip-color': `rgb(${r},${g},${b})` }}
-                                    onClick={() => onClassChange(c)}
+                                    className={`toggle-btn ${nurembergExperimentalModel === 'rf' ? 'active' : ''}`}
+                                    onClick={() => onNurembergExperimentalModelChange('rf')}
                                 >
-                                    <span
-                                        className="class-dot"
-                                        style={{ backgroundColor: `rgb(${r},${g},${b})` }}
-                                    />
-                                    {classLabels[c]}
+                                    🌳 Random Forest
                                 </button>
-                            );
-                        })}
-                    </div>
+                                <button
+                                    className={`toggle-btn ${nurembergExperimentalModel === 'linear' ? 'active' : ''}`}
+                                    onClick={() => onNurembergExperimentalModelChange('linear')}
+                                >
+                                    📈 Explainable (LR)
+                                </button>
+                            </div>
+                            <div style={{ fontSize: 11, opacity: 0.6, marginTop: 8, lineHeight: 1.4 }}>
+                                {nurembergExperimentalModel === 'rf'
+                                    ? 'Multi-stage RF ensemble trained on spatial folds to minimize leakage.'
+                                    : 'Log. Regression on standardized spectral & socioeconomic features for max transparency.'}
+                            </div>
+                        </>
+                    ) : (
+                        <>
+                            <div className="section-title">Land-Cover Class</div>
+                            <div className="class-chips">
+                                <button
+                                    className={`class-chip ${selectedClass === 'all' ? 'active' : ''}`}
+                                    onClick={() => onClassChange('all')}
+                                >
+                                    All
+                                </button>
+                                {classes.map((c) => {
+                                    const [r, g, b] = classColors[c];
+                                    return (
+                                        <button
+                                            key={c}
+                                            className={`class-chip ${selectedClass === c ? 'active' : ''}`}
+                                            style={{ '--chip-color': `rgb(${r},${g},${b})` }}
+                                            onClick={() => onClassChange(c)}
+                                        >
+                                            <span
+                                                className="class-dot"
+                                                style={{ backgroundColor: `rgb(${r},${g},${b})` }}
+                                            />
+                                            {classLabels[c]}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </>
+                    )}
                 </div>
 
                 {/* Nuremberg legend */}
@@ -452,35 +482,99 @@ export default function Sidebar({
                     <div className="section">
                         <div className="section-title">Model Accuracy</div>
                         <div style={{
-                            background: 'rgba(16, 185, 129, 0.1)',
-                            border: '1px solid rgba(16, 185, 129, 0.3)',
+                            background: nurembergExperimentalModel === 'rf' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(59, 130, 246, 0.1)',
+                            border: `1px solid ${nurembergExperimentalModel === 'rf' ? 'rgba(16, 185, 129, 0.3)' : 'rgba(59, 130, 246, 0.3)'}`,
                             borderRadius: 8, padding: '10px 12px',
                             fontSize: 12, color: '#e2e8f0',
                         }}>
-                            <div style={{ fontSize: 18, fontWeight: 700, color: '#10b981', marginBottom: 6 }}>
-                                {(experimentalMetrics.overall_accuracy * 100).toFixed(1)}% Overall
+                            <div style={{ fontSize: 18, fontWeight: 700, color: nurembergExperimentalModel === 'rf' ? '#10b981' : '#3b82f6', marginBottom: 6 }}>
+                                {experimentalMetrics.overall_accuracy !== undefined
+                                    ? `${(experimentalMetrics.overall_accuracy * 100).toFixed(1)}% Overall`
+                                    : 'Calculating...'}
                             </div>
                             <div style={{ fontSize: 11, opacity: 0.7, marginBottom: 8 }}>
-                                {experimentalMetrics.n_folds}-fold spatial CV · {experimentalMetrics.model}
+                                {nurembergExperimentalModel === 'rf'
+                                    ? `${experimentalMetrics.n_folds || 4}-fold spatial CV · ${experimentalMetrics.model || 'Random Forest'}`
+                                    : `${experimentalMetrics.model_info || 'Explainable Model'} (${experimentalMetrics.training_info || 'Loading...'})`}
                             </div>
-                            {experimentalMetrics.per_class && Object.entries(experimentalMetrics.per_class).map(([cls, m]) => (
-                                <div key={cls} style={{
-                                    display: 'flex', justifyContent: 'space-between',
-                                    padding: '2px 0', borderTop: '1px solid rgba(255,255,255,0.05)',
-                                }}>
-                                    <span>{cls.replace('_', ' ')}</span>
-                                    <span style={{ fontFamily: 'monospace' }}>F1={m.f1.toFixed(3)}</span>
-                                </div>
-                            ))}
-                            {experimentalMetrics.fold_metrics && (
-                                <div style={{ marginTop: 8, borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: 6 }}>
-                                    <div style={{ fontWeight: 600, marginBottom: 4 }}>Per-Fold Accuracy</div>
-                                    {experimentalMetrics.fold_metrics.map((fm) => (
-                                        <div key={fm.fold} style={{ display: 'flex', justifyContent: 'space-between', padding: '1px 0' }}>
-                                            <span>Fold {fm.fold}</span>
-                                            <span style={{ fontFamily: 'monospace' }}>{(fm.accuracy * 100).toFixed(1)}%</span>
+
+                            {nurembergExperimentalModel === 'rf' ? (
+                                <>
+                                    <div style={{ marginTop: 8, borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: 6, marginBottom: 8 }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0' }}>
+                                            <span>Macro Precision</span>
+                                            <span style={{ fontFamily: 'monospace' }}>
+                                                {(Object.values(experimentalMetrics.per_class || {}).reduce((acc, m) => acc + (m.precision || 0), 0) /
+                                                    Object.keys(experimentalMetrics.per_class || {}).length).toFixed(3)}
+                                            </span>
+                                        </div>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0' }}>
+                                            <span>Macro Recall</span>
+                                            <span style={{ fontFamily: 'monospace' }}>
+                                                {(Object.values(experimentalMetrics.per_class || {}).reduce((acc, m) => acc + (m.recall || 0), 0) /
+                                                    Object.keys(experimentalMetrics.per_class || {}).length).toFixed(3)}
+                                            </span>
+                                        </div>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0' }}>
+                                            <span>Macro F1-Score</span>
+                                            <span style={{ fontFamily: 'monospace' }}>
+                                                {(Object.values(experimentalMetrics.per_class || {}).reduce((acc, m) => acc + (m.f1 || 0), 0) /
+                                                    Object.keys(experimentalMetrics.per_class || {}).length).toFixed(3)}
+                                            </span>
+                                        </div>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0', borderTop: '1px solid rgba(255,255,255,0.05)', marginTop: 4, paddingTop: 4 }}>
+                                            <span>False Change Rate</span>
+                                            <span style={{ fontFamily: 'monospace', color: experimentalMetrics.false_change_rate !== undefined ? '#f87171' : 'inherit', opacity: experimentalMetrics.false_change_rate !== undefined ? 1 : 0.5 }}>
+                                                {experimentalMetrics.false_change_rate !== undefined
+                                                    ? `${(experimentalMetrics.false_change_rate * 100).toFixed(2)}%`
+                                                    : 'N/A (Multiclass)'}
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    {experimentalMetrics.fold_metrics && (
+                                        <div style={{ marginBottom: 10 }}>
+                                            <div style={{ fontWeight: 600, fontSize: 10, opacity: 0.6, marginBottom: 4 }}>Per-Fold Accuracy</div>
+                                            {experimentalMetrics.fold_metrics.map((fm) => (
+                                                <div key={fm.fold} style={{ display: 'flex', justifyContent: 'space-between', padding: '1px 0', fontSize: 11 }}>
+                                                    <span>Fold {fm.fold}</span>
+                                                    <span style={{ fontFamily: 'monospace' }}>{(fm.accuracy * 100).toFixed(1)}%</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+
+                                    <div style={{ fontWeight: 600, fontSize: 10, opacity: 0.6, marginBottom: 4 }}>Per-Class F1 Scores</div>
+                                    {experimentalMetrics.per_class && Object.entries(experimentalMetrics.per_class).map(([cls, m]) => (
+                                        <div key={cls} style={{
+                                            display: 'flex', justifyContent: 'space-between',
+                                            padding: '2px 0', borderTop: '1px solid rgba(255,255,255,0.05)',
+                                        }}>
+                                            <span>{cls.replace('_', ' ')}</span>
+                                            <span style={{ fontFamily: 'monospace' }}>F1={m.f1?.toFixed(3) || '0.000'}</span>
                                         </div>
                                     ))}
+                                </>
+                            ) : (
+                                <div style={{ marginTop: 8, borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: 6 }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0' }}>
+                                        <span>F1-Score</span>
+                                        <span style={{ fontFamily: 'monospace' }}>{experimentalMetrics.macro_f1?.toFixed(3) || '0.000'}</span>
+                                    </div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0' }}>
+                                        <span>Precision</span>
+                                        <span style={{ fontFamily: 'monospace' }}>{experimentalMetrics.precision?.toFixed(3) || '0.000'}</span>
+                                    </div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0' }}>
+                                        <span>Recall</span>
+                                        <span style={{ fontFamily: 'monospace' }}>{experimentalMetrics.recall?.toFixed(3) || '0.000'}</span>
+                                    </div>
+                                    {experimentalMetrics.false_change_rate !== undefined && (
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0', borderTop: '1px solid rgba(255,255,255,0.05)', marginTop: 4, paddingTop: 4 }}>
+                                            <span>False Change Rate</span>
+                                            <span style={{ fontFamily: 'monospace', color: '#f87171' }}>{(experimentalMetrics.false_change_rate * 100).toFixed(1)}%</span>
+                                        </div>
+                                    )}
                                 </div>
                             )}
                         </div>

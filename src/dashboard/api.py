@@ -419,24 +419,31 @@ def nuremberg_change_metrics():
 # ---------------------------------------------------------------------------
 
 @app.get("/api/nuremberg/experimental/metrics")
-def nuremberg_experimental_metrics():
+def nuremberg_experimental_metrics(model: str = "rf"):
     """Accuracy metrics for the experimental prediction."""
-    path = os.path.join(NUREMBERG_DIR, "experimental_metrics.json")
+    fname = "explainable_metrics.json" if model == "linear" else "experimental_metrics.json"
+    path = os.path.join(NUREMBERG_DIR, fname)
     if not os.path.exists(path):
-        raise HTTPException(404, "Experimental metrics not found")
+        raise HTTPException(404, f"Metrics not found: {fname}")
     with open(path, "r") as f:
         return json.load(f)
 
 
 @app.get("/api/nuremberg/experimental/heatmap/{resolution}")
-def nuremberg_experimental_heatmap(resolution: int):
+def nuremberg_experimental_heatmap(resolution: int, model: str = "rf"):
     """Binary uint8 heatmap of predicted change likelihood (0=no change, 254=change, 255=boundary)."""
     if resolution < 1 or resolution > 10:
         raise HTTPException(404, "Resolution must be 1-10")
-    fname = f"experimental_heatmap_res{resolution}.bin"
+
+    if model == "linear":
+        fname = f"explainable_heatmap_2021_res{resolution}.bin"
+    else:
+        # Default to Random Forest
+        fname = f"experimental_heatmap_res{resolution}.bin"
+
     fpath = os.path.join(NUREMBERG_DIR, fname)
     if not os.path.exists(fpath):
-        raise HTTPException(404, f"Experimental heatmap not found: {fname}")
+        raise HTTPException(404, f"Experimental heatmap not found: {fname} (model={model})")
     return _serve_binary(fpath, fname)
 
 
