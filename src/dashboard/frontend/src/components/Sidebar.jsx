@@ -524,7 +524,7 @@ export default function Sidebar({
                                         </div>
                                         <div style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0', borderTop: '1px solid rgba(255,255,255,0.05)', marginTop: 4, paddingTop: 4 }}>
                                             <span>False Change Rate</span>
-                                            <span style={{ fontFamily: 'monospace', color: experimentalMetrics.false_change_rate !== undefined ? '#f87171' : 'inherit', opacity: experimentalMetrics.false_change_rate !== undefined ? 1 : 0.5 }}>
+                                            <span style={{ fontFamily: 'monospace', opacity: experimentalMetrics.false_change_rate !== undefined ? 1 : 0.5 }}>
                                                 {experimentalMetrics.false_change_rate !== undefined
                                                     ? `${(experimentalMetrics.false_change_rate * 100).toFixed(2)}%`
                                                     : 'N/A (Multiclass)'}
@@ -572,7 +572,7 @@ export default function Sidebar({
                                     {experimentalMetrics.false_change_rate !== undefined && (
                                         <div style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0', borderTop: '1px solid rgba(255,255,255,0.05)', marginTop: 4, paddingTop: 4 }}>
                                             <span>False Change Rate</span>
-                                            <span style={{ fontFamily: 'monospace', color: '#f87171' }}>{(experimentalMetrics.false_change_rate * 100).toFixed(1)}%</span>
+                                            <span style={{ fontFamily: 'monospace' }}>{(experimentalMetrics.false_change_rate * 100).toFixed(1)}%</span>
                                         </div>
                                     )}
                                 </div>
