@@ -910,7 +910,7 @@ export default function Sidebar({
                             <div className="section-title">Probability to change</div>
                             <div className="legend-bar diverging" />
                             <div className="legend-labels">
-                                <span>0%</span> /* TODO */
+                                <span>0%</span> {/* TODO */}
                                 <span>100%</span>
                             </div>
                         </div>
@@ -919,7 +919,7 @@ export default function Sidebar({
                             <div className="section-title">Purity of majority label</div>
                             <div className="legend-bar" />
                             <div className="legend-labels">
-                                <span>0%</span> /* TODO */
+                                <span>0%</span> {/* TODO */}
                                 <span>50%</span>
                                 <span>100%</span>
                             </div>
