@@ -8,7 +8,8 @@ the coefficients to understand which spectral bands or socioeconomic stats
 drive the change likelihood prediction.
 
 Metrics:
-- Accuracy, F1, Precision, Recall, False Change Rate both on a balanced and the whole testset.
+- Balanced Accuracy, F1, Precision, Recall.
+- False Change Rate (FP on stable pixels).
 - Feature Importances (Normalized Coefficients).
 """
 
@@ -61,7 +62,7 @@ def main():
     geo_p = PROJECT_DIR / "src" / "dashboard" / "data" / "nuremberg_boundary.geojson"
     from rasterio.features import rasterize
     gdf = gpd.read_file(geo_p).to_crs(ANCHOR_CRS)
-    mask = rasterize([(g, 1) for g in gdf.geometry], out_shape=(ANCHOR_H, ANCHOR_W), transform=ANCHOR_TRANSFORM, all_touched=True) == 1
+    mask = rasterize([(g, 1) for g in gdf.geometry], out_shape=(ANCHOR_H, ANCHOR_W), transform=ANCHOR_TRANSFORM) == 1
     
     # 2. Load Features (2020)
     print("Loading 2020 features...")
@@ -103,15 +104,7 @@ def main():
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X_bal)
     
-    print("Training Optuna-optimized Logistic Regression...")
-    model = LogisticRegression(
-        C=np.inf,
-        penalty=None,
-        class_weight=None,
-        solver='lbfgs',
-        max_iter=2000,
-        random_state=42
-    )
+    model = LogisticRegression(max_iter=1000)
     model.fit(X_scaled, y_bal)
     
     # 5. Metrics
@@ -171,7 +164,7 @@ def main():
         feat_21 = []
         for i in range(10): feat_21.append(s2_21[i][valid_21])
         b4_21, b8_21 = s2_21[2][valid_21], s2_21[6][valid_21]
-        feat_21.append((b8_21 - b4_21) / (b8_21 + b4_21 + 1e-8))
+        feat_21.append((b8_21 - b4_21) / (b8_21 + b4_21) + 1e-8)
         feat_21.append(wc_20[valid_21])
         for i in range(4): feat_21.append(stats[i][valid_21])
         feat_21.append(std[0][valid_21])
@@ -202,25 +195,5 @@ def main():
             
         print(f"Precalculated 10 Explainable Heatmap resolutions (2021) saved to DASHBOARD_DATA.")
 
-        # 9. Save Metrics for Dashboard
-        import json
-        metrics_p = DASHBOARD_DATA / "explainable_metrics.json"
-        
-        # Format similar to experimental_metrics.json
-        dashboard_metrics = {
-            "overall_accuracy": m_full["Acc"],
-            "macro_f1": m_full["F1"],
-            "recall": m_full["Rec"],
-            "precision": m_full["Prec"],
-            "false_change_rate": m_full["FCR"],
-            "model_info": "Explainable Logistic Regression (optimized)",
-            "training_info": "Balanced samples (change/no-change)",
-            "features": feat_names,
-            "balanced_metrics": m_bal
-        }
-        
-        with open(metrics_p, 'w') as f:
-            json.dump(dashboard_metrics, f, indent=2)
-        print(f"Metrics saved to: {metrics_p}")
 if __name__ == "__main__":
     main()
