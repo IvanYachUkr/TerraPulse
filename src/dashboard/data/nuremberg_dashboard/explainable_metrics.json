@@ -1,9 +1,9 @@
 {
-  "overall_accuracy": 0.35563040405318735,
-  "macro_f1": 0.21340858701009993,
-  "recall": 0.9698002748674747,
-  "precision": 0.11989611283716989,
-  "false_change_rate": 0.7052105735585597,
+  "overall_accuracy": 0.6161489357594686,
+  "macro_f1": 0.26496522532939154,
+  "recall": 0.7675882461432285,
+  "precision": 0.16011839753772836,
+  "false_change_rate": 0.3988529653927011,
   "model_info": "Explainable Logistic Regression (optimized)",
   "training_info": "Balanced samples (change/no-change)",
   "features": [
@@ -26,10 +26,10 @@
     "NDVI_Std"
   ],
   "balanced_metrics": {
-    "Acc": 0.6325194400318894,
-    "F1": 0.7252031507553226,
-    "Prec": 0.5791367928885605,
-    "Rec": 0.9698002748674747,
-    "FCR": 0.7047613948036958
+    "Acc": 0.684437860317347,
+    "F1": 0.7086626715808785,
+    "Prec": 0.6581391908505201,
+    "Rec": 0.7675882461432285,
+    "FCR": 0.3987125255085346
   }
 }

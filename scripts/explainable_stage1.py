@@ -8,12 +8,7 @@ the coefficients to understand which spectral bands or socioeconomic stats
 drive the change likelihood prediction.
 
 Metrics:
-<<<<<<< HEAD
-- Balanced Accuracy, F1, Precision, Recall.
-- False Change Rate (FP on stable pixels).
-=======
-- Accuracy, F1, Precision, Recall, False Change Rate both on a balanced ant the whole testset
->>>>>>> 8d1ac27 (explainable model added to dashboard)
+- Accuracy, F1, Precision, Recall, False Change Rate both on a balanced and the whole testset.
 - Feature Importances (Normalized Coefficients).
 """
 
@@ -110,11 +105,11 @@ def main():
     
     print("Training Optuna-optimized Logistic Regression...")
     model = LogisticRegression(
-        C=0.0003022200373124438,
-        penalty='l2',
+        C=np.inf,
+        penalty=None,
         class_weight=None,
-        solver='liblinear',
-        max_iter=1000,
+        solver='lbfgs',
+        max_iter=2000,
         random_state=42
     )
     model.fit(X_scaled, y_bal)
@@ -176,7 +171,7 @@ def main():
         feat_21 = []
         for i in range(10): feat_21.append(s2_21[i][valid_21])
         b4_21, b8_21 = s2_21[2][valid_21], s2_21[6][valid_21]
-        feat_21.append((b8_21 - b4_21) / (b8_21 + b4_21) + 1e-8)
+        feat_21.append((b8_21 - b4_21) / (b8_21 + b4_21 + 1e-8))
         feat_21.append(wc_20[valid_21])
         for i in range(4): feat_21.append(stats[i][valid_21])
         feat_21.append(std[0][valid_21])
