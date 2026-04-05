@@ -1,0 +1,52 @@
+{
+  "model": "tempcnn_3x3",
+  "n_params": 539271,
+  "n_train": 2760000,
+  "n_val": 345000,
+  "best_val_loss": 0.7708805338541667,
+  "val_accuracy": 0.8068811594202898,
+  "epochs_trained": 33,
+  "acc_tree_cover": 0.6966307174544898,
+  "acc_shrubland": 0.5642647058823529,
+  "acc_grassland": 0.7774777242899821,
+  "acc_cropland": 0.875286932283981,
+  "acc_built_up": 0.9424100390282161,
+  "acc_bare_sparse": 0.7144089267424937,
+  "acc_water": 0.9886581070963091,
+  "test_accuracy": 0.8288853333333334,
+  "test_per_class": {
+    "tree_cover": 0.7703654200383572,
+    "shrubland": 0.8365784879817376,
+    "grassland": 0.6649271112678278,
+    "cropland": 0.8073150789468903,
+    "built_up": 0.9396855498882,
+    "bare_sparse": 0.6057202975141907,
+    "water": 0.9924104181595863
+  },
+  "test_per_city": {
+    "nuremberg": {
+      "accuracy": 0.910354,
+      "n_pixels": 500000
+    },
+    "ankara_test": {
+      "accuracy": 0.694178,
+      "n_pixels": 500000
+    },
+    "sofia_test": {
+      "accuracy": 0.819922,
+      "n_pixels": 500000
+    },
+    "riga_test": {
+      "accuracy": 0.876902,
+      "n_pixels": 500000
+    },
+    "edinburgh_test": {
+      "accuracy": 0.908146,
+      "n_pixels": 500000
+    },
+    "palermo_test": {
+      "accuracy": 0.76381,
+      "n_pixels": 500000
+    }
+  }
+}

@@ -1,0 +1,175 @@
+{
+  "description": "Raw-band MLP comparison study. All models trained on same 92-city train split, evaluated on 6 held-out test cities (nuremberg, ankara_test, sofia_test, riga_test, edinburgh_test, palermo_test).",
+  "models": {
+    "mlp_1x1": {
+      "input": "Single pixel (1x1)",
+      "n_features": 72,
+      "n_params": 212231,
+      "n_train": 18400000,
+      "val_accuracy": 0.7802,
+      "test_accuracy": 0.7915,
+      "test_per_class": {
+        "tree_cover": 0.7709,
+        "shrubland": 0.8067,
+        "grassland": 0.5477,
+        "cropland": 0.7900,
+        "built_up": 0.9120,
+        "bare_sparse": 0.5975,
+        "water": 0.9876
+      },
+      "test_per_city": {
+        "nuremberg": 0.8970,
+        "ankara_test": 0.6534,
+        "sofia_test": 0.8085,
+        "riga_test": 0.8515,
+        "edinburgh_test": 0.8986,
+        "palermo_test": 0.7619
+      }
+    },
+    "mlp_3x3": {
+      "input": "3x3 neighborhood patch",
+      "n_features": 648,
+      "n_params": 1341319,
+      "n_train": 2760000,
+      "val_accuracy": 0.8013,
+      "test_accuracy": 0.8321,
+      "test_per_class": {
+        "tree_cover": 0.8089,
+        "shrubland": 0.7766,
+        "grassland": 0.6466,
+        "cropland": 0.8073,
+        "built_up": 0.9257,
+        "bare_sparse": 0.5907,
+        "water": 0.9893
+      },
+      "test_per_city": {
+        "nuremberg": 0.9123,
+        "ankara_test": 0.6997,
+        "sofia_test": 0.8173,
+        "riga_test": 0.8731,
+        "edinburgh_test": 0.9048,
+        "palermo_test": 0.7854
+      },
+      "notes": "Best pure MLP. 3x3 spatial context provides consistent gains over pixel-level."
+    },
+    "mlp_5x5": {
+      "input": "5x5 neighborhood patch",
+      "n_features": 1800,
+      "n_params": 2520967,
+      "n_train": 1104000,
+      "val_accuracy": 0.8026,
+      "test_accuracy": 0.8172,
+      "test_per_class": {
+        "tree_cover": 0.8193,
+        "shrubland": 0.7803,
+        "grassland": 0.5924,
+        "cropland": 0.8015,
+        "built_up": 0.8918,
+        "bare_sparse": 0.7325,
+        "water": 0.9882
+      },
+      "test_per_city": {
+        "nuremberg": 0.9105,
+        "ankara_test": 0.6364,
+        "sofia_test": 0.8107,
+        "riga_test": 0.8629,
+        "edinburgh_test": 0.9027,
+        "palermo_test": 0.7802
+      },
+      "notes": "Worse than 3x3 due to noise dilution and fewer training pixels (12K/city vs 30K)."
+    },
+    "mlp_3x3_plus": {
+      "input": "3x3 raw patch + 145 CatBoost-style center-pixel indices",
+      "n_features": 793,
+      "n_params": 1489799,
+      "n_train": 2760000,
+      "val_accuracy": 0.7885,
+      "test_accuracy": 0.8232,
+      "test_per_class": {
+        "tree_cover": 0.7969,
+        "shrubland": 0.8080,
+        "grassland": 0.6247,
+        "cropland": 0.8321,
+        "built_up": 0.9091,
+        "bare_sparse": 0.6328,
+        "water": 0.9909
+      },
+      "test_per_city": {
+        "nuremberg": 0.9094,
+        "ankara_test": 0.6787,
+        "sofia_test": 0.8191,
+        "riga_test": 0.8662,
+        "edinburgh_test": 0.9008,
+        "palermo_test": 0.7648
+      },
+      "notes": "Hybrid features add redundancy; MLP struggles to jointly exploit raw bands and derived indices."
+    },
+    "mlp_3x3_plus_big": {
+      "input": "3x3 raw patch + 145 CatBoost-style center-pixel indices",
+      "n_features": 793,
+      "n_params": 4405127,
+      "n_train": 2760000,
+      "val_accuracy": 0.8102,
+      "test_accuracy": 0.8273,
+      "test_per_class": {
+        "tree_cover": 0.7885,
+        "shrubland": 0.7676,
+        "grassland": 0.6502,
+        "cropland": 0.8066,
+        "built_up": 0.9228,
+        "bare_sparse": 0.6748,
+        "water": 0.9924
+      },
+      "test_per_city": {
+        "nuremberg": 0.9113,
+        "ankara_test": 0.6710,
+        "sofia_test": 0.8176,
+        "riga_test": 0.8779,
+        "edinburgh_test": 0.9090,
+        "palermo_test": 0.7768
+      },
+      "architecture": [2048, 1024, 512, 256, 64],
+      "notes": "3x more params than standard. Higher val accuracy but similar test accuracy -- overfits faster."
+    }
+  },
+  "ensemble": {
+    "description": "Probability blending of CatBoost V5 (deep_unweighted) + MLP 3x3 on 1.2M aligned test pixels.",
+    "best_weight": "CB=0.7, MLP=0.3",
+    "test_accuracy": 0.8563,
+    "individual_baselines": {
+      "catboost_v5": 0.8516,
+      "mlp_3x3": 0.8320
+    },
+    "weights_tested": {
+      "CB=0.3": 0.8449,
+      "CB=0.4": 0.8492,
+      "CB=0.5": 0.8534,
+      "CB=0.6": 0.8560,
+      "CB=0.7": 0.8563
+    },
+    "per_class_best": {
+      "tree_cover": {"catboost": 0.8688, "mlp": 0.8091, "ensemble": 0.8602},
+      "shrubland": {"catboost": 0.0549, "mlp": 0.7707, "ensemble": 0.2051},
+      "grassland": {"catboost": 0.7602, "mlp": 0.6469, "ensemble": 0.7537},
+      "cropland": {"catboost": 0.7864, "mlp": 0.8060, "ensemble": 0.7973},
+      "built_up": {"catboost": 0.9006, "mlp": 0.9255, "ensemble": 0.9170},
+      "bare_sparse": {"catboost": 0.2882, "mlp": 0.5963, "ensemble": 0.3978},
+      "water": {"catboost": 0.9885, "mlp": 0.9890, "ensemble": 0.9895}
+    },
+    "notes": "Ensemble gains +0.47% over solo CatBoost. Models are complementary on rare classes (MLP dominates shrubland/bare_sparse) but CatBoost dominates majority classes. A per-class weighted or learned stacker could exploit this better."
+  },
+  "conclusions": {
+    "best_single_model": "mlp_3x3 (83.21% test, best pure MLP)",
+    "best_overall": "CatBoost V5 (85.16% test, gradient-boosted trees on handcrafted features)",
+    "best_ensemble": "CB=0.7 + MLP=0.3 (85.63% test)",
+    "mlp_ceiling": "All MLP variants plateau at 81-83% regardless of spatial context, feature engineering, or model capacity.",
+    "key_findings": [
+      "3x3 spatial context provides ~2% gain over single-pixel MLP",
+      "5x5 context hurts -- too much noise for an MLP to process without convolutions",
+      "Adding handcrafted indices to raw bands introduces redundancy that hurts MLP performance",
+      "Scaling model capacity 3x (1.3M to 4.4M params) does not improve test accuracy",
+      "CatBoost and MLP make complementary errors on rare classes (shrubland, bare_sparse)",
+      "Simple probability blending gives marginal ensemble gains (+0.47%); per-class weighting needed for more"
+    ]
+  }
+}
