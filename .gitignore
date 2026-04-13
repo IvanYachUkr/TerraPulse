@@ -95,6 +95,14 @@ _assignment_text.txt
 models/final_mlp_rust/
 models/final_mlp_pyv3/
 
+# === Reproduce pipeline (large binaries, caches, generated maps) ===
+reproduce/models/checkpoints/*.pt
+reproduce/models/checkpoints/*.pkl
+reproduce/models/checkpoints/val_raw_cache*/
+reproduce/models/prediction_maps/*.png
+reproduce/models/prediction_maps/*.html
+EU_LUCAS_2022.zip
+
 # === CSV results ===
 *.csv
 
