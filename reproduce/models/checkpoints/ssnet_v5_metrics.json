@@ -1,0 +1,69 @@
+{
+  "model": "ssnet_v5_robust",
+  "n_params": 1170005,
+  "n_rounds": 10,
+  "total_epochs": 76,
+  "val_accuracy": 0.8504173913043478,
+  "val_balanced_accuracy": 0.7455015804618278,
+  "val_macro_f1": 0.7655229954010675,
+  "val_score": 0.7945108999713099,
+  "best_score": 0.7945108999713099,
+  "best_val_acc": 0.8504173913043478,
+  "best_bal_acc": 0.7455015804618278,
+  "test_accuracy": 0.864756,
+  "test_balanced_accuracy": 0.6836733058054179,
+  "test_macro_f1": 0.7048913511432453,
+  "test_per_class": {
+    "tree_cover": 0.8811506274049967,
+    "shrubland": 0.11364755382480642,
+    "grassland": 0.7691371198975567,
+    "cropland": 0.8033686429129495,
+    "built_up": 0.9187284757006743,
+    "bare_sparse": 0.30896457232335095,
+    "water": 0.9907161485735901
+  },
+  "test_per_city": {
+    "nuremberg": {
+      "accuracy": 0.916816,
+      "balanced_accuracy": 0.7910731163761465,
+      "macro_f1": 0.8060209561872217,
+      "score": 0.849315664944819,
+      "n_pixels": 500000
+    },
+    "ankara_test": {
+      "accuracy": 0.770812,
+      "balanced_accuracy": 0.6424101646203612,
+      "macro_f1": 0.6792088847953796,
+      "score": 0.7007779473149873,
+      "n_pixels": 500000
+    },
+    "sofia_test": {
+      "accuracy": 0.843112,
+      "balanced_accuracy": 0.6473905940368436,
+      "macro_f1": 0.6507780751531305,
+      "score": 0.7324009776343927,
+      "n_pixels": 500000
+    },
+    "riga_test": {
+      "accuracy": 0.884326,
+      "balanced_accuracy": 0.6218664849345635,
+      "macro_f1": 0.6485687820008099,
+      "score": 0.7302289802357295,
+      "n_pixels": 500000
+    },
+    "edinburgh_test": {
+      "accuracy": 0.91596,
+      "balanced_accuracy": 0.8072427375041089,
+      "macro_f1": 0.8198673422572745,
+      "score": 0.8581718700322114,
+      "n_pixels": 500000
+    },
+    "palermo_test": {
+      "accuracy": 0.85751,
+      "balanced_accuracy": 0.61538584204171,
+      "macro_f1": 0.6271500779778376,
+      "score": 0.7165469524005122,
+      "n_pixels": 500000
+    }
+  }
+}
