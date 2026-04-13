@@ -81,7 +81,7 @@ class SpatialEncoder(nn.Module):
     Multi-block spatial encoder processing 3×3 patches per time step.
     Uses padded convolutions to maintain spatial dims through stacked blocks.
     """
-    def __init__(self, in_bands=12, dims=(32, 64, 128), expand_ratio=4):
+    def __init__(self, in_bands=12, dims=(32, 64, 128), expand_ratio=2):
         super().__init__()
         # Stem: pointwise to initial dim
         self.stem = nn.Sequential(
@@ -172,7 +172,7 @@ class SpectralSpatialNetV2(nn.Module):
       Fusion: concat + 2-layer head
     """
     def __init__(self, n_bands=12, n_timesteps=6, n_indices=145,
-                 spatial_dims=(32, 64, 128), temporal_dim=128,
+                 spatial_dims=(32, 64, 128), expand_ratio=4, temporal_dim=128,
                  n_attn_layers=2, n_heads=8,
                  n_classes=7, dropout=0.15):
         super().__init__()
@@ -180,7 +180,7 @@ class SpectralSpatialNetV2(nn.Module):
         self.n_timesteps = n_timesteps
 
         # ── Spatial branch ──
-        self.spatial = SpatialEncoder(n_bands, dims=spatial_dims, expand_ratio=4)
+        self.spatial = SpatialEncoder(n_bands, dims=spatial_dims, expand_ratio=expand_ratio)
         spatial_out = self.spatial.out_dim
 
         # Project spatial output to temporal dim
