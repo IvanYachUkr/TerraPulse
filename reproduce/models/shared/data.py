@@ -429,5 +429,7 @@ def extract_pixels_for_city(city, max_pixels=100_000, pad=2, rng=None):
         "feat_5x5": feat_5x5,
         "labels": y,
         "n_pixels": n_sample,
+        "rows": coords[:, 0].copy(),
+        "cols": coords[:, 1].copy(),
     }
 
