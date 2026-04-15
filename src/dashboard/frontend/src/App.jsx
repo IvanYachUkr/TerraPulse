@@ -269,6 +269,7 @@ export default function App() {
                 nurembergDataMode={nurembergDataMode}
                 nurembergYear={nurembergYear}
                 nurembergSecondaryYear={nurembergSecondaryYear}
+                nurembergPredModel={nurembergPredModel}
             />
             {appMode === 'deploy' ? (
                 <DeployView />

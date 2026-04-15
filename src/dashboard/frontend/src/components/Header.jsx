@@ -6,6 +6,7 @@ export default function Header({
     nurembergDataMode,
     nurembergYear,
     nurembergSecondaryYear,
+    nurembergPredModel,
 }) {
     // Build context info text
     let infoText = '';
@@ -19,7 +20,8 @@ export default function Header({
         } else if (nurembergYear >= 2026) {
             infoText = `Predictions · Nuremberg ${nurembergYear} · Future Forecast`;
         } else {
-            infoText = `CatBoost V5 Predictions · Nuremberg ${nurembergYear}`;
+            const modelName = nurembergPredModel === 'ssnet_v8' ? 'Spectral-Spatial Net' : 'CatBoost';
+            infoText = `${modelName} Predictions \u00b7 Nuremberg ${nurembergYear}`;
         }
     } else if (appMode === 'deploy') {
         infoText = `Global Predictions \u00b7 Regional Predictor`;
