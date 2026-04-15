@@ -59,6 +59,8 @@ export default function Sidebar({
     nurembergDataMode_forStats,
     predictionAccuracy,
     changeMetrics,
+    nurembergPredModel,
+    onNurembergPredModelChange,
 }) {
     if (appMode === 'analytical') {
         const labelYearsN = nurembergMeta?.label_years || [2020, 2021];
@@ -108,8 +110,10 @@ export default function Sidebar({
                         {nurembergDataMode === 'labels'
                             ? 'ESA WorldCover · Ground Truth'
                             : nurembergDataMode === 'experimental'
-                                ? '🧪 4-Fold Spatial CV · RF 2-Stage'
-                                : 'CatBoost V5 · Pixel Classifier'}
+                                ? 'Experimental · 4-Fold Spatial CV'
+                                : nurembergPredModel === 'ssnet_v8'
+                                    ? 'SSNet V8 · Pixel Classifier'
+                                    : 'CatBoost V5 · Pixel Classifier'}
                     </div>
                 </div>
 
@@ -177,9 +181,31 @@ export default function Sidebar({
                         </div>
                         {nurembergSecondaryYear !== null && (
                             <div className="info-badge" style={{ marginTop: 8, background: 'rgba(59, 130, 246, 0.15)', borderColor: 'rgba(59, 130, 246, 0.3)' }}>
-                                🔄 Showing changes: {nurembergYear} → {nurembergSecondaryYear}
+                                Showing changes: {nurembergYear} &rarr; {nurembergSecondaryYear}
                             </div>
                         )}
+                        <div style={{ marginTop: 10 }}>
+                            <div style={{ fontSize: 10, opacity: 0.5, marginBottom: 4, fontWeight: 600, textTransform: 'uppercase' }}>Model</div>
+                            <div className="toggle-group">
+                                <button
+                                    className={`toggle-btn ${nurembergPredModel === 'catboost' ? 'active' : ''}`}
+                                    onClick={() => onNurembergPredModelChange('catboost')}
+                                >
+                                    CatBoost V5
+                                </button>
+                                <button
+                                    className={`toggle-btn ${nurembergPredModel === 'ssnet_v8' ? 'active' : ''}`}
+                                    onClick={() => onNurembergPredModelChange('ssnet_v8')}
+                                >
+                                    SSNet V8
+                                </button>
+                            </div>
+                            <div style={{ fontSize: 10, opacity: 0.5, marginTop: 4, lineHeight: 1.4 }}>
+                                {nurembergPredModel === 'ssnet_v8'
+                                    ? 'SpectralSpatialNet V8 - Raw-band pixel classifier with 3x3 spatial context'
+                                    : 'CatBoost V5 - Feature-engineered pixel classifier'}
+                            </div>
+                        </div>
                     </div>
                 )}
 

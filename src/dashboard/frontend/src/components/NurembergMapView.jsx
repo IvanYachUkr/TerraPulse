@@ -64,6 +64,7 @@ export default function NurembergMapView({
     onDistrictHover,
     districtStats,
     experimentalModel = 'rf',
+    predModel = 'catboost',
 }) {
     const [labelData, setLabelData] = useState(null);
     const [canvasImage, setCanvasImage] = useState(null);
@@ -79,10 +80,12 @@ export default function NurembergMapView({
             const query = experimentalView === 'heatmap' ? `?model=${experimentalModel}` : '';
             url = `${API}/api/nuremberg/experimental${sub}/${resolution}${query}`;
         } else if (dataMode === 'predictions' && secondaryYear !== null) {
-            url = `${API}/api/nuremberg/predictions/diff/${selectedYear}/${secondaryYear}/${resolution}`;
+            const modelQ = predModel !== 'catboost' ? `?model=${predModel}` : '';
+            url = `${API}/api/nuremberg/predictions/diff/${selectedYear}/${secondaryYear}/${resolution}${modelQ}`;
         } else {
             const endpoint = dataMode === 'predictions' ? 'predictions' : 'labels';
-            url = `${API}/api/nuremberg/${endpoint}/${selectedYear}/${resolution}`;
+            const modelQ = dataMode === 'predictions' && predModel !== 'catboost' ? `?model=${predModel}` : '';
+            url = `${API}/api/nuremberg/${endpoint}/${selectedYear}/${resolution}${modelQ}`;
         }
         fetch(url)
             .then(res => {
@@ -93,7 +96,7 @@ export default function NurembergMapView({
                 setLabelData(new Uint8Array(buf));
             })
             .catch(err => console.error(`Failed to load nuremberg data:`, err));
-    }, [selectedYear, secondaryYear, resolution, meta, dataMode, experimentalView, experimentalModel]);
+    }, [selectedYear, secondaryYear, resolution, meta, dataMode, experimentalView, experimentalModel, predModel]);
 
     // Generate canvas image from label data
     useEffect(() => {

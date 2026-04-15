@@ -152,6 +152,7 @@ export default function App() {
     const [nurembergDataMode, setNurembergDataMode] = useState('labels');
     const [nurembergExperimentalView, setNurembergExperimentalView] = useState('map'); // map | heatmap | changes
     const [nurembergExperimentalModel, setNurembergExperimentalModel] = useState('rf'); // rf | linear
+    const [nurembergPredModel, setNurembergPredModel] = useState('catboost'); // catboost | ssnet_v8
     const [hoveredDistrict, setHoveredDistrict] = useState(null);
 
     // Data fetching — labels (always loaded)
@@ -318,6 +319,8 @@ export default function App() {
                             nurembergDataMode_forStats={nurembergDataMode}
                             predictionAccuracy={predictionAccuracy}
                             changeMetrics={changeMetrics}
+                            nurembergPredModel={nurembergPredModel}
+                            onNurembergPredModelChange={setNurembergPredModel}
                         />
                     )}
                     <NurembergMapView
@@ -337,6 +340,7 @@ export default function App() {
                         onDistrictHover={setHoveredDistrict}
                         districtStats={districtStats}
                         experimentalModel={nurembergExperimentalModel}
+                        predModel={nurembergPredModel}
                     />
                 </div>
             )}

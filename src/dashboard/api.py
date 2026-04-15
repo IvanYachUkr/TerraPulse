@@ -359,11 +359,18 @@ def nuremberg_labels(year: int, resolution: int):
 
 
 @app.get("/api/nuremberg/predictions/{year}/{resolution}")
-def nuremberg_predictions(year: int, resolution: int):
-    """Binary uint8 prediction map for Nuremberg at a given resolution."""
+def nuremberg_predictions(year: int, resolution: int, model: str = "catboost"):
+    """Binary uint8 prediction map for Nuremberg at a given resolution.
+    
+    Query params:
+        model: 'catboost' (default) or 'ssnet_v8'
+    """
     if resolution < 1 or resolution > 10:
         raise HTTPException(404, "Resolution must be 1-10")
-    fname = f"nuremberg_pred_{year}_res{resolution}.bin"
+    if model == "ssnet_v8":
+        fname = f"nuremberg_ssnet_v8_pred_{year}_res{resolution}.bin"
+    else:
+        fname = f"nuremberg_pred_{year}_res{resolution}.bin"
     return _serve_binary(os.path.join(NUREMBERG_DIR, fname), fname)
 
 
@@ -520,15 +527,16 @@ def nuremberg_accuracy():
 
 
 @app.get("/api/nuremberg/predictions/diff/{year_from}/{year_to}/{resolution}")
-def nuremberg_predictions_diff(year_from: int, year_to: int, resolution: int):
-    """On-the-fly diff between two prediction years. Changed pixels → year_to class, unchanged → 254, boundary → 255."""
+def nuremberg_predictions_diff(year_from: int, year_to: int, resolution: int, model: str = "catboost"):
+    """On-the-fly diff between two prediction years. Changed pixels -> year_to class, unchanged -> 254, boundary -> 255."""
     if resolution < 1 or resolution > 10:
         raise HTTPException(404, "Resolution must be 1-10")
     if year_from == year_to:
         raise HTTPException(400, "Years must be different")
 
-    fname_from = f"nuremberg_pred_{year_from}_res{resolution}.bin"
-    fname_to = f"nuremberg_pred_{year_to}_res{resolution}.bin"
+    prefix = "nuremberg_ssnet_v8_pred" if model == "ssnet_v8" else "nuremberg_pred"
+    fname_from = f"{prefix}_{year_from}_res{resolution}.bin"
+    fname_to = f"{prefix}_{year_to}_res{resolution}.bin"
     fpath_from = os.path.join(NUREMBERG_DIR, fname_from)
     fpath_to = os.path.join(NUREMBERG_DIR, fname_to)
 
@@ -545,8 +553,8 @@ def nuremberg_predictions_diff(year_from: int, year_to: int, resolution: int):
     changed = (pred_from != pred_to) & ~boundary
 
     result = np.full_like(pred_from, 254)  # 254 = no change
-    result[changed] = pred_to[changed]      # changed → target class
-    result[boundary] = 255                  # boundary → transparent
+    result[changed] = pred_to[changed]      # changed -> target class
+    result[boundary] = 255                  # boundary -> transparent
 
     data = result.tobytes()
     return StreamingResponse(
