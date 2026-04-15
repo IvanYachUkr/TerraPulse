@@ -112,8 +112,8 @@ export default function Sidebar({
                             : nurembergDataMode === 'experimental'
                                 ? 'Experimental · 4-Fold Spatial CV'
                                 : nurembergPredModel === 'ssnet_v8'
-                                    ? 'SSNet V8 · Pixel Classifier'
-                                    : 'CatBoost V5 · Pixel Classifier'}
+                                    ? 'Spectral-Spatial Net · Deep Pixel Classifier'
+                                    : 'CatBoost · Gradient Boosted Pixel Classifier'}
                     </div>
                 </div>
 
@@ -191,19 +191,19 @@ export default function Sidebar({
                                     className={`toggle-btn ${nurembergPredModel === 'catboost' ? 'active' : ''}`}
                                     onClick={() => onNurembergPredModelChange('catboost')}
                                 >
-                                    CatBoost V5
+                                    CatBoost
                                 </button>
                                 <button
                                     className={`toggle-btn ${nurembergPredModel === 'ssnet_v8' ? 'active' : ''}`}
                                     onClick={() => onNurembergPredModelChange('ssnet_v8')}
                                 >
-                                    SSNet V8
+                                    Spectral-Spatial Net
                                 </button>
                             </div>
                             <div style={{ fontSize: 10, opacity: 0.5, marginTop: 4, lineHeight: 1.4 }}>
                                 {nurembergPredModel === 'ssnet_v8'
-                                    ? 'SpectralSpatialNet V8 - Raw-band pixel classifier with 3x3 spatial context'
-                                    : 'CatBoost V5 - Feature-engineered pixel classifier'}
+                                    ? 'Deep neural network using raw spectral bands with 3×3 spatial context'
+                                    : 'Gradient boosting with 217 engineered features per pixel'}
                             </div>
                         </div>
                     </div>
