@@ -1,0 +1,70 @@
+{
+  "model": "ssnet_v8_prior_guided_center_veto",
+  "n_params": 1657571,
+  "n_rounds": 8,
+  "total_epochs": 67,
+  "val_accuracy": 0.8533304347826087,
+  "val_balanced_acc": 0.7496459109284135,
+  "val_macro_f1": 0.768277816185539,
+  "val_score": 0.7981348855423092,
+  "val_focus_score": 0.6720792231494477,
+  "best_metric": 0.7981348855423092,
+  "best_score": 0.7981348855423092,
+  "recall_tree_cover": 0.8709308639858241,
+  "precision_tree_cover": 0.8687954383464006,
+  "f1_tree_cover": 0.8698618406028773,
+  "recall_shrubland": 0.23059255856683508,
+  "precision_shrubland": 0.4911937377690802,
+  "f1_shrubland": 0.3138480775242263,
+  "recall_grassland": 0.8292531281573017,
+  "precision_grassland": 0.766798418972332,
+  "f1_grassland": 0.7968038234635203,
+  "recall_cropland": 0.8960186491626281,
+  "precision_cropland": 0.9042283167213521,
+  "f1_cropland": 0.9001047636654957,
+  "recall_built_up": 0.9157271702367531,
+  "precision_built_up": 0.8865422396856582,
+  "f1_built_up": 0.9008984028393966,
+  "recall_bare_sparse": 0.5195981554677207,
+  "precision_bare_sparse": 0.8634373289545704,
+  "f1_bare_sparse": 0.6487764754266913,
+  "recall_water": 0.9854008509218319,
+  "precision_water": 0.9126873744398084,
+  "f1_water": 0.9476513297765653,
+  "test_accuracy": 0.86618,
+  "test_per_class": {
+    "tree_cover": 0.885453821274089,
+    "shrubland": 0.2551810572490041,
+    "grassland": 0.7639592825261907,
+    "cropland": 0.8102040445518469,
+    "built_up": 0.9131743105468039,
+    "bare_sparse": 0.3934478371501272,
+    "water": 0.989213683091669
+  },
+  "test_per_city": {
+    "nuremberg": {
+      "accuracy": 0.919074,
+      "n_pixels": 500000
+    },
+    "ankara_test": {
+      "accuracy": 0.77976,
+      "n_pixels": 500000
+    },
+    "sofia_test": {
+      "accuracy": 0.84242,
+      "n_pixels": 500000
+    },
+    "riga_test": {
+      "accuracy": 0.887536,
+      "n_pixels": 500000
+    },
+    "edinburgh_test": {
+      "accuracy": 0.914894,
+      "n_pixels": 500000
+    },
+    "palermo_test": {
+      "accuracy": 0.853396,
+      "n_pixels": 500000
+    }
+  }
+}

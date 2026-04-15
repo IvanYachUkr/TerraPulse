@@ -398,23 +398,23 @@ class PriorGuidedCenterCriterion:
 
         hard_target = self._smoothed_one_hot(y)
 
-        alpha_anchor = torch.zeros_like(anchor_conf)
-        alpha_anchor[agree_anchor] = self.agree_alpha * anchor_conf[agree_anchor]
-        alpha_anchor[disagree_anchor] = self.disagree_alpha_max * anchor_conf[disagree_anchor] * (0.35 + 0.65 * ambiguity[disagree_anchor])
+        alpha_anchor = torch.zeros(anchor_conf.shape, device=anchor_conf.device, dtype=torch.float32)
+        alpha_anchor[agree_anchor] = self.agree_alpha * anchor_conf[agree_anchor].float()
+        alpha_anchor[disagree_anchor] = self.disagree_alpha_max * anchor_conf[disagree_anchor].float() * (0.35 + 0.65 * ambiguity[disagree_anchor].float())
 
-        alpha_center = torch.zeros_like(center_conf)
-        alpha_center[agree_center] = self.center_agree_alpha * center_conf[agree_center] * (0.35 + 0.65 * anomaly[agree_center])
-        alpha_center[disagree_center] = self.center_disagree_alpha_max * center_conf[disagree_center] * anomaly[disagree_center]
+        alpha_center = torch.zeros(center_conf.shape, device=center_conf.device, dtype=torch.float32)
+        alpha_center[agree_center] = self.center_agree_alpha * center_conf[agree_center].float() * (0.35 + 0.65 * anomaly[agree_center].float())
+        alpha_center[disagree_center] = self.center_disagree_alpha_max * center_conf[disagree_center].float() * anomaly[disagree_center].float()
 
         total_alpha = (alpha_anchor + alpha_center).clamp(max=self.max_total_alpha)
 
         mixed_probs = hard_target.clone()
-        for source_alpha, source_probs in ((alpha_anchor, anchor_probs), (alpha_center, center_probs)):
+        for source_alpha, source_probs in ((alpha_anchor, anchor_probs.float()), (alpha_center, center_probs.float())):
             mixed_probs = mixed_probs * (1.0 - source_alpha.unsqueeze(1)) + source_probs * source_alpha.unsqueeze(1)
         mixed_probs = mixed_probs / mixed_probs.sum(dim=1, keepdim=True).clamp_min(1e-6)
 
-        sample_weight = 1.0 - self.boundary_downweight * boundary - self.ambiguity_downweight * ambiguity + self.anomaly_upweight * anomaly
-        sample_weight[disagree_anchor] = sample_weight[disagree_anchor] * (1.0 - 0.15 * anchor_conf[disagree_anchor])
+        sample_weight = (1.0 - self.boundary_downweight * boundary.float() - self.ambiguity_downweight * ambiguity.float() + self.anomaly_upweight * anomaly.float())
+        sample_weight[disagree_anchor] = sample_weight[disagree_anchor] * (1.0 - 0.15 * anchor_conf[disagree_anchor].float())
         # For anomaly pixels, keep training pressure so small real exceptions are not smoothed away.
         sample_weight = sample_weight.clamp(min=self.min_weight, max=1.10)
 
@@ -429,16 +429,16 @@ class PriorGuidedCenterCriterion:
 
         prior_aux = logits.new_tensor(0.0)
         if anchor_mask.any():
-            prior_aux = self._weighted_ce(outputs["prior_logits"], anchor_pred, weight=anchor_conf * anchor_mask.float())
+            prior_aux = self._weighted_ce(outputs["prior_logits"].float(), anchor_pred, weight=anchor_conf.float() * anchor_mask.float())
 
-        ambiguity_target = torch.clamp(0.55 * boundary + 0.20 * anomaly + 0.25 * torch.maximum(disagree_anchor.float() * anchor_conf, disagree_center.float() * center_conf), 0.0, 1.0)
-        ambiguity_aux = F.binary_cross_entropy_with_logits(outputs["ambiguity_logit"], ambiguity_target)
+        ambiguity_target = torch.clamp(0.55 * boundary.float() + 0.20 * anomaly.float() + 0.25 * torch.maximum(disagree_anchor.float() * anchor_conf.float(), disagree_center.float() * center_conf.float()), 0.0, 1.0)
+        ambiguity_aux = F.binary_cross_entropy_with_logits(outputs["ambiguity_logit"].float(), ambiguity_target)
 
-        prior_gate_target = torch.clamp(0.70 * (anchor_mask.float() * anchor_conf) + 0.20 * boundary + 0.10 * ambiguity, 0.0, 1.0)
-        center_gate_target = torch.clamp(0.70 * (center_mask.float() * center_conf) * anomaly + 0.20 * anomaly + 0.10 * (1.0 - boundary), 0.0, 1.0)
+        prior_gate_target = torch.clamp(0.70 * (anchor_mask.float() * anchor_conf.float()) + 0.20 * boundary.float() + 0.10 * ambiguity.float(), 0.0, 1.0)
+        center_gate_target = torch.clamp(0.70 * (center_mask.float() * center_conf.float()) * anomaly.float() + 0.20 * anomaly.float() + 0.10 * (1.0 - boundary.float()), 0.0, 1.0)
         gate_aux = (
-            F.binary_cross_entropy_with_logits(outputs["prior_gate_logit"], prior_gate_target)
-            + F.binary_cross_entropy_with_logits(outputs["center_gate_logit"], center_gate_target)
+            F.binary_cross_entropy_with_logits(outputs["prior_gate_logit"].float(), prior_gate_target)
+            + F.binary_cross_entropy_with_logits(outputs["center_gate_logit"].float(), center_gate_target)
         ) * 0.5
 
         total = (
